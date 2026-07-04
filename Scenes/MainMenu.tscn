@@ -1,0 +1,40 @@
+[gd_scene format=3 uid="uid://b6r2druaep4mt"]
+
+[ext_resource type="Script" uid="uid://ckp13nuxydlm7" path="res://Scripts/main_menu.gd" id="1_tt5f1"]
+
+[node name="Control" type="Control" unique_id=46513261]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_tt5f1")
+
+[node name="MainMenuTitle" type="Label" parent="." unique_id=1380973623]
+layout_mode = 0
+offset_left = 472.0
+offset_top = 128.0
+offset_right = 545.0
+offset_bottom = 151.0
+text = "Chesslike"
+
+[node name="LocalGameButton" type="Button" parent="." unique_id=1497418027]
+layout_mode = 0
+offset_left = 464.0
+offset_top = 384.0
+offset_right = 562.0
+offset_bottom = 415.0
+text = "Local Game"
+
+[node name="ExitGameButton" type="Button" parent="." unique_id=1065246606]
+layout_mode = 0
+offset_left = 472.0
+offset_top = 544.0
+offset_right = 559.0
+offset_bottom = 575.0
+text = "Exit Game
+"
+
+[connection signal="pressed" from="LocalGameButton" to="." method="_on_local_game_button_pressed"]
+[connection signal="pressed" from="ExitGameButton" to="." method="_on_exit_game_button_pressed"]

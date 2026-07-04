@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://c4xt4iu0ele1i"]
+
+[sub_resource type="MeshTexture" id="MeshTexture_cuega"]
+
+[node name="Node2D" type="Node2D" unique_id=1767808941]
+
+[node name="Polygon2D" type="Polygon2D" parent="." unique_id=1037198816]
+color = Color(0, 0, 0, 1)
+texture = SubResource("MeshTexture_cuega")
+polygon = PackedVector2Array(0, 0, 100, 0, 100, 100, 0, 100)

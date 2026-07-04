@@ -1,0 +1,69 @@
+[gd_scene format=3 uid="uid://q8kgq2luhui0"]
+
+[ext_resource type="Script" uid="uid://bbthserpc0gqq" path="res://Scripts/local_game_menu.gd" id="1_2iipm"]
+
+[node name="Control" type="Control" unique_id=882282695]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_2iipm")
+
+[node name="BoardWidth" type="Label" parent="." unique_id=328760141]
+layout_mode = 0
+offset_left = 256.0
+offset_top = 128.0
+offset_right = 296.0
+offset_bottom = 151.0
+text = "Board Width:"
+
+[node name="WidthSpinBox" type="SpinBox" parent="." unique_id=375682489]
+layout_mode = 0
+offset_left = 384.0
+offset_top = 128.0
+offset_right = 470.5
+offset_bottom = 159.0
+min_value = 3.0
+max_value = 15.0
+value = 8.0
+rounded = true
+
+[node name="BoardHeight" type="Label" parent="." unique_id=1042435751]
+layout_mode = 0
+offset_left = 256.0
+offset_top = 192.0
+offset_right = 358.0
+offset_bottom = 215.0
+text = "Board Height:"
+
+[node name="HeightSpinBox" type="SpinBox" parent="." unique_id=1253021372]
+layout_mode = 0
+offset_left = 384.0
+offset_top = 192.0
+offset_right = 470.5
+offset_bottom = 223.0
+min_value = 3.0
+max_value = 15.0
+value = 8.0
+rounded = true
+
+[node name="LocalGameTitle" type="Label" parent="." unique_id=1654476851]
+layout_mode = 0
+offset_left = 440.0
+offset_top = 40.0
+offset_right = 583.0
+offset_bottom = 63.0
+text = "Create Local game"
+
+[node name="StartGameButton" type="Button" parent="." unique_id=40242828]
+layout_mode = 0
+offset_left = 464.0
+offset_top = 416.0
+offset_right = 560.0
+offset_bottom = 447.0
+text = "Start Game
+"
+
+[connection signal="pressed" from="StartGameButton" to="." method="_on_start_game_button_pressed"]
