@@ -23,7 +23,7 @@ grow_vertical = 2
 horizontal_scroll_mode = 0
 
 [node name="OptionsContent" type="Control" parent="OptionsScroll" unique_id=1806613797]
-custom_minimum_size = Vector2(0, 1240)
+custom_minimum_size = Vector2(0, 1360)
 layout_mode = 2
 size_flags_horizontal = 3
 
@@ -288,7 +288,7 @@ offset_right = 332.0
 offset_bottom = 970.0
 text = "Capture to Drop Pool"
 
-[node name="PromotionPiecesTitleBackground" type="ColorRect" parent="OptionsScroll/OptionsContent" unique_id=175393625]
+[node name="VictoryConditionTitleBackground" type="ColorRect" parent="OptionsScroll/OptionsContent" unique_id=414050202]
 layout_mode = 0
 offset_left = 76.0
 offset_top = 986.0
@@ -296,20 +296,52 @@ offset_right = 324.0
 offset_bottom = 1013.0
 color = Color(0.16, 0.16, 0.16, 0.78)
 
-[node name="PromotionPiecesTitle" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1858177657]
+[node name="VictoryConditionTitle" type="Label" parent="OptionsScroll/OptionsContent" unique_id=136941371]
 layout_mode = 0
 offset_left = 80.0
 offset_top = 988.0
-offset_right = 280.0
+offset_right = 260.0
 offset_bottom = 1011.0
+text = "Victory Condition:"
+
+[node name="VictoryConditionOption" type="OptionButton" parent="OptionsScroll/OptionsContent" unique_id=132665205]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 1024.0
+offset_right = 320.0
+offset_bottom = 1055.0
+
+[node name="VictoryConditionDescription" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1271189780]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 1064.0
+offset_right = 360.0
+offset_bottom = 1120.0
+autowrap_mode = 3
+text = "Checkmate: win by checkmating the king.\nTotal War: win when the opponent has no pieces left; if no legal captures remain, the game is a stalemate."
+
+[node name="PromotionPiecesTitleBackground" type="ColorRect" parent="OptionsScroll/OptionsContent" unique_id=175393625]
+layout_mode = 0
+offset_left = 76.0
+offset_top = 1148.0
+offset_right = 324.0
+offset_bottom = 1175.0
+color = Color(0.16, 0.16, 0.16, 0.78)
+
+[node name="PromotionPiecesTitle" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1858177657]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 1150.0
+offset_right = 280.0
+offset_bottom = 1173.0
 text = "Promotion Pieces:"
 
 [node name="PromotionPiecesScroll" type="ScrollContainer" parent="OptionsScroll/OptionsContent" unique_id=1022091318]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1016.0
+offset_top = 1178.0
 offset_right = 320.0
-offset_bottom = 1144.0
+offset_bottom = 1306.0
 
 [node name="PromotionPiecesList" type="VBoxContainer" parent="OptionsScroll/OptionsContent/PromotionPiecesScroll" unique_id=57243385]
 custom_minimum_size = Vector2(0, 220)

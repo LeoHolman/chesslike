@@ -45,6 +45,7 @@ var promotion_options_container: VBoxContainer
 var promotion_pending = false
 var pending_promotion_move: Dictionary = {}
 var promotion_piece_options: Array[String] = []
+var victory_condition = "checkmate"
 var piece_dropping_enabled = false
 var capture_to_drop_pool_enabled = false
 var drop_pools = {
@@ -285,6 +286,7 @@ func _initialize_board_state() -> void:
 	game_over = false
 	status_message = ""
 	var special_rules = $"/root/GameManager".SpecialRules
+	victory_condition = str($"/root/GameManager".VictoryCondition)
 	castling_enabled = bool(special_rules.get("castling", true))
 	en_passant_enabled = bool(special_rules.get("en_passant", true))
 	promotion_enabled = bool(special_rules.get("promotion", true))
@@ -1242,6 +1244,42 @@ func _has_any_legal_moves(piece_color: String) -> bool:
 	return false
 
 func _update_game_state(record_history: bool) -> void:
+	if victory_condition == "total_war":
+		var white_piece_count = _count_pieces_on_board("white")
+		var black_piece_count = _count_pieces_on_board("black")
+		var white_can_capture = _has_any_legal_captures("white")
+		var black_can_capture = _has_any_legal_captures("black")
+		status_message = ""
+		game_over = false
+
+		if white_piece_count == 0 and black_piece_count == 0:
+			game_over = true
+			status_message = "Total War draw"
+			if record_history:
+				move_history.append("Total War draw.")
+			return
+
+		if white_piece_count == 0:
+			game_over = true
+			status_message = "Total War: Black wins"
+			if record_history:
+				move_history.append("Total War. Black wins.")
+			return
+
+		if black_piece_count == 0:
+			game_over = true
+			status_message = "Total War: White wins"
+			if record_history:
+				move_history.append("Total War. White wins.")
+			return
+
+		if _is_total_war_dead_position():
+			game_over = true
+			status_message = "Total War stalemate"
+			if record_history:
+				move_history.append("Total War stalemate.")
+			return
+
 	var in_check = _is_king_in_check(current_turn, pieces)
 	var has_moves = _has_any_legal_moves(current_turn)
 	status_message = ""
@@ -1263,6 +1301,108 @@ func _update_game_state(record_history: bool) -> void:
 
 	if in_check:
 		status_message = "%s in check" % _display_color(current_turn)
+
+func _count_pieces_on_board(piece_color: String) -> int:
+	var count = 0
+	for square in pieces.keys():
+		var piece_data: Dictionary = pieces[square]
+		if piece_data.get("color", "") == piece_color:
+			count += 1
+	return count
+
+func _has_any_legal_captures(piece_color: String) -> bool:
+	for from_square in pieces.keys():
+		var piece_data: Dictionary = pieces[from_square]
+		if piece_data.get("color", "") != piece_color:
+			continue
+		for to_square in pieces.keys():
+			var target_piece: Dictionary = pieces[to_square]
+			if target_piece.get("color", "") == piece_color:
+				continue
+			var move_info = _analyze_move(piece_data, from_square, to_square, pieces, true)
+			if bool(move_info.get("is_legal", false)) and move_info.get("capture_square", INVALID_SQUARE) != INVALID_SQUARE:
+				return true
+	return false
+
+func _has_any_drop_pool_pieces() -> bool:
+	for owner in ["white", "black"]:
+		var pool_contents: Array = drop_pools.get(owner, [])
+		if not pool_contents.is_empty():
+			return true
+	return false
+
+
+func _is_total_war_dead_position() -> bool:
+	if _has_any_drop_pool_pieces():
+		return false
+	return not _can_any_future_capture_occur()
+
+func _can_any_future_capture_occur() -> bool:
+	var piece_entries: Array[Dictionary] = []
+	for square in pieces.keys():
+		piece_entries.append({
+			"square": square,
+			"piece": pieces[square]
+		})
+
+	var reachable_cache = {}
+	for attacker_entry in piece_entries:
+		var attacker_piece: Dictionary = attacker_entry.get("piece", {})
+		var attacker_color = str(attacker_piece.get("color", ""))
+		for target_entry in piece_entries:
+			var target_piece: Dictionary = target_entry.get("piece", {})
+			if str(target_piece.get("color", "")) == attacker_color:
+				continue
+			if _can_piece_eventually_capture_piece(attacker_entry, target_entry, reachable_cache):
+				return true
+	return false
+
+func _can_piece_eventually_capture_piece(attacker_entry: Dictionary, target_entry: Dictionary, reachable_cache: Dictionary) -> bool:
+	var attacker_square: Vector2i = attacker_entry.get("square", INVALID_SQUARE)
+	var attacker_piece: Dictionary = attacker_entry.get("piece", {})
+	var target_square: Vector2i = target_entry.get("square", INVALID_SQUARE)
+	var target_piece: Dictionary = target_entry.get("piece", {})
+	var attacker_reachable = _get_reachable_squares_on_empty_board(attacker_square, attacker_piece, reachable_cache)
+	var target_reachable = _get_reachable_squares_on_empty_board(target_square, target_piece, reachable_cache)
+
+	for from_square in attacker_reachable:
+		for destination_square in target_reachable:
+			if from_square == destination_square:
+				continue
+			if _can_piece_attack_square(attacker_piece, from_square, destination_square, {}):
+				return true
+	return false
+
+func _get_reachable_squares_on_empty_board(start_square: Vector2i, piece_data: Dictionary, reachable_cache: Dictionary) -> Array[Vector2i]:
+	var cache_key = "%s|%s|%d|%d" % [
+		str(piece_data.get("piece_id", "")),
+		str(piece_data.get("color", "")),
+		start_square.x,
+		start_square.y
+	]
+	if reachable_cache.has(cache_key):
+		return reachable_cache[cache_key]
+
+	var visited = {}
+	var frontier: Array[Vector2i] = [start_square]
+	var reachable: Array[Vector2i] = [start_square]
+	visited[start_square] = true
+
+	while not frontier.is_empty():
+		var current_square = frontier.pop_back()
+		for y in board_height:
+			for x in board_width:
+				var next_square = Vector2i(x, y)
+				if visited.has(next_square):
+					continue
+				var move_info = _create_move_info()
+				if _is_base_legal_piece_move(piece_data, current_square, next_square, {}, move_info):
+					visited[next_square] = true
+					reachable.append(next_square)
+					frontier.append(next_square)
+
+	reachable_cache[cache_key] = reachable
+	return reachable
 
 func _is_pawn_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, move_info: Dictionary) -> bool:
 	var direction = 1

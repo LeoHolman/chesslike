@@ -14,6 +14,8 @@ extends Control
 @onready var capture_to_drop_pool_check_box: CheckBox = $OptionsScroll/OptionsContent/CaptureToDropPoolCheckBox
 @onready var castling_support_hint_background: ColorRect = $OptionsScroll/OptionsContent/CastlingSupportHintBackground
 @onready var castling_support_hint: Label = $OptionsScroll/OptionsContent/CastlingSupportHint
+@onready var victory_condition_option: OptionButton = $OptionsScroll/OptionsContent/VictoryConditionOption
+@onready var victory_condition_description: Label = $OptionsScroll/OptionsContent/VictoryConditionDescription
 @onready var promotion_pieces_title_background: ColorRect = $OptionsScroll/OptionsContent/PromotionPiecesTitleBackground
 @onready var promotion_pieces_title: Label = $OptionsScroll/OptionsContent/PromotionPiecesTitle
 @onready var promotion_pieces_list: VBoxContainer = $OptionsScroll/OptionsContent/PromotionPiecesScroll/PromotionPiecesList
@@ -72,6 +74,7 @@ func _ready() -> void:
 	_populate_piece_bank()
 	_populate_presets()
 	_setup_piece_color_picker()
+	_setup_victory_condition_picker()
 	_setup_special_rules()
 	_reset_preview_to_default(false, false)
 	_refresh_preview(0.0)
@@ -108,6 +111,34 @@ func _setup_piece_color_picker() -> void:
 	piece_color_option.add_item("Black")
 	piece_color_option.select(0)
 	piece_color_option.item_selected.connect(_on_piece_color_selected)
+
+func _setup_victory_condition_picker() -> void:
+	victory_condition_option.clear()
+	victory_condition_option.add_item("Checkmate")
+	victory_condition_option.add_item("Total War")
+	victory_condition_option.item_selected.connect(_on_victory_condition_selected)
+	_apply_victory_condition($"/root/GameManager".VictoryCondition)
+
+func _build_victory_condition() -> String:
+	if victory_condition_option.selected == 1:
+		return "total_war"
+	return "checkmate"
+
+func _apply_victory_condition(victory_condition: String) -> void:
+	if victory_condition == "total_war":
+		victory_condition_option.select(1)
+	else:
+		victory_condition_option.select(0)
+	_update_victory_condition_description()
+
+func _on_victory_condition_selected(_index: int) -> void:
+	_update_victory_condition_description()
+
+func _update_victory_condition_description() -> void:
+	if victory_condition_option.selected == 1:
+		victory_condition_description.text = "Total War: win when the opponent has no pieces left on the board. If neither side has any legal capture remaining, the game is a stalemate."
+	else:
+		victory_condition_description.text = "Checkmate: win by checkmating the king."
 
 func _setup_special_rules() -> void:
 	castling_check_box.toggled.connect(_on_castling_rule_toggled)
@@ -258,6 +289,7 @@ func _reset_preview_to_default(should_refresh: bool = true, use_standard_layout:
 		"capture_to_drop_pool": false
 	})
 	_apply_promotion_piece_pool(["queen", "rook", "bishop", "knight"])
+	_apply_victory_condition("checkmate")
 	_update_promotion_piece_visibility()
 	_update_piece_dropping_visibility()
 	selected_piece_color = "white"
@@ -291,6 +323,7 @@ func _apply_preset(preset_id: String) -> void:
 				"capture_to_drop_pool": false
 			})
 			_apply_promotion_piece_pool(["queen", "rook", "bishop", "knight"])
+			_apply_victory_condition("checkmate")
 			preview_drop_pools = {
 				"white": [],
 				"black": []
@@ -309,6 +342,7 @@ func _apply_preset(preset_id: String) -> void:
 				"capture_to_drop_pool": true
 			})
 			_apply_promotion_piece_pool(["rook", "bishop", "silver_general", "gold_general", "lance", "shogi_knight", "shogi_pawn"])
+			_apply_victory_condition("checkmate")
 			preview_drop_pools = {
 				"white": [],
 				"black": []
@@ -325,6 +359,7 @@ func _apply_saved_preset_config(preset_config: Dictionary) -> void:
 	height_spin_box.value = _get_dimension(preset_config.get("height", 8), 8)
 	preview_pieces = _deserialize_preview_pieces(preset_config.get("pieces", []))
 	preview_drop_pools = _deserialize_drop_pools(preset_config.get("drop_pools", {}))
+	_apply_victory_condition(str(preset_config.get("victory_condition", "checkmate")))
 	_apply_special_rules(preset_config.get("special_rules", {}))
 	_apply_promotion_piece_pool(preset_config.get("promotion_pieces", ["queen", "rook", "bishop", "knight"]))
 	_update_promotion_piece_visibility()
@@ -958,6 +993,7 @@ func _build_preset_config() -> Dictionary:
 		"height": _get_dimension(height_spin_box.value, 8),
 		"pieces": _serialize_preview_pieces(),
 		"drop_pools": _serialize_drop_pools(),
+		"victory_condition": _build_victory_condition(),
 		"special_rules": _build_special_rules(),
 		"promotion_pieces": _build_promotion_piece_pool()
 	}
@@ -1016,6 +1052,7 @@ func _on_start_game_button_pressed() -> void:
 	$"/root/GameManager".BoardWidth = width
 	$"/root/GameManager".StartingPieces = _serialize_preview_pieces()
 	$"/root/GameManager".StartingDropPools = _serialize_drop_pools()
+	$"/root/GameManager".VictoryCondition = _build_victory_condition()
 	$"/root/GameManager".SpecialRules = _build_special_rules()
 	$"/root/GameManager".PromotionPiecePool = _build_promotion_piece_pool()
 	

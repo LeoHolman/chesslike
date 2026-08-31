@@ -13,6 +13,7 @@ var SpecialRules = {
 	"capture_to_drop_pool": false
 }
 var PromotionPiecePool = ["queen", "rook", "bishop", "knight"]
+var VictoryCondition = "checkmate"
 var StartingDropPools = {
 	"white": [],
 	"black": []
