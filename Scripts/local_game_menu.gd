@@ -74,11 +74,6 @@ func _on_piece_bank_item_selected(index: int) -> void:
 	var game_manager = $"/root/GameManager"
 	if index >= 0 and index < game_manager.PieceBank.size():
 		selected_piece_id = str(game_manager.PieceBank[index])
-		if selected_preview_square != INVALID_SQUARE and preview_pieces.has(selected_preview_square):
-			var piece_data: Dictionary = preview_pieces[selected_preview_square]
-			piece_data["piece_id"] = selected_piece_id
-			preview_pieces[selected_preview_square] = piece_data
-			_refresh_preview()
 
 func _on_piece_color_selected(index: int) -> void:
 	if index == 1:

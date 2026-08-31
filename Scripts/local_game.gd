@@ -363,10 +363,16 @@ func _record_move(moving_piece: Dictionary, from_square: Vector2i, to_square: Ve
 		_square_to_notation(to_square) + capture_suffix
 	])
 
-func _get_piece_symbol(piece_id: String) -> String:
+func _get_piece_definition(piece_id: String) -> Dictionary:
 	var piece_definitions = $"/root/GameManager".PieceDefinitions
 	if piece_definitions.has(piece_id):
-		return str(piece_definitions[piece_id].get("symbol", "?"))
+		return piece_definitions[piece_id]
+	return {}
+
+func _get_piece_symbol(piece_id: String) -> String:
+	var piece_definition = _get_piece_definition(piece_id)
+	if not piece_definition.is_empty():
+		return str(piece_definition.get("symbol", "?"))
 	return "?"
 
 func _handle_board_click(mouse_position: Vector2) -> void:
@@ -486,16 +492,75 @@ func _is_legal_piece_move(piece_data: Dictionary, from_square: Vector2i, to_squa
 	if from_square == to_square:
 		return false
 
-	match piece_data.get("piece_id", ""):
-		"rook":
+	var piece_definition = _get_piece_definition(str(piece_data.get("piece_id", "")))
+	match piece_definition.get("move_type", ""):
+		"pawn":
+			return _is_pawn_move_legal(piece_data, from_square, to_square)
+		"knight_jump":
+			return _is_knight_move_legal(from_square, to_square)
+		"diagonal_slide":
+			return _is_bishop_move_legal(from_square, to_square)
+		"cardinal_slide":
 			return _is_rook_move_legal(from_square, to_square)
+		"omni_slide":
+			return _is_queen_move_legal(from_square, to_square)
+		"king_step":
+			return _is_king_move_legal(from_square, to_square)
 		_:
 			return false
+
+func _is_pawn_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i) -> bool:
+	var direction = 1
+	var start_rank = 1
+	if str(piece_data.get("color", "white")) == "white":
+		direction = -1
+		start_rank = board_height - 2
+
+	var delta_x = to_square.x - from_square.x
+	var delta_y = to_square.y - from_square.y
+	var destination_occupied = pieces.has(to_square)
+
+	if delta_x == 0:
+		if delta_y == direction and not destination_occupied:
+			return true
+		if delta_y == direction * 2 and from_square.y == start_rank and not destination_occupied:
+			var intermediate_square = Vector2i(from_square.x, from_square.y + direction)
+			return not pieces.has(intermediate_square)
+		return false
+
+	if abs(delta_x) == 1 and delta_y == direction and destination_occupied:
+		var target_piece: Dictionary = pieces[to_square]
+		return target_piece.get("color", "") != piece_data.get("color", "")
+
+	return false
+
+func _is_knight_move_legal(from_square: Vector2i, to_square: Vector2i) -> bool:
+	var delta_x = abs(to_square.x - from_square.x)
+	var delta_y = abs(to_square.y - from_square.y)
+	return (delta_x == 2 and delta_y == 1) or (delta_x == 1 and delta_y == 2)
+
+func _is_bishop_move_legal(from_square: Vector2i, to_square: Vector2i) -> bool:
+	var delta_x = to_square.x - from_square.x
+	var delta_y = to_square.y - from_square.y
+	if abs(delta_x) != abs(delta_y):
+		return false
+	return _is_path_clear(from_square, to_square)
 
 func _is_rook_move_legal(from_square: Vector2i, to_square: Vector2i) -> bool:
 	if from_square.x != to_square.x and from_square.y != to_square.y:
 		return false
+	return _is_path_clear(from_square, to_square)
 
+
+func _is_queen_move_legal(from_square: Vector2i, to_square: Vector2i) -> bool:
+	return _is_rook_move_legal(from_square, to_square) or _is_bishop_move_legal(from_square, to_square)
+
+func _is_king_move_legal(from_square: Vector2i, to_square: Vector2i) -> bool:
+	var delta_x = abs(to_square.x - from_square.x)
+	var delta_y = abs(to_square.y - from_square.y)
+	return delta_x <= 1 and delta_y <= 1
+
+func _is_path_clear(from_square: Vector2i, to_square: Vector2i) -> bool:
 	var step_x = signi(to_square.x - from_square.x)
 	var step_y = signi(to_square.y - from_square.y)
 	var cursor = from_square + Vector2i(step_x, step_y)
