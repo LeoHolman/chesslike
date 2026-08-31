@@ -23,7 +23,7 @@ grow_vertical = 2
 horizontal_scroll_mode = 0
 
 [node name="OptionsContent" type="Control" parent="OptionsScroll" unique_id=1806613797]
-custom_minimum_size = Vector2(0, 860)
+custom_minimum_size = Vector2(0, 1220)
 layout_mode = 2
 size_flags_horizontal = 3
 
@@ -176,36 +176,87 @@ offset_right = 320.0
 offset_bottom = 671.0
 text = "Delete Preset"
 
-[node name="PreviewInstructions" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1873652165]
+[node name="SpecialRulesTitle" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1495340919]
 layout_mode = 0
 offset_left = 80.0
 offset_top = 692.0
+offset_right = 220.0
+offset_bottom = 715.0
+text = "Special Rules:"
+
+[node name="CastlingCheckBox" type="CheckBox" parent="OptionsScroll/OptionsContent" unique_id=402744194]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 722.0
+offset_right = 240.0
+offset_bottom = 746.0
+text = "Enable Castling"
+button_pressed = true
+
+[node name="EnPassantCheckBox" type="CheckBox" parent="OptionsScroll/OptionsContent" unique_id=1615460277]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 752.0
+offset_right = 260.0
+offset_bottom = 776.0
+text = "Enable En Passant"
+button_pressed = true
+
+[node name="PromotionCheckBox" type="CheckBox" parent="OptionsScroll/OptionsContent" unique_id=1333748385]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 782.0
+offset_right = 260.0
+offset_bottom = 806.0
+text = "Enable Promotion"
+button_pressed = true
+
+[node name="PromotionPiecesTitle" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1858177657]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 824.0
+offset_right = 280.0
+offset_bottom = 847.0
+text = "Promotion Pieces:"
+
+[node name="PromotionPiecesList" type="VBoxContainer" parent="OptionsScroll/OptionsContent" unique_id=57243385]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 852.0
+offset_right = 320.0
+offset_bottom = 1020.0
+theme_override_constants/separation = 4
+
+[node name="PreviewInstructions" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1873652165]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 1046.0
 offset_right = 384.0
-offset_bottom = 738.0
+offset_bottom = 1092.0
 text = "Left drag on the preview to place the selected piece.\nRight drag on the preview to remove pieces."
 
 [node name="ClearBoardButton" type="Button" parent="OptionsScroll/OptionsContent" unique_id=71584107]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 768.0
+offset_top = 1122.0
 offset_right = 188.0
-offset_bottom = 799.0
+offset_bottom = 1153.0
 text = "Clear Board"
 
 [node name="ResetSetupButton" type="Button" parent="OptionsScroll/OptionsContent" unique_id=208044863]
 layout_mode = 0
 offset_left = 204.0
-offset_top = 768.0
+offset_top = 1122.0
 offset_right = 320.0
-offset_bottom = 799.0
+offset_bottom = 1153.0
 text = "Reset Setup"
 
 [node name="StartGameButton" type="Button" parent="OptionsScroll/OptionsContent" unique_id=40242828]
 layout_mode = 0
 offset_left = 204.0
-offset_top = 824.0
+offset_top = 1178.0
 offset_right = 320.0
-offset_bottom = 855.0
+offset_bottom = 1209.0
 text = "Start Game
 "
 

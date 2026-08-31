@@ -12,6 +12,7 @@ const TURN_INDICATOR_BACKGROUND = Color(0.95, 0.93, 0.86, 0.94)
 const TURN_INDICATOR_BORDER = Color(0.2, 0.2, 0.2, 1.0)
 const HUD_PANEL_SPACING = 12.0
 const FILE_NAMES = "abcdefghijklmnopqrstuvwxyz"
+const DEFAULT_PROMOTION_PIECE_IDS = ["queen", "rook", "bishop", "knight"]
 
 var board_height = 8
 var board_width = 8
@@ -28,17 +29,180 @@ var captured_pieces = {
 }
 var game_over = false
 var status_message = ""
+var castling_enabled = true
+var en_passant_enabled = true
+var promotion_enabled = true
+var en_passant_target_square = INVALID_SQUARE
+var promotion_picker_layer: CanvasLayer
+var promotion_picker_root: Control
+var promotion_panel: PanelContainer
+var promotion_title_label: Label
+var promotion_option_buttons = {}
+var promotion_options_container: VBoxContainer
+var promotion_pending = false
+var pending_promotion_move: Dictionary = {}
+var promotion_piece_options: Array[String] = []
 
 func _ready() -> void:
 	get_viewport().size_changed.connect(_on_viewport_resized)
 	_initialize_board_state()
+	_ensure_promotion_picker()
 	_build_board()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if promotion_pending:
+		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		_handle_board_click(event.position)
 
 func _on_viewport_resized() -> void:
+	_layout_promotion_picker()
+	_build_board()
+
+func _ensure_promotion_picker() -> void:
+	if promotion_picker_layer != null:
+		return
+
+	promotion_picker_layer = CanvasLayer.new()
+	promotion_picker_layer.layer = 10
+	add_child(promotion_picker_layer)
+
+	promotion_picker_root = Control.new()
+	promotion_picker_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	promotion_picker_root.mouse_filter = Control.MOUSE_FILTER_STOP
+	promotion_picker_root.visible = false
+	promotion_picker_layer.add_child(promotion_picker_root)
+
+	var dimmer = ColorRect.new()
+	dimmer.color = Color(0.0, 0.0, 0.0, 0.35)
+	dimmer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dimmer.mouse_filter = Control.MOUSE_FILTER_STOP
+	promotion_picker_root.add_child(dimmer)
+
+	promotion_panel = PanelContainer.new()
+	promotion_panel.custom_minimum_size = Vector2(280.0, 250.0)
+	promotion_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	promotion_picker_root.add_child(promotion_panel)
+
+	var content = VBoxContainer.new()
+	content.add_theme_constant_override("separation", 8)
+	promotion_panel.add_child(content)
+
+	promotion_title_label = Label.new()
+	promotion_title_label.text = "Promote Pawn"
+	promotion_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	promotion_title_label.add_theme_font_size_override("font_size", 20)
+	content.add_child(promotion_title_label)
+
+	promotion_options_container = VBoxContainer.new()
+	promotion_options_container.add_theme_constant_override("separation", 6)
+	content.add_child(promotion_options_container)
+
+	var cancel_button = Button.new()
+	cancel_button.text = "Cancel Move"
+	cancel_button.pressed.connect(_on_promotion_cancelled)
+	content.add_child(cancel_button)
+
+	_layout_promotion_picker()
+
+func _layout_promotion_picker() -> void:
+	if promotion_panel == null:
+		return
+	var panel_size = promotion_panel.custom_minimum_size
+	promotion_panel.set_anchors_preset(Control.PRESET_CENTER)
+	promotion_panel.offset_left = -panel_size.x * 0.5
+	promotion_panel.offset_top = -panel_size.y * 0.5
+	promotion_panel.offset_right = panel_size.x * 0.5
+	promotion_panel.offset_bottom = panel_size.y * 0.5
+
+func _show_promotion_picker(piece_color: String) -> void:
+	if promotion_picker_root == null:
+		return
+	_rebuild_promotion_option_buttons()
+	promotion_title_label.text = "Promote %s Pawn" % _display_color(piece_color)
+	promotion_picker_root.visible = true
+
+func _rebuild_promotion_option_buttons() -> void:
+	if promotion_options_container == null:
+		return
+	for child in promotion_options_container.get_children():
+		child.queue_free()
+	promotion_option_buttons.clear()
+
+	if promotion_piece_options.is_empty():
+		promotion_piece_options = _get_promotion_piece_pool()
+
+	for piece_id in promotion_piece_options:
+		var option_button = Button.new()
+		option_button.text = "%s %s" % [_get_piece_symbol(piece_id), piece_id.capitalize()]
+		option_button.pressed.connect(_on_promotion_option_selected.bind(piece_id))
+		promotion_options_container.add_child(option_button)
+		promotion_option_buttons[piece_id] = option_button
+
+func _get_promotion_piece_pool() -> Array[String]:
+	var configured_pool = $"/root/GameManager".PromotionPiecePool
+	var normalized_pool: Array[String] = []
+	if configured_pool is Array:
+		for piece_id in configured_pool:
+			var piece_key = str(piece_id)
+			if not $"/root/GameManager".PieceDefinitions.has(piece_key):
+				continue
+			if normalized_pool.has(piece_key):
+				continue
+			normalized_pool.append(piece_key)
+
+	if normalized_pool.is_empty():
+		for piece_id in DEFAULT_PROMOTION_PIECE_IDS:
+			if $"/root/GameManager".PieceDefinitions.has(piece_id):
+				normalized_pool.append(piece_id)
+
+	if normalized_pool.is_empty():
+		normalized_pool.append("queen")
+
+	return normalized_pool
+
+func _hide_promotion_picker() -> void:
+	if promotion_picker_root != null:
+		promotion_picker_root.visible = false
+
+func _on_promotion_option_selected(piece_id: String) -> void:
+	if not promotion_pending:
+		return
+	if not promotion_piece_options.has(piece_id):
+		return
+	if not pending_promotion_move.has("from") or not pending_promotion_move.has("to"):
+		_hide_promotion_picker()
+		promotion_pending = false
+		pending_promotion_move.clear()
+		return
+
+	var from_square: Vector2i = pending_promotion_move.get("from", INVALID_SQUARE)
+	var to_square: Vector2i = pending_promotion_move.get("to", INVALID_SQUARE)
+	var move_info: Dictionary = pending_promotion_move.get("move_info", _create_move_info()).duplicate(true)
+	if from_square == INVALID_SQUARE or to_square == INVALID_SQUARE or not pieces.has(from_square):
+		_hide_promotion_picker()
+		promotion_pending = false
+		pending_promotion_move.clear()
+		_build_board()
+		return
+
+	move_info["promotion_piece_id"] = piece_id
+	var moving_piece: Dictionary = pieces[from_square]
+	var committed = _commit_move(from_square, to_square, moving_piece, move_info)
+	_hide_promotion_picker()
+	promotion_pending = false
+	pending_promotion_move.clear()
+	if committed:
+		_finalize_turn_after_move()
+	else:
+		_build_board()
+
+func _on_promotion_cancelled() -> void:
+	promotion_pending = false
+	pending_promotion_move.clear()
+	_hide_promotion_picker()
+	selected_square = INVALID_SQUARE
+	legal_moves.clear()
 	_build_board()
 
 func _initialize_board_state() -> void:
@@ -54,6 +218,12 @@ func _initialize_board_state() -> void:
 	}
 	game_over = false
 	status_message = ""
+	var special_rules = $"/root/GameManager".SpecialRules
+	castling_enabled = bool(special_rules.get("castling", true))
+	en_passant_enabled = bool(special_rules.get("en_passant", true))
+	promotion_enabled = bool(special_rules.get("promotion", true))
+	promotion_piece_options = _get_promotion_piece_pool()
+	en_passant_target_square = INVALID_SQUARE
 	pieces.clear()
 	if board_width < 1 or board_height < 1:
 		return
@@ -63,7 +233,8 @@ func _initialize_board_state() -> void:
 func _add_piece(square: Vector2i, piece_id: String, piece_color: String) -> void:
 	pieces[square] = {
 		"piece_id": piece_id,
-		"color": piece_color
+		"color": piece_color,
+		"has_moved": false
 	}
 
 func _get_dimension(value: Variant, fallback: int) -> int:
@@ -112,6 +283,8 @@ func _load_starting_pieces() -> bool:
 
 func _build_board() -> void:
 	for child in get_children():
+		if child == promotion_picker_layer:
+			continue
 		child.queue_free()
 
 	board_height = _get_dimension($"/root/GameManager".BoardHeight, board_height)
@@ -358,8 +531,19 @@ func _record_capture(capturing_color: String, captured_piece: Dictionary) -> voi
 	piece_list.append(captured_piece.duplicate(true))
 	captured_pieces[capturing_color] = piece_list
 
-func _record_move(moving_piece: Dictionary, from_square: Vector2i, to_square: Vector2i, captured_piece: Dictionary) -> void:
+func _record_move(moving_piece: Dictionary, from_square: Vector2i, to_square: Vector2i, captured_piece: Dictionary, move_info: Dictionary) -> void:
 	var move_number = move_history.size() + 1
+	if bool(move_info.get("is_castling", false)):
+		var castling_notation = "O-O"
+		if to_square.x < from_square.x:
+			castling_notation = "O-O-O"
+		move_history.append("%d. %s %s" % [
+			move_number,
+			_display_color(str(moving_piece.get("color", "white"))),
+			castling_notation
+		])
+		return
+
 	var move_connector = " -> "
 	var capture_suffix = ""
 	if not captured_piece.is_empty():
@@ -368,13 +552,22 @@ func _record_move(moving_piece: Dictionary, from_square: Vector2i, to_square: Ve
 			_display_color(str(captured_piece.get("color", "white"))),
 			_get_piece_symbol(str(captured_piece.get("piece_id", "")))
 		]
-	move_history.append("%d. %s %s %s%s%s" % [
+	var promotion_suffix = ""
+	if str(move_info.get("promotion_piece_id", "")) != "":
+		promotion_suffix = "=%s" % _get_piece_symbol(str(move_info.get("promotion_piece_id", "")))
+	var en_passant_suffix = ""
+	if bool(move_info.get("is_en_passant", false)):
+		en_passant_suffix = " e.p."
+
+	move_history.append("%d. %s %s %s%s%s%s%s" % [
 		move_number,
 		_display_color(str(moving_piece.get("color", "white"))),
 		_get_piece_symbol(str(moving_piece.get("piece_id", ""))),
 		_square_to_notation(from_square),
 		move_connector,
-		_square_to_notation(to_square) + capture_suffix
+		_square_to_notation(to_square),
+		promotion_suffix + capture_suffix,
+		en_passant_suffix
 	])
 
 func _get_piece_definition(piece_id: String) -> Dictionary:
@@ -408,11 +601,7 @@ func _handle_board_click(mouse_position: Vector2) -> void:
 		return
 
 	if _is_square_in_legal_moves(square) and _try_move_piece(selected_square, square):
-		current_turn = _opponent_color(current_turn)
-		selected_square = INVALID_SQUARE
-		legal_moves.clear()
-		_update_game_state(true)
-		_build_board()
+		_finalize_turn_after_move()
 		return
 
 	if _is_current_turn_piece(square):
@@ -456,7 +645,8 @@ func _get_legal_moves(from_square: Vector2i) -> Array[Vector2i]:
 	for y in board_height:
 		for x in board_width:
 			var to_square = Vector2i(x, y)
-			if _is_legal_piece_move_on_board(moving_piece, from_square, to_square, pieces):
+			var move_info = _analyze_move(moving_piece, from_square, to_square, pieces, true)
+			if bool(move_info.get("is_legal", false)):
 				available_moves.append(to_square)
 
 	return available_moves
@@ -479,35 +669,102 @@ func _screen_to_square(mouse_position: Vector2) -> Vector2i:
 
 	return Vector2i(square_x, square_y)
 
+func _finalize_turn_after_move() -> void:
+	current_turn = _opponent_color(current_turn)
+	selected_square = INVALID_SQUARE
+	legal_moves.clear()
+	_update_game_state(true)
+	_build_board()
+
 func _try_move_piece(from_square: Vector2i, to_square: Vector2i) -> bool:
+	if promotion_pending:
+		return false
 	if not pieces.has(from_square):
 		return false
 
 	var moving_piece: Dictionary = pieces[from_square]
-	var captured_piece: Dictionary = {}
-	if not _is_legal_piece_move_on_board(moving_piece, from_square, to_square, pieces):
+	var move_info = _analyze_move(moving_piece, from_square, to_square, pieces, true)
+	if not bool(move_info.get("is_legal", false)):
+		return false
+	if bool(move_info.get("requires_promotion", false)) and promotion_enabled:
+		promotion_pending = true
+		pending_promotion_move = {
+			"from": from_square,
+			"to": to_square,
+			"move_info": move_info.duplicate(true)
+		}
+		_show_promotion_picker(str(moving_piece.get("color", "white")))
 		return false
 
-	if pieces.has(to_square):
-		var target_piece: Dictionary = pieces[to_square]
-		captured_piece = target_piece.duplicate(true)
+	return _commit_move(from_square, to_square, moving_piece, move_info)
+
+func _commit_move(from_square: Vector2i, to_square: Vector2i, moving_piece: Dictionary, move_info: Dictionary) -> bool:
+	if not pieces.has(from_square):
+		return false
+
+	var captured_piece: Dictionary = {}
+	var capture_square = move_info.get("capture_square", INVALID_SQUARE)
+	if capture_square != INVALID_SQUARE and pieces.has(capture_square):
+		captured_piece = pieces[capture_square].duplicate(true)
+		pieces.erase(capture_square)
 
 	pieces.erase(from_square)
-	pieces[to_square] = moving_piece
+	var moved_piece = moving_piece.duplicate(true)
+	moved_piece["has_moved"] = true
+	if str(move_info.get("promotion_piece_id", "")) != "":
+		moved_piece["piece_id"] = str(move_info.get("promotion_piece_id", ""))
+	pieces[to_square] = moved_piece
+
+	if bool(move_info.get("is_castling", false)):
+		var rook_from = move_info.get("rook_from", INVALID_SQUARE)
+		var rook_to = move_info.get("rook_to", INVALID_SQUARE)
+		if rook_from != INVALID_SQUARE and rook_to != INVALID_SQUARE and pieces.has(rook_from):
+			var rook_piece: Dictionary = pieces[rook_from].duplicate(true)
+			pieces.erase(rook_from)
+			rook_piece["has_moved"] = true
+			pieces[rook_to] = rook_piece
+
+	en_passant_target_square = move_info.get("new_en_passant_target", INVALID_SQUARE)
+
 	if not captured_piece.is_empty():
 		_record_capture(str(moving_piece.get("color", "white")), captured_piece)
-	_record_move(moving_piece, from_square, to_square, captured_piece)
+	_record_move(moving_piece, from_square, to_square, captured_piece, move_info)
 	return true
 
 func _is_legal_piece_move(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i) -> bool:
 	return _is_legal_piece_move_on_board(piece_data, from_square, to_square, pieces)
 
 func _is_legal_piece_move_on_board(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
-	if not _is_base_legal_piece_move(piece_data, from_square, to_square, board_state):
-		return false
-	return not _would_leave_king_in_check(piece_data, from_square, to_square, board_state)
+	var move_info = _analyze_move(piece_data, from_square, to_square, board_state, true)
+	return bool(move_info.get("is_legal", false))
 
-func _is_base_legal_piece_move(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
+func _create_move_info() -> Dictionary:
+	return {
+		"is_legal": false,
+		"capture_square": INVALID_SQUARE,
+		"rook_from": INVALID_SQUARE,
+		"rook_to": INVALID_SQUARE,
+		"promotion_piece_id": "",
+		"requires_promotion": false,
+		"new_en_passant_target": INVALID_SQUARE,
+		"is_en_passant": false,
+		"is_castling": false
+	}
+
+func _analyze_move(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, validate_king_safety: bool) -> Dictionary:
+	var move_info = _create_move_info()
+	if not _is_base_legal_piece_move(piece_data, from_square, to_square, board_state, move_info):
+		return move_info
+
+	if validate_king_safety:
+		var simulated_board = _simulate_move_with_info(board_state, from_square, to_square, piece_data, move_info)
+		if _is_king_in_check(str(piece_data.get("color", "white")), simulated_board):
+			return move_info
+
+	move_info["is_legal"] = true
+	return move_info
+
+func _is_base_legal_piece_move(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, move_info: Dictionary) -> bool:
 	if from_square == to_square:
 		return false
 	if board_state.has(to_square):
@@ -516,11 +773,12 @@ func _is_base_legal_piece_move(piece_data: Dictionary, from_square: Vector2i, to
 			return false
 		if target_piece.get("piece_id", "") == "king":
 			return false
+		move_info["capture_square"] = to_square
 
 	var piece_definition = _get_piece_definition(str(piece_data.get("piece_id", "")))
 	match piece_definition.get("move_type", ""):
 		"pawn":
-			return _is_pawn_move_legal(piece_data, from_square, to_square, board_state)
+			return _is_pawn_move_legal(piece_data, from_square, to_square, board_state, move_info)
 		"knight_jump":
 			return _is_knight_move_legal(from_square, to_square)
 		"diagonal_slide":
@@ -530,19 +788,33 @@ func _is_base_legal_piece_move(piece_data: Dictionary, from_square: Vector2i, to
 		"omni_slide":
 			return _is_queen_move_legal(from_square, to_square, board_state)
 		"king_step":
-			return _is_king_move_legal(from_square, to_square)
+			if _is_king_move_legal(from_square, to_square):
+				return true
+			return _is_castling_move_legal(piece_data, from_square, to_square, board_state, move_info)
 		_:
 			return false
 
-func _would_leave_king_in_check(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
-	var simulated_board = _simulate_move(board_state, from_square, to_square)
-	return _is_king_in_check(str(piece_data.get("color", "white")), simulated_board)
-
-func _simulate_move(board_state: Dictionary, from_square: Vector2i, to_square: Vector2i) -> Dictionary:
+func _simulate_move_with_info(board_state: Dictionary, from_square: Vector2i, to_square: Vector2i, piece_data: Dictionary, move_info: Dictionary) -> Dictionary:
 	var simulated_board = board_state.duplicate(true)
-	var moving_piece: Dictionary = simulated_board.get(from_square, {}).duplicate(true)
+	var moving_piece: Dictionary = piece_data.duplicate(true)
+	var capture_square = move_info.get("capture_square", INVALID_SQUARE)
+	if capture_square != INVALID_SQUARE:
+		simulated_board.erase(capture_square)
 	simulated_board.erase(from_square)
+	moving_piece["has_moved"] = true
+	if str(move_info.get("promotion_piece_id", "")) != "":
+		moving_piece["piece_id"] = str(move_info.get("promotion_piece_id", ""))
 	simulated_board[to_square] = moving_piece
+
+	if bool(move_info.get("is_castling", false)):
+		var rook_from = move_info.get("rook_from", INVALID_SQUARE)
+		var rook_to = move_info.get("rook_to", INVALID_SQUARE)
+		if rook_from != INVALID_SQUARE and rook_to != INVALID_SQUARE and simulated_board.has(rook_from):
+			var rook_piece: Dictionary = simulated_board[rook_from].duplicate(true)
+			simulated_board.erase(rook_from)
+			rook_piece["has_moved"] = true
+			simulated_board[rook_to] = rook_piece
+
 	return simulated_board
 
 func _is_king_in_check(piece_color: String, board_state: Dictionary) -> bool:
@@ -584,6 +856,15 @@ func _can_piece_attack_square(piece_data: Dictionary, from_square: Vector2i, to_
 		_:
 			return false
 
+func _is_square_attacked(square: Vector2i, defended_color: String, board_state: Dictionary) -> bool:
+	for from_square in board_state.keys():
+		var attacker_piece: Dictionary = board_state[from_square]
+		if attacker_piece.get("color", "") == defended_color:
+			continue
+		if _can_piece_attack_square(attacker_piece, from_square, square, board_state):
+			return true
+	return false
+
 func _has_any_legal_moves(piece_color: String) -> bool:
 	for from_square in pieces.keys():
 		var piece_data: Dictionary = pieces[from_square]
@@ -591,7 +872,8 @@ func _has_any_legal_moves(piece_color: String) -> bool:
 			continue
 		for y in board_height:
 			for x in board_width:
-				if _is_legal_piece_move_on_board(piece_data, from_square, Vector2i(x, y), pieces):
+				var move_info = _analyze_move(piece_data, from_square, Vector2i(x, y), pieces, true)
+				if bool(move_info.get("is_legal", false)):
 					return true
 	return false
 
@@ -618,12 +900,14 @@ func _update_game_state(record_history: bool) -> void:
 	if in_check:
 		status_message = "%s in check" % _display_color(current_turn)
 
-func _is_pawn_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
+func _is_pawn_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, move_info: Dictionary) -> bool:
 	var direction = 1
 	var start_rank = 1
+	var promotion_rank = board_height - 1
 	if str(piece_data.get("color", "white")) == "white":
 		direction = -1
 		start_rank = board_height - 2
+		promotion_rank = 0
 
 	var delta_x = to_square.x - from_square.x
 	var delta_y = to_square.y - from_square.y
@@ -631,15 +915,37 @@ func _is_pawn_move_legal(piece_data: Dictionary, from_square: Vector2i, to_squar
 
 	if delta_x == 0:
 		if delta_y == direction and not destination_occupied:
+			if to_square.y == promotion_rank and promotion_enabled:
+				move_info["requires_promotion"] = true
 			return true
 		if delta_y == direction * 2 and from_square.y == start_rank and not destination_occupied:
 			var intermediate_square = Vector2i(from_square.x, from_square.y + direction)
-			return not board_state.has(intermediate_square)
+			if not board_state.has(intermediate_square):
+				if en_passant_enabled:
+					move_info["new_en_passant_target"] = intermediate_square
+				return true
+			return false
 		return false
 
-	if abs(delta_x) == 1 and delta_y == direction and destination_occupied:
-		var target_piece: Dictionary = board_state[to_square]
-		return target_piece.get("color", "") != piece_data.get("color", "")
+	if abs(delta_x) == 1 and delta_y == direction:
+		if destination_occupied:
+			var target_piece: Dictionary = board_state[to_square]
+			if target_piece.get("color", "") == piece_data.get("color", ""):
+				return false
+			if to_square.y == promotion_rank and promotion_enabled:
+				move_info["requires_promotion"] = true
+			return true
+
+		if en_passant_enabled and to_square == en_passant_target_square:
+			var capture_square = Vector2i(to_square.x, from_square.y)
+			if board_state.has(capture_square):
+				var target_pawn: Dictionary = board_state[capture_square]
+				if target_pawn.get("piece_id", "") == "pawn" and target_pawn.get("color", "") != piece_data.get("color", ""):
+					move_info["capture_square"] = capture_square
+					move_info["is_en_passant"] = true
+					if to_square.y == promotion_rank and promotion_enabled:
+						move_info["requires_promotion"] = true
+					return true
 
 	return false
 
@@ -674,6 +980,53 @@ func _is_king_move_legal(from_square: Vector2i, to_square: Vector2i) -> bool:
 	var delta_x = abs(to_square.x - from_square.x)
 	var delta_y = abs(to_square.y - from_square.y)
 	return delta_x <= 1 and delta_y <= 1
+
+func _is_castling_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, move_info: Dictionary) -> bool:
+	if not castling_enabled:
+		return false
+	if bool(piece_data.get("has_moved", false)):
+		return false
+	if from_square.y != to_square.y:
+		return false
+	if abs(to_square.x - from_square.x) != 2:
+		return false
+	if board_state.has(to_square):
+		return false
+	if _is_king_in_check(str(piece_data.get("color", "white")), board_state):
+		return false
+
+	var direction = signi(to_square.x - from_square.x)
+	var rook_from_x = 0
+	if direction > 0:
+		rook_from_x = board_width - 1
+	var rook_from = Vector2i(rook_from_x, from_square.y)
+	if not board_state.has(rook_from):
+		return false
+
+	var rook_piece: Dictionary = board_state[rook_from]
+	if rook_piece.get("piece_id", "") != "rook":
+		return false
+	if rook_piece.get("color", "") != piece_data.get("color", ""):
+		return false
+	if bool(rook_piece.get("has_moved", false)):
+		return false
+
+	var min_x = min(from_square.x, rook_from_x)
+	var max_x = max(from_square.x, rook_from_x)
+	for x in range(min_x + 1, max_x):
+		if board_state.has(Vector2i(x, from_square.y)):
+			return false
+
+	var through_square = Vector2i(from_square.x + direction, from_square.y)
+	if _is_square_attacked(through_square, str(piece_data.get("color", "white")), board_state):
+		return false
+	if _is_square_attacked(to_square, str(piece_data.get("color", "white")), board_state):
+		return false
+
+	move_info["is_castling"] = true
+	move_info["rook_from"] = rook_from
+	move_info["rook_to"] = Vector2i(from_square.x + direction, from_square.y)
+	return true
 
 func _is_path_clear(from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
 	var step_x = signi(to_square.x - from_square.x)

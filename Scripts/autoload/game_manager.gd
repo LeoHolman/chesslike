@@ -5,6 +5,12 @@ const PRESET_SAVE_PATH = "user://saved_presets.json"
 var BoardHeight;
 var BoardWidth;
 var StartingPieces = []
+var SpecialRules = {
+	"castling": true,
+	"en_passant": true,
+	"promotion": true
+}
+var PromotionPiecePool = ["queen", "rook", "bishop", "knight"]
 var SavedPresets = {}
 var PieceBank = ["pawn", "knight", "bishop", "rook", "queen", "king"]
 var PieceDefinitions = {

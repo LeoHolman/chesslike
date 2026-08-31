@@ -7,6 +7,11 @@ extends Control
 @onready var piece_color_option: OptionButton = $OptionsScroll/OptionsContent/PieceColorOption
 @onready var preset_list: ItemList = $OptionsScroll/OptionsContent/PresetList
 @onready var preset_name_input: LineEdit = $OptionsScroll/OptionsContent/PresetNameInput
+@onready var castling_check_box: CheckBox = $OptionsScroll/OptionsContent/CastlingCheckBox
+@onready var en_passant_check_box: CheckBox = $OptionsScroll/OptionsContent/EnPassantCheckBox
+@onready var promotion_check_box: CheckBox = $OptionsScroll/OptionsContent/PromotionCheckBox
+@onready var promotion_pieces_title: Label = $OptionsScroll/OptionsContent/PromotionPiecesTitle
+@onready var promotion_pieces_list: VBoxContainer = $OptionsScroll/OptionsContent/PromotionPiecesList
 
 const INVALID_SQUARE = Vector2i(-1, -1)
 const PREVIEW_SELECTION_HIGHLIGHT = Color(0.2, 0.6, 1.0, 0.28)
@@ -26,6 +31,7 @@ var selected_preview_square = INVALID_SQUARE
 var is_left_dragging = false
 var is_right_dragging = false
 var drag_changed_any = false
+var promotion_piece_checkboxes: Dictionary = {}
 
 func _ready() -> void:
 	width_spin_box.value_changed.connect(_refresh_preview)
@@ -37,6 +43,7 @@ func _ready() -> void:
 	_populate_piece_bank()
 	_populate_presets()
 	_setup_piece_color_picker()
+	_setup_special_rules()
 	_reset_preview_to_default(false, false)
 	_refresh_preview(0.0)
 
@@ -73,12 +80,97 @@ func _setup_piece_color_picker() -> void:
 	piece_color_option.select(0)
 	piece_color_option.item_selected.connect(_on_piece_color_selected)
 
+func _setup_special_rules() -> void:
+	promotion_check_box.toggled.connect(_on_promotion_rule_toggled)
+	_build_promotion_piece_checkboxes()
+	_apply_special_rules($"/root/GameManager".SpecialRules)
+	_apply_promotion_piece_pool($"/root/GameManager".PromotionPiecePool)
+	_update_promotion_piece_visibility()
+
+func _build_special_rules() -> Dictionary:
+	return {
+		"castling": castling_check_box.button_pressed,
+		"en_passant": en_passant_check_box.button_pressed,
+		"promotion": promotion_check_box.button_pressed
+	}
+
+func _build_promotion_piece_pool() -> Array:
+	var selected_piece_ids: Array = []
+	for piece_id in promotion_piece_checkboxes.keys():
+		var check_box: CheckBox = promotion_piece_checkboxes[piece_id]
+		if check_box.button_pressed:
+			selected_piece_ids.append(str(piece_id))
+	selected_piece_ids.sort()
+	return selected_piece_ids
+
+func _build_promotion_piece_checkboxes() -> void:
+	for child in promotion_pieces_list.get_children():
+		child.queue_free()
+	promotion_piece_checkboxes.clear()
+
+	var game_manager = $"/root/GameManager"
+	for piece_id in game_manager.PieceBank:
+		var piece_key = str(piece_id)
+		var piece_data = game_manager.PieceDefinitions.get(piece_key, {})
+		var piece_name = str(piece_data.get("name", piece_key.capitalize()))
+		var piece_symbol = str(piece_data.get("symbol", "?"))
+		var check_box = CheckBox.new()
+		check_box.text = "%s (%s)" % [piece_name, piece_symbol]
+		check_box.toggled.connect(_on_promotion_piece_toggled.bind(piece_key))
+		promotion_pieces_list.add_child(check_box)
+		promotion_piece_checkboxes[piece_key] = check_box
+
+func _apply_promotion_piece_pool(piece_pool: Array) -> void:
+	for piece_id in promotion_piece_checkboxes.keys():
+		var check_box: CheckBox = promotion_piece_checkboxes[piece_id]
+		check_box.button_pressed = false
+
+	for piece_id in piece_pool:
+		if promotion_piece_checkboxes.has(piece_id):
+			var check_box: CheckBox = promotion_piece_checkboxes[piece_id]
+			check_box.button_pressed = true
+
+	if _build_promotion_piece_pool().is_empty() and promotion_piece_checkboxes.has("queen"):
+		var queen_check_box: CheckBox = promotion_piece_checkboxes["queen"]
+		queen_check_box.button_pressed = true
+
+func _update_promotion_piece_visibility() -> void:
+	var show_promotion_piece_pool = promotion_check_box.button_pressed
+	promotion_pieces_title.visible = show_promotion_piece_pool
+	promotion_pieces_list.visible = show_promotion_piece_pool
+
+func _on_promotion_rule_toggled(_is_enabled: bool) -> void:
+	_update_promotion_piece_visibility()
+
+func _on_promotion_piece_toggled(is_checked: bool, piece_id: String) -> void:
+	if is_checked:
+		return
+	if not promotion_check_box.button_pressed:
+		return
+	if not _build_promotion_piece_pool().is_empty():
+		return
+	if promotion_piece_checkboxes.has(piece_id):
+		var check_box: CheckBox = promotion_piece_checkboxes[piece_id]
+		check_box.button_pressed = true
+
+func _apply_special_rules(special_rules: Dictionary) -> void:
+	castling_check_box.button_pressed = bool(special_rules.get("castling", true))
+	en_passant_check_box.button_pressed = bool(special_rules.get("en_passant", true))
+	promotion_check_box.button_pressed = bool(special_rules.get("promotion", true))
+
 func _reset_preview_to_default(should_refresh: bool = true, use_standard_layout: bool = true) -> void:
 	width_spin_box.value = 8
 	height_spin_box.value = 8
 	preview_pieces.clear()
 	if use_standard_layout:
 		_apply_standard_chess_layout()
+	_apply_special_rules({
+		"castling": true,
+		"en_passant": true,
+		"promotion": true
+	})
+	_apply_promotion_piece_pool(["queen", "rook", "bishop", "knight"])
+	_update_promotion_piece_visibility()
 	selected_piece_color = "white"
 	piece_color_option.select(0)
 	if piece_bank_list.item_count > 0:
@@ -100,6 +192,12 @@ func _apply_preset(preset_id: String) -> void:
 		"standard":
 			_reset_preview_to_default(false, false)
 			_apply_standard_chess_layout()
+			_apply_special_rules({
+				"castling": true,
+				"en_passant": true,
+				"promotion": true
+			})
+			_apply_promotion_piece_pool(["queen", "rook", "bishop", "knight"])
 			_refresh_preview()
 		_:
 			var saved_presets: Dictionary = $"/root/GameManager".SavedPresets
@@ -111,6 +209,9 @@ func _apply_saved_preset_config(preset_config: Dictionary) -> void:
 	width_spin_box.value = _get_dimension(preset_config.get("width", 8), 8)
 	height_spin_box.value = _get_dimension(preset_config.get("height", 8), 8)
 	preview_pieces = _deserialize_preview_pieces(preset_config.get("pieces", []))
+	_apply_special_rules(preset_config.get("special_rules", {}))
+	_apply_promotion_piece_pool(preset_config.get("promotion_pieces", ["queen", "rook", "bishop", "knight"]))
+	_update_promotion_piece_visibility()
 	last_drag_square = INVALID_SQUARE
 	hover_preview_square = INVALID_SQUARE
 	selected_preview_square = INVALID_SQUARE
@@ -410,7 +511,9 @@ func _build_preset_config() -> Dictionary:
 	return {
 		"width": _get_dimension(width_spin_box.value, 8),
 		"height": _get_dimension(height_spin_box.value, 8),
-		"pieces": _serialize_preview_pieces()
+		"pieces": _serialize_preview_pieces(),
+		"special_rules": _build_special_rules(),
+		"promotion_pieces": _build_promotion_piece_pool()
 	}
 
 func _on_save_preset_button_pressed() -> void:
@@ -462,6 +565,8 @@ func _on_start_game_button_pressed() -> void:
 	$"/root/GameManager".BoardHeight = height
 	$"/root/GameManager".BoardWidth = width
 	$"/root/GameManager".StartingPieces = _serialize_preview_pieces()
+	$"/root/GameManager".SpecialRules = _build_special_rules()
+	$"/root/GameManager".PromotionPiecePool = _build_promotion_piece_pool()
 	
 	#var LocalGame = load("res://Scenes/LocalGame.tscn")
 	#get_tree().current_scene.add_child(LocalGame)
