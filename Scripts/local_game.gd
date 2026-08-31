@@ -10,6 +10,8 @@ const LEGAL_MOVE_HIGHLIGHT = Color(0.18, 0.75, 0.3, 0.35)
 const TURN_INDICATOR_PADDING = 12.0
 const TURN_INDICATOR_BACKGROUND = Color(0.95, 0.93, 0.86, 0.94)
 const TURN_INDICATOR_BORDER = Color(0.2, 0.2, 0.2, 1.0)
+const DROP_POOL_PANEL_BACKGROUND = Color(0.2, 0.23, 0.3, 0.92)
+const DROP_POOL_PANEL_BORDER = Color(0.9, 0.92, 0.98, 1.0)
 const HUD_PANEL_SPACING = 12.0
 const FILE_NAMES = "abcdefghijklmnopqrstuvwxyz"
 const DEFAULT_PROMOTION_PIECE_IDS = ["queen", "rook", "bishop", "knight"]
@@ -42,6 +44,20 @@ var promotion_options_container: VBoxContainer
 var promotion_pending = false
 var pending_promotion_move: Dictionary = {}
 var promotion_piece_options: Array[String] = []
+var piece_dropping_enabled = false
+var capture_to_drop_pool_enabled = false
+var drop_pools = {
+	"white": [],
+	"black": []
+}
+var selected_drop_piece_id = ""
+var selected_drop_piece_owner = ""
+var drop_pool_selection_index = {
+	"white": 0,
+	"black": 0
+}
+var white_drop_pool_panel_rect = Rect2()
+var black_drop_pool_panel_rect = Rect2()
 
 func _ready() -> void:
 	get_viewport().size_changed.connect(_on_viewport_resized)
@@ -161,6 +177,22 @@ func _get_promotion_piece_pool() -> Array[String]:
 
 	return normalized_pool
 
+func _get_starting_drop_pools() -> Dictionary:
+	var source = $"/root/GameManager".StartingDropPools
+	var parsed = {
+		"white": [],
+		"black": []
+	}
+	if source is Dictionary:
+		for pool_owner in ["white", "black"]:
+			var values = source.get(pool_owner, [])
+			if values is Array:
+				var normalized: Array = []
+				for piece_id in values:
+					normalized.append(str(piece_id))
+				parsed[pool_owner] = normalized
+	return parsed
+
 func _hide_promotion_picker() -> void:
 	if promotion_picker_root != null:
 		promotion_picker_root.visible = false
@@ -222,8 +254,15 @@ func _initialize_board_state() -> void:
 	castling_enabled = bool(special_rules.get("castling", true))
 	en_passant_enabled = bool(special_rules.get("en_passant", true))
 	promotion_enabled = bool(special_rules.get("promotion", true))
+	piece_dropping_enabled = bool(special_rules.get("piece_dropping", false))
+	capture_to_drop_pool_enabled = bool(special_rules.get("capture_to_drop_pool", false)) and piece_dropping_enabled
 	promotion_piece_options = _get_promotion_piece_pool()
 	en_passant_target_square = INVALID_SQUARE
+	drop_pools = _get_starting_drop_pools()
+	selected_drop_piece_id = ""
+	selected_drop_piece_owner = ""
+	drop_pool_selection_index["white"] = 0
+	drop_pool_selection_index["black"] = 0
 	pieces.clear()
 	if board_width < 1 or board_height < 1:
 		return
@@ -287,6 +326,8 @@ func _build_board() -> void:
 		if child == promotion_picker_layer:
 			continue
 		child.queue_free()
+	white_drop_pool_panel_rect = Rect2()
+	black_drop_pool_panel_rect = Rect2()
 
 	board_height = _get_dimension($"/root/GameManager".BoardHeight, board_height)
 	board_width = _get_dimension($"/root/GameManager".BoardWidth, board_width)
@@ -316,7 +357,10 @@ func _build_board() -> void:
 	_draw_highlights()
 	_draw_pieces()
 	var next_hud_position = _draw_turn_indicator()
-	_draw_captured_pieces_panels()
+	if piece_dropping_enabled:
+		_draw_drop_pool_panels()
+	else:
+		_draw_captured_pieces_panels()
 	_draw_move_history_panel(next_hud_position)
 
 func _draw_turn_indicator() -> Vector2:
@@ -380,6 +424,86 @@ func _draw_captured_pieces_panels() -> void:
 	)
 	_draw_hud_panel(left_position, panel_size, "White Captures", [_format_captured_piece_list("white")])
 	_draw_hud_panel(right_position, panel_size, "Black Captures", [_format_captured_piece_list("black")])
+
+func _draw_drop_pool_panels() -> void:
+	var panel_size = Vector2(max(tile_size * 3.2, 220.0), max(tile_size * 2.2, 126.0))
+	var left_position = Vector2(
+		TURN_INDICATOR_PADDING,
+		get_viewport_rect().size.y - panel_size.y - TURN_INDICATOR_PADDING
+	)
+	var right_position = Vector2(
+		get_viewport_rect().size.x - panel_size.x - TURN_INDICATOR_PADDING,
+		get_viewport_rect().size.y - panel_size.y - TURN_INDICATOR_PADDING
+	)
+	white_drop_pool_panel_rect = Rect2(left_position, panel_size)
+	black_drop_pool_panel_rect = Rect2(right_position, panel_size)
+
+	_draw_drop_pool_panel(left_position, panel_size, "White Drop Pool", "white")
+	_draw_drop_pool_panel(right_position, panel_size, "Black Drop Pool", "black")
+
+func _draw_drop_pool_panel(panel_position: Vector2, panel_size: Vector2, title: String, owner: String) -> void:
+	var background = ColorRect.new()
+	background.position = panel_position
+	background.size = panel_size
+	background.color = DROP_POOL_PANEL_BACKGROUND
+	add_child(background)
+
+	add_child(_create_colored_border(panel_position, panel_size, DROP_POOL_PANEL_BORDER))
+
+	var title_label = Label.new()
+	title_label.position = panel_position + Vector2(TURN_INDICATOR_PADDING, TURN_INDICATOR_PADDING - 2.0)
+	title_label.text = title
+	title_label.add_theme_font_size_override("font_size", int(max(tile_size * 0.18, 15.0)))
+	title_label.add_theme_color_override("font_color", Color(0.95, 0.97, 1.0, 1.0))
+	add_child(title_label)
+
+	var body_label = Label.new()
+	body_label.position = panel_position + Vector2(TURN_INDICATOR_PADDING, TURN_INDICATOR_PADDING + 22.0)
+	body_label.size = panel_size - Vector2(TURN_INDICATOR_PADDING * 2.0, TURN_INDICATOR_PADDING * 2.0 + 18.0)
+	body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body_label.text = _format_drop_pool_list(owner)
+	body_label.add_theme_font_size_override("font_size", int(max(tile_size * 0.16, 14.0)))
+	body_label.add_theme_color_override("font_color", Color(0.94, 0.96, 1.0, 1.0))
+	add_child(body_label)
+
+func _create_colored_border(position: Vector2, size: Vector2, border_color: Color) -> Line2D:
+	var border = Line2D.new()
+	border.width = 2.0
+	border.default_color = border_color
+	border.closed = true
+	border.position = position
+	border.points = PackedVector2Array([
+		Vector2(0.0, 0.0),
+		Vector2(size.x, 0.0),
+		Vector2(size.x, size.y),
+		Vector2(0.0, size.y)
+	])
+	return border
+
+func _format_drop_pool_list(owner: String) -> String:
+	var pool_contents: Array = drop_pools.get(owner, [])
+	if pool_contents.is_empty():
+		if owner == current_turn:
+			return "(empty)\nClick to select a drop piece"
+		return "(empty)"
+
+	var count_by_piece = {}
+	for piece_id in pool_contents:
+		var key = str(piece_id)
+		count_by_piece[key] = int(count_by_piece.get(key, 0)) + 1
+
+	var keys = count_by_piece.keys()
+	keys.sort()
+	var lines: Array[String] = []
+	for key in keys:
+		var prefix = ""
+		if owner == selected_drop_piece_owner and str(key) == selected_drop_piece_id:
+			prefix = "> "
+		lines.append("%s%s x%d" % [prefix, _get_piece_symbol(str(key)), int(count_by_piece[key])])
+
+	if owner == current_turn:
+		lines.append("Click pool to cycle select")
+	return "\n".join(lines)
 
 func _draw_move_history_panel(panel_position: Vector2) -> void:
 	var recent_moves: Array[String] = []
@@ -586,10 +710,21 @@ func _get_piece_symbol(piece_id: String) -> String:
 func _handle_board_click(mouse_position: Vector2) -> void:
 	if game_over:
 		return
+	if piece_dropping_enabled and _handle_drop_pool_click(mouse_position):
+		return
 
 	var square = _screen_to_square(mouse_position)
 	if square == INVALID_SQUARE:
 		_clear_selection()
+		_clear_drop_piece_selection()
+		return
+
+	if selected_drop_piece_id != "":
+		if _try_drop_piece_from_pool(square):
+			_finalize_turn_after_move()
+		else:
+			_clear_drop_piece_selection()
+			_build_board()
 		return
 
 	if selected_square == INVALID_SQUARE:
@@ -602,6 +737,7 @@ func _handle_board_click(mouse_position: Vector2) -> void:
 		return
 
 	if _is_square_in_legal_moves(square) and _try_move_piece(selected_square, square):
+		_clear_drop_piece_selection()
 		_finalize_turn_after_move()
 		return
 
@@ -609,6 +745,64 @@ func _handle_board_click(mouse_position: Vector2) -> void:
 		_select_square(square)
 	else:
 		_clear_selection()
+
+func _handle_drop_pool_click(mouse_position: Vector2) -> bool:
+	if not piece_dropping_enabled:
+		return false
+	var owner = ""
+	if white_drop_pool_panel_rect.has_point(mouse_position):
+		owner = "white"
+	elif black_drop_pool_panel_rect.has_point(mouse_position):
+		owner = "black"
+	if owner == "":
+		return false
+
+	if owner != current_turn:
+		return true
+
+	var pool_contents: Array = drop_pools.get(owner, [])
+	if pool_contents.is_empty():
+		return true
+
+	var next_index = int(drop_pool_selection_index.get(owner, 0))
+	if selected_drop_piece_owner == owner and selected_drop_piece_id != "":
+		next_index += 1
+	next_index = posmod(next_index, pool_contents.size())
+	drop_pool_selection_index[owner] = next_index
+	selected_drop_piece_owner = owner
+	selected_drop_piece_id = str(pool_contents[next_index])
+	selected_square = INVALID_SQUARE
+	legal_moves.clear()
+	_build_board()
+	return true
+
+func _try_drop_piece_from_pool(target_square: Vector2i) -> bool:
+	if not piece_dropping_enabled:
+		return false
+	if selected_drop_piece_id == "" or selected_drop_piece_owner != current_turn:
+		return false
+	if pieces.has(target_square):
+		return false
+
+	var pool_contents: Array = drop_pools.get(current_turn, [])
+	var remove_index = pool_contents.find(selected_drop_piece_id)
+	if remove_index == -1:
+		return false
+	pool_contents.remove_at(remove_index)
+	drop_pools[current_turn] = pool_contents
+	_add_piece(target_square, selected_drop_piece_id, current_turn)
+	move_history.append("%d. %s drops %s @ %s" % [
+		move_history.size() + 1,
+		_display_color(current_turn),
+		_get_piece_symbol(selected_drop_piece_id),
+		_square_to_notation(target_square)
+	])
+	_clear_drop_piece_selection()
+	return true
+
+func _clear_drop_piece_selection() -> void:
+	selected_drop_piece_id = ""
+	selected_drop_piece_owner = ""
 
 func _select_square(square: Vector2i) -> void:
 	selected_square = square
@@ -728,9 +922,19 @@ func _commit_move(from_square: Vector2i, to_square: Vector2i, moving_piece: Dict
 	en_passant_target_square = move_info.get("new_en_passant_target", INVALID_SQUARE)
 
 	if not captured_piece.is_empty():
-		_record_capture(str(moving_piece.get("color", "white")), captured_piece)
+		if capture_to_drop_pool_enabled:
+			_add_piece_to_drop_pool(str(moving_piece.get("color", "white")), str(captured_piece.get("piece_id", "")))
+		else:
+			_record_capture(str(moving_piece.get("color", "white")), captured_piece)
 	_record_move(moving_piece, from_square, to_square, captured_piece, move_info)
 	return true
+
+func _add_piece_to_drop_pool(owner: String, piece_id: String) -> void:
+	if piece_id == "":
+		return
+	var pool_contents: Array = drop_pools.get(owner, [])
+	pool_contents.append(piece_id)
+	drop_pools[owner] = pool_contents
 
 func _is_legal_piece_move(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i) -> bool:
 	return _is_legal_piece_move_on_board(piece_data, from_square, to_square, pieces)
@@ -780,6 +984,16 @@ func _is_base_legal_piece_move(piece_data: Dictionary, from_square: Vector2i, to
 	match piece_definition.get("move_type", ""):
 		"pawn":
 			return _is_pawn_move_legal(piece_data, from_square, to_square, board_state, move_info)
+		"shogi_pawn":
+			return _is_shogi_pawn_move_legal(piece_data, from_square, to_square, board_state)
+		"lance_forward_slide":
+			return _is_lance_move_legal(piece_data, from_square, to_square, board_state)
+		"shogi_knight_jump":
+			return _is_shogi_knight_move_legal(piece_data, from_square, to_square)
+		"silver_general_step":
+			return _is_silver_general_move_legal(piece_data, from_square, to_square)
+		"gold_general_step":
+			return _is_gold_general_move_legal(piece_data, from_square, to_square)
 		"knight_jump":
 			return _is_knight_move_legal(from_square, to_square)
 		"diagonal_slide":
@@ -844,6 +1058,16 @@ func _can_piece_attack_square(piece_data: Dictionary, from_square: Vector2i, to_
 	match piece_definition.get("move_type", ""):
 		"pawn":
 			return _is_pawn_attack_legal(piece_data, from_square, to_square)
+		"shogi_pawn":
+			return _is_shogi_pawn_attack_legal(piece_data, from_square, to_square)
+		"lance_forward_slide":
+			return _is_lance_move_legal(piece_data, from_square, to_square, board_state)
+		"shogi_knight_jump":
+			return _is_shogi_knight_move_legal(piece_data, from_square, to_square)
+		"silver_general_step":
+			return _is_silver_general_move_legal(piece_data, from_square, to_square)
+		"gold_general_step":
+			return _is_gold_general_move_legal(piece_data, from_square, to_square)
 		"knight_jump":
 			return _is_knight_move_legal(from_square, to_square)
 		"diagonal_slide":
@@ -876,6 +1100,14 @@ func _has_any_legal_moves(piece_color: String) -> bool:
 				var move_info = _analyze_move(piece_data, from_square, Vector2i(x, y), pieces, true)
 				if bool(move_info.get("is_legal", false)):
 					return true
+
+	if piece_dropping_enabled:
+		var pool_contents: Array = drop_pools.get(piece_color, [])
+		if not pool_contents.is_empty():
+			for y in board_height:
+				for x in board_width:
+					if not pieces.has(Vector2i(x, y)):
+						return true
 	return false
 
 func _update_game_state(record_history: bool) -> void:
@@ -960,6 +1192,70 @@ func _is_knight_move_legal(from_square: Vector2i, to_square: Vector2i) -> bool:
 	var delta_x = abs(to_square.x - from_square.x)
 	var delta_y = abs(to_square.y - from_square.y)
 	return (delta_x == 2 and delta_y == 1) or (delta_x == 1 and delta_y == 2)
+
+func _forward_direction(piece_color: String) -> int:
+	if piece_color == "white":
+		return -1
+	return 1
+
+func _is_shogi_pawn_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
+	var forward = _forward_direction(str(piece_data.get("color", "white")))
+	if to_square.x != from_square.x:
+		return false
+	if to_square.y - from_square.y != forward:
+		return false
+	if board_state.has(to_square):
+		var target_piece: Dictionary = board_state[to_square]
+		if target_piece.get("color", "") == piece_data.get("color", ""):
+			return false
+	return true
+
+func _is_shogi_pawn_attack_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i) -> bool:
+	var forward = _forward_direction(str(piece_data.get("color", "white")))
+	return to_square.x == from_square.x and to_square.y - from_square.y == forward
+
+func _is_lance_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
+	if to_square.x != from_square.x:
+		return false
+	var forward = _forward_direction(str(piece_data.get("color", "white")))
+	var delta_y = to_square.y - from_square.y
+	if delta_y == 0 or signi(delta_y) != forward:
+		return false
+	return _is_path_clear(from_square, to_square, board_state)
+
+func _is_shogi_knight_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i) -> bool:
+	var forward = _forward_direction(str(piece_data.get("color", "white")))
+	var delta_x = to_square.x - from_square.x
+	var delta_y = to_square.y - from_square.y
+	return abs(delta_x) == 1 and delta_y == forward * 2
+
+func _is_silver_general_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i) -> bool:
+	var forward = _forward_direction(str(piece_data.get("color", "white")))
+	var delta_x = to_square.x - from_square.x
+	var delta_y = to_square.y - from_square.y
+	if abs(delta_x) > 1 or abs(delta_y) > 1:
+		return false
+	if delta_x == 0 and delta_y == forward:
+		return true
+	if abs(delta_x) == 1 and delta_y == forward:
+		return true
+	if abs(delta_x) == 1 and delta_y == -forward:
+		return true
+	return false
+
+func _is_gold_general_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i) -> bool:
+	var forward = _forward_direction(str(piece_data.get("color", "white")))
+	var delta_x = to_square.x - from_square.x
+	var delta_y = to_square.y - from_square.y
+	if abs(delta_x) > 1 or abs(delta_y) > 1:
+		return false
+	if delta_x == 0 and abs(delta_y) == 1:
+		return true
+	if abs(delta_x) == 1 and delta_y == 0:
+		return true
+	if abs(delta_x) == 1 and delta_y == forward:
+		return true
+	return false
 
 func _is_bishop_move_legal(from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
 	var delta_x = to_square.x - from_square.x

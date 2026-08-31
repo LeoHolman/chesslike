@@ -8,11 +8,29 @@ var StartingPieces = []
 var SpecialRules = {
 	"castling": true,
 	"en_passant": true,
-	"promotion": true
+	"promotion": true,
+	"piece_dropping": false,
+	"capture_to_drop_pool": false
 }
 var PromotionPiecePool = ["queen", "rook", "bishop", "knight"]
+var StartingDropPools = {
+	"white": [],
+	"black": []
+}
 var SavedPresets = {}
-var PieceBank = ["pawn", "knight", "bishop", "rook", "queen", "king"]
+var PieceBank = [
+	"pawn",
+	"knight",
+	"bishop",
+	"rook",
+	"queen",
+	"king",
+	"shogi_pawn",
+	"lance",
+	"shogi_knight",
+	"silver_general",
+	"gold_general"
+]
 var PieceDefinitions = {
 	"pawn": {
 		"name": "Pawn",
@@ -43,6 +61,31 @@ var PieceDefinitions = {
 		"name": "King",
 		"symbol": "K",
 		"move_type": "king_step"
+	},
+	"shogi_pawn": {
+		"name": "Shogi Pawn",
+		"symbol": "歩",
+		"move_type": "shogi_pawn"
+	},
+	"lance": {
+		"name": "Lance",
+		"symbol": "香",
+		"move_type": "lance_forward_slide"
+	},
+	"shogi_knight": {
+		"name": "Shogi Knight",
+		"symbol": "桂",
+		"move_type": "shogi_knight_jump"
+	},
+	"silver_general": {
+		"name": "Silver General",
+		"symbol": "銀",
+		"move_type": "silver_general_step"
+	},
+	"gold_general": {
+		"name": "Gold General",
+		"symbol": "金",
+		"move_type": "gold_general_step"
 	}
 }
 

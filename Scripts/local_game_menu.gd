@@ -10,6 +10,8 @@ extends Control
 @onready var castling_check_box: CheckBox = $OptionsScroll/OptionsContent/CastlingCheckBox
 @onready var en_passant_check_box: CheckBox = $OptionsScroll/OptionsContent/EnPassantCheckBox
 @onready var promotion_check_box: CheckBox = $OptionsScroll/OptionsContent/PromotionCheckBox
+@onready var piece_dropping_check_box: CheckBox = $OptionsScroll/OptionsContent/PieceDroppingCheckBox
+@onready var capture_to_drop_pool_check_box: CheckBox = $OptionsScroll/OptionsContent/CaptureToDropPoolCheckBox
 @onready var castling_support_hint_background: ColorRect = $OptionsScroll/OptionsContent/CastlingSupportHintBackground
 @onready var castling_support_hint: Label = $OptionsScroll/OptionsContent/CastlingSupportHint
 @onready var promotion_pieces_title: Label = $OptionsScroll/OptionsContent/PromotionPiecesTitle
@@ -18,8 +20,11 @@ extends Control
 const INVALID_SQUARE = Vector2i(-1, -1)
 const PREVIEW_SELECTION_HIGHLIGHT = Color(0.2, 0.6, 1.0, 0.28)
 const PREVIEW_GHOST_TINT = Color(1.0, 1.0, 1.0, 0.45)
+const PREVIEW_DROP_POOL_BACKGROUND = Color(0.12, 0.14, 0.18, 0.8)
+const PREVIEW_DROP_POOL_BORDER = Color(0.82, 0.85, 0.92, 0.95)
 const PRESETS = {
-	"Standard": "standard"
+	"Standard Chess": "standard_chess",
+	"Standard Shogi": "standard_shogi"
 }
 
 var selected_piece_id = ""
@@ -36,6 +41,14 @@ var drag_changed_any = false
 var promotion_piece_checkboxes: Dictionary = {}
 var castling_user_preference = true
 var is_updating_castling_availability = false
+var preview_drop_pools = {
+	"white": [],
+	"black": []
+}
+var preview_white_drop_pool_rect = Rect2()
+var preview_black_drop_pool_rect = Rect2()
+var dragging_preview_piece = false
+var drag_piece_origin_square = INVALID_SQUARE
 
 func _ready() -> void:
 	width_spin_box.value_changed.connect(_refresh_preview)
@@ -87,17 +100,21 @@ func _setup_piece_color_picker() -> void:
 func _setup_special_rules() -> void:
 	castling_check_box.toggled.connect(_on_castling_rule_toggled)
 	promotion_check_box.toggled.connect(_on_promotion_rule_toggled)
+	piece_dropping_check_box.toggled.connect(_on_piece_dropping_toggled)
 	_build_promotion_piece_checkboxes()
 	_apply_special_rules($"/root/GameManager".SpecialRules)
 	_apply_promotion_piece_pool($"/root/GameManager".PromotionPiecePool)
 	_update_promotion_piece_visibility()
+	_update_piece_dropping_visibility()
 	_update_castling_rule_availability()
 
 func _build_special_rules() -> Dictionary:
 	return {
 		"castling": castling_check_box.button_pressed,
 		"en_passant": en_passant_check_box.button_pressed,
-		"promotion": promotion_check_box.button_pressed
+		"promotion": promotion_check_box.button_pressed,
+		"piece_dropping": piece_dropping_check_box.button_pressed,
+		"capture_to_drop_pool": capture_to_drop_pool_check_box.button_pressed
 	}
 
 func _build_promotion_piece_pool() -> Array:
@@ -145,6 +162,12 @@ func _update_promotion_piece_visibility() -> void:
 	promotion_pieces_title.visible = show_promotion_piece_pool
 	promotion_pieces_list.visible = show_promotion_piece_pool
 
+func _update_piece_dropping_visibility() -> void:
+	var show_capture_rule = piece_dropping_check_box.button_pressed
+	capture_to_drop_pool_check_box.visible = show_capture_rule
+	if not show_capture_rule:
+		capture_to_drop_pool_check_box.button_pressed = false
+
 func _update_castling_rule_availability() -> void:
 	var supports_castling = _preview_supports_castling()
 	is_updating_castling_availability = true
@@ -179,6 +202,10 @@ func _on_castling_rule_toggled(is_enabled: bool) -> void:
 func _on_promotion_rule_toggled(_is_enabled: bool) -> void:
 	_update_promotion_piece_visibility()
 
+func _on_piece_dropping_toggled(_is_enabled: bool) -> void:
+	_update_piece_dropping_visibility()
+	_refresh_preview()
+
 func _on_promotion_piece_toggled(is_checked: bool, piece_id: String) -> void:
 	if is_checked:
 		return
@@ -195,21 +222,31 @@ func _apply_special_rules(special_rules: Dictionary) -> void:
 	castling_check_box.button_pressed = bool(special_rules.get("castling", true))
 	en_passant_check_box.button_pressed = bool(special_rules.get("en_passant", true))
 	promotion_check_box.button_pressed = bool(special_rules.get("promotion", true))
+	piece_dropping_check_box.button_pressed = bool(special_rules.get("piece_dropping", false))
+	capture_to_drop_pool_check_box.button_pressed = bool(special_rules.get("capture_to_drop_pool", false))
 	_update_castling_rule_availability()
+	_update_piece_dropping_visibility()
 
 func _reset_preview_to_default(should_refresh: bool = true, use_standard_layout: bool = true) -> void:
 	width_spin_box.value = 8
 	height_spin_box.value = 8
 	preview_pieces.clear()
+	preview_drop_pools = {
+		"white": [],
+		"black": []
+	}
 	if use_standard_layout:
 		_apply_standard_chess_layout()
 	_apply_special_rules({
 		"castling": true,
 		"en_passant": true,
-		"promotion": true
+		"promotion": true,
+		"piece_dropping": false,
+		"capture_to_drop_pool": false
 	})
 	_apply_promotion_piece_pool(["queen", "rook", "bishop", "knight"])
 	_update_promotion_piece_visibility()
+	_update_piece_dropping_visibility()
 	selected_piece_color = "white"
 	piece_color_option.select(0)
 	if piece_bank_list.item_count > 0:
@@ -228,15 +265,41 @@ func _reset_preview_to_default(should_refresh: bool = true, use_standard_layout:
 
 func _apply_preset(preset_id: String) -> void:
 	match preset_id:
-		"standard":
+		"standard_chess":
 			_reset_preview_to_default(false, false)
+			width_spin_box.value = 8
+			height_spin_box.value = 8
 			_apply_standard_chess_layout()
 			_apply_special_rules({
 				"castling": true,
 				"en_passant": true,
-				"promotion": true
+				"promotion": true,
+				"piece_dropping": false,
+				"capture_to_drop_pool": false
 			})
 			_apply_promotion_piece_pool(["queen", "rook", "bishop", "knight"])
+			preview_drop_pools = {
+				"white": [],
+				"black": []
+			}
+			_refresh_preview()
+		"standard_shogi":
+			_reset_preview_to_default(false, false)
+			width_spin_box.value = 9
+			height_spin_box.value = 9
+			_apply_standard_shogi_layout()
+			_apply_special_rules({
+				"castling": false,
+				"en_passant": false,
+				"promotion": false,
+				"piece_dropping": true,
+				"capture_to_drop_pool": true
+			})
+			_apply_promotion_piece_pool(["rook", "bishop", "silver_general", "gold_general", "lance", "shogi_knight", "shogi_pawn"])
+			preview_drop_pools = {
+				"white": [],
+				"black": []
+			}
 			_refresh_preview()
 		_:
 			var saved_presets: Dictionary = $"/root/GameManager".SavedPresets
@@ -248,9 +311,11 @@ func _apply_saved_preset_config(preset_config: Dictionary) -> void:
 	width_spin_box.value = _get_dimension(preset_config.get("width", 8), 8)
 	height_spin_box.value = _get_dimension(preset_config.get("height", 8), 8)
 	preview_pieces = _deserialize_preview_pieces(preset_config.get("pieces", []))
+	preview_drop_pools = _deserialize_drop_pools(preset_config.get("drop_pools", {}))
 	_apply_special_rules(preset_config.get("special_rules", {}))
 	_apply_promotion_piece_pool(preset_config.get("promotion_pieces", ["queen", "rook", "bishop", "knight"]))
 	_update_promotion_piece_visibility()
+	_update_piece_dropping_visibility()
 	last_drag_square = INVALID_SQUARE
 	hover_preview_square = INVALID_SQUARE
 	selected_preview_square = INVALID_SQUARE
@@ -266,6 +331,18 @@ func _apply_standard_chess_layout() -> void:
 		preview_pieces[Vector2i(x, 1)] = {"piece_id": "pawn", "color": "black"}
 		preview_pieces[Vector2i(x, 6)] = {"piece_id": "pawn", "color": "white"}
 		preview_pieces[Vector2i(x, 7)] = {"piece_id": back_rank[x], "color": "white"}
+
+func _apply_standard_shogi_layout() -> void:
+	var back_rank = ["lance", "shogi_knight", "silver_general", "gold_general", "king", "gold_general", "silver_general", "shogi_knight", "lance"]
+	for x in range(9):
+		preview_pieces[Vector2i(x, 0)] = {"piece_id": back_rank[x], "color": "black"}
+		preview_pieces[Vector2i(x, 2)] = {"piece_id": "shogi_pawn", "color": "black"}
+		preview_pieces[Vector2i(x, 6)] = {"piece_id": "shogi_pawn", "color": "white"}
+		preview_pieces[Vector2i(x, 8)] = {"piece_id": back_rank[x], "color": "white"}
+	preview_pieces[Vector2i(1, 1)] = {"piece_id": "rook", "color": "black"}
+	preview_pieces[Vector2i(7, 1)] = {"piece_id": "bishop", "color": "black"}
+	preview_pieces[Vector2i(1, 7)] = {"piece_id": "bishop", "color": "white"}
+	preview_pieces[Vector2i(7, 7)] = {"piece_id": "rook", "color": "white"}
 
 func _on_piece_bank_item_selected(index: int) -> void:
 	var game_manager = $"/root/GameManager"
@@ -294,16 +371,23 @@ func _refresh_preview(_value: float = 0.0) -> void:
 	var width = _get_dimension(width_spin_box.value, 8)
 	var height = _get_dimension(height_spin_box.value, 8)
 	_prune_preview_pieces(width, height)
+	var pool_width_estimate = 0.0
+	if piece_dropping_check_box.button_pressed:
+		pool_width_estimate = clampf(board_preview.size.x * 0.18, 92.0, 150.0) + 16.0
+	var usable_width = max(board_preview.size.x - pool_width_estimate * 2.0, 80.0)
 
 	preview_tile_size = min(
-		floor(board_preview.size.x / max(width, 1)),
+		floor(usable_width / max(width, 1)),
 		floor(board_preview.size.y / max(height, 1))
 	)
 	if preview_tile_size < 1:
 		preview_tile_size = 1
 
 	var board_pixel_size = Vector2(width * preview_tile_size, height * preview_tile_size)
-	preview_board_origin = (board_preview.size - board_pixel_size) / 2.0
+	preview_board_origin = Vector2(
+		(board_preview.size.x - board_pixel_size.x) / 2.0,
+		(board_preview.size.y - board_pixel_size.y) / 2.0
+	)
 
 	var is_white = true
 	for y in range(height):
@@ -322,6 +406,7 @@ func _refresh_preview(_value: float = 0.0) -> void:
 	_draw_preview_selection()
 	_draw_preview_pieces()
 	_draw_preview_ghost()
+	_draw_preview_drop_pools(board_pixel_size)
 	_update_castling_rule_availability()
 
 func _draw_preview_selection() -> void:
@@ -352,6 +437,80 @@ func _draw_preview_ghost() -> void:
 		PREVIEW_GHOST_TINT
 	)
 	board_preview.add_child(ghost_piece)
+
+func _draw_preview_drop_pools(board_pixel_size: Vector2) -> void:
+	preview_white_drop_pool_rect = Rect2()
+	preview_black_drop_pool_rect = Rect2()
+	if not piece_dropping_check_box.button_pressed:
+		return
+
+	var pool_width = clampf(board_preview.size.x * 0.18, 92.0, 150.0)
+	var pool_height = clampf(board_pixel_size.y * 0.68, 120.0, board_preview.size.y - 24.0)
+	var pool_y = clampf(preview_board_origin.y + (board_pixel_size.y - pool_height) * 0.5, 8.0, board_preview.size.y - pool_height - 8.0)
+
+	preview_white_drop_pool_rect = Rect2(8.0, pool_y, pool_width, pool_height)
+	preview_black_drop_pool_rect = Rect2(board_preview.size.x - pool_width - 8.0, pool_y, pool_width, pool_height)
+
+	_draw_single_preview_drop_pool(preview_white_drop_pool_rect, "White Drop Pool", "white")
+	_draw_single_preview_drop_pool(preview_black_drop_pool_rect, "Black Drop Pool", "black")
+
+func _draw_single_preview_drop_pool(pool_rect: Rect2, title: String, pool_owner: String) -> void:
+	var background = ColorRect.new()
+	background.position = pool_rect.position
+	background.size = pool_rect.size
+	background.color = PREVIEW_DROP_POOL_BACKGROUND
+	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	board_preview.add_child(background)
+
+	var border = Line2D.new()
+	border.position = pool_rect.position
+	border.width = 2.0
+	border.default_color = PREVIEW_DROP_POOL_BORDER
+	border.closed = true
+	border.points = PackedVector2Array([
+		Vector2(0.0, 0.0),
+		Vector2(pool_rect.size.x, 0.0),
+		Vector2(pool_rect.size.x, pool_rect.size.y),
+		Vector2(0.0, pool_rect.size.y)
+	])
+	board_preview.add_child(border)
+
+	var title_label = Label.new()
+	title_label.position = pool_rect.position + Vector2(8.0, 6.0)
+	title_label.size = Vector2(pool_rect.size.x - 12.0, 22.0)
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	title_label.text = title
+	title_label.add_theme_font_size_override("font_size", 13)
+	title_label.add_theme_color_override("font_color", Color(0.93, 0.94, 0.97, 1.0))
+	title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	board_preview.add_child(title_label)
+
+	var body = Label.new()
+	body.position = pool_rect.position + Vector2(8.0, 30.0)
+	body.size = Vector2(pool_rect.size.x - 12.0, pool_rect.size.y - 36.0)
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.text = _format_preview_drop_pool_contents(pool_owner)
+	body.add_theme_font_size_override("font_size", 14)
+	body.add_theme_color_override("font_color", Color(0.96, 0.97, 1.0, 1.0))
+	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	board_preview.add_child(body)
+
+func _format_preview_drop_pool_contents(pool_owner: String) -> String:
+	var pool_contents: Array = preview_drop_pools.get(pool_owner, [])
+	if pool_contents.is_empty():
+		return "(empty)"
+
+	var count_by_piece = {}
+	for piece_id in pool_contents:
+		var key = str(piece_id)
+		count_by_piece[key] = int(count_by_piece.get(key, 0)) + 1
+
+	var keys = count_by_piece.keys()
+	keys.sort()
+	var parts: Array[String] = []
+	for key in keys:
+		parts.append("%s x%d" % [_get_piece_symbol(str(key)), int(count_by_piece[key])])
+	return "\n".join(parts)
 
 func _create_preview_piece_node(square: Vector2i, piece_data: Dictionary, tint: Color = Color(1.0, 1.0, 1.0, 1.0)) -> Control:
 	var piece_root = Control.new()
@@ -392,13 +551,25 @@ func _on_board_preview_gui_input(event: InputEvent) -> void:
 				is_right_dragging = false
 				drag_changed_any = false
 				last_drag_square = INVALID_SQUARE
+				dragging_preview_piece = false
+				drag_piece_origin_square = INVALID_SQUARE
+				if piece_dropping_check_box.button_pressed:
+					var drag_square = _preview_position_to_square(event.position)
+					if drag_square != INVALID_SQUARE and preview_pieces.has(drag_square):
+						dragging_preview_piece = true
+						drag_piece_origin_square = drag_square
 				_update_hover_square(event.position)
-				_apply_drag_action(event.position, true)
+				if not dragging_preview_piece:
+					_apply_drag_action(event.position, true)
 			else:
+				if dragging_preview_piece and _try_drop_dragged_piece_to_pool(event.position):
+					drag_changed_any = true
 				if not drag_changed_any:
 					_select_piece_from_preview(event.position)
 				is_left_dragging = false
 				last_drag_square = INVALID_SQUARE
+				dragging_preview_piece = false
+				drag_piece_origin_square = INVALID_SQUARE
 			return
 
 		if event.button_index == MOUSE_BUTTON_RIGHT:
@@ -417,11 +588,45 @@ func _on_board_preview_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		_update_hover_square(event.position)
 		if event.button_mask & MOUSE_BUTTON_MASK_LEFT:
-			_apply_drag_action(event.position, true)
+			if not dragging_preview_piece:
+				_apply_drag_action(event.position, true)
 		elif event.button_mask & MOUSE_BUTTON_MASK_RIGHT:
 			_apply_drag_action(event.position, false)
 		else:
 			_refresh_preview()
+
+func _try_drop_dragged_piece_to_pool(position: Vector2) -> bool:
+	if drag_piece_origin_square == INVALID_SQUARE:
+		return false
+	if not preview_pieces.has(drag_piece_origin_square):
+		return false
+	if not piece_dropping_check_box.button_pressed:
+		return false
+
+	var target_pool = _preview_drop_pool_side_at_position(position)
+	if target_pool == "":
+		return false
+
+	var piece_data: Dictionary = preview_pieces[drag_piece_origin_square]
+	preview_pieces.erase(drag_piece_origin_square)
+	selected_preview_square = INVALID_SQUARE
+	_add_piece_to_preview_drop_pool(target_pool, str(piece_data.get("piece_id", "")))
+	_refresh_preview()
+	return true
+
+func _preview_drop_pool_side_at_position(position: Vector2) -> String:
+	if preview_white_drop_pool_rect.has_point(position):
+		return "white"
+	if preview_black_drop_pool_rect.has_point(position):
+		return "black"
+	return ""
+
+func _add_piece_to_preview_drop_pool(pool_owner: String, piece_id: String) -> void:
+	if piece_id == "":
+		return
+	var pool_contents: Array = preview_drop_pools.get(pool_owner, [])
+	pool_contents.append(piece_id)
+	preview_drop_pools[pool_owner] = pool_contents
 
 func _on_board_preview_mouse_exited() -> void:
 	hover_preview_square = INVALID_SQUARE
@@ -532,6 +737,31 @@ func _serialize_preview_pieces() -> Array:
 		})
 	return serialized_pieces
 
+func _serialize_drop_pools() -> Dictionary:
+	return {
+		"white": (preview_drop_pools.get("white", []) as Array).duplicate(true),
+		"black": (preview_drop_pools.get("black", []) as Array).duplicate(true)
+	}
+
+func _deserialize_drop_pools(source: Variant) -> Dictionary:
+	if not (source is Dictionary):
+		return {
+			"white": [],
+			"black": []
+		}
+	var parsed = {
+		"white": [],
+		"black": []
+	}
+	for pool_owner in ["white", "black"]:
+		var values = source.get(pool_owner, [])
+		if values is Array:
+			var normalized: Array = []
+			for piece_id in values:
+				normalized.append(str(piece_id))
+			parsed[pool_owner] = normalized
+	return parsed
+
 func _deserialize_preview_pieces(serialized_pieces: Array) -> Dictionary:
 	var deserialized_pieces = {}
 	for piece_entry in serialized_pieces:
@@ -552,6 +782,7 @@ func _build_preset_config() -> Dictionary:
 		"width": _get_dimension(width_spin_box.value, 8),
 		"height": _get_dimension(height_spin_box.value, 8),
 		"pieces": _serialize_preview_pieces(),
+		"drop_pools": _serialize_drop_pools(),
 		"special_rules": _build_special_rules(),
 		"promotion_pieces": _build_promotion_piece_pool()
 	}
@@ -591,6 +822,10 @@ func _on_delete_preset_button_pressed() -> void:
 
 func _on_clear_board_button_pressed() -> void:
 	preview_pieces.clear()
+	preview_drop_pools = {
+		"white": [],
+		"black": []
+	}
 	last_drag_square = INVALID_SQUARE
 	selected_preview_square = INVALID_SQUARE
 	_refresh_preview()
@@ -605,6 +840,7 @@ func _on_start_game_button_pressed() -> void:
 	$"/root/GameManager".BoardHeight = height
 	$"/root/GameManager".BoardWidth = width
 	$"/root/GameManager".StartingPieces = _serialize_preview_pieces()
+	$"/root/GameManager".StartingDropPools = _serialize_drop_pools()
 	$"/root/GameManager".SpecialRules = _build_special_rules()
 	$"/root/GameManager".PromotionPiecePool = _build_promotion_piece_pool()
 	

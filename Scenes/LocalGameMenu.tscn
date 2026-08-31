@@ -23,7 +23,7 @@ grow_vertical = 2
 horizontal_scroll_mode = 0
 
 [node name="OptionsContent" type="Control" parent="OptionsScroll" unique_id=1806613797]
-custom_minimum_size = Vector2(0, 1320)
+custom_minimum_size = Vector2(0, 1440)
 layout_mode = 2
 size_flags_horizontal = 3
 
@@ -271,28 +271,45 @@ offset_bottom = 904.0
 text = "Enable Promotion"
 button_pressed = true
 
+[node name="PieceDroppingCheckBox" type="CheckBox" parent="OptionsScroll/OptionsContent" unique_id=1380435716]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 914.0
+offset_right = 290.0
+offset_bottom = 938.0
+text = "Enable Piece Dropping"
+
+[node name="CaptureToDropPoolCheckBox" type="CheckBox" parent="OptionsScroll/OptionsContent" unique_id=303977957]
+visible = false
+layout_mode = 0
+offset_left = 104.0
+offset_top = 946.0
+offset_right = 332.0
+offset_bottom = 970.0
+text = "Capture to Drop Pool"
+
 [node name="PromotionPiecesTitleBackground" type="ColorRect" parent="OptionsScroll/OptionsContent" unique_id=175393625]
 layout_mode = 0
 offset_left = 76.0
-offset_top = 920.0
+offset_top = 986.0
 offset_right = 324.0
-offset_bottom = 947.0
+offset_bottom = 1013.0
 color = Color(0.16, 0.16, 0.16, 0.78)
 
 [node name="PromotionPiecesTitle" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1858177657]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 922.0
+offset_top = 988.0
 offset_right = 280.0
-offset_bottom = 945.0
+offset_bottom = 1011.0
 text = "Promotion Pieces:"
 
 [node name="PromotionPiecesList" type="VBoxContainer" parent="OptionsScroll/OptionsContent" unique_id=57243385]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 950.0
+offset_top = 1016.0
 offset_right = 320.0
-offset_bottom = 1138.0
+offset_bottom = 1204.0
 theme_override_constants/separation = 4
 
 [node name="PreviewInstructions" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1873652165]
@@ -306,25 +323,25 @@ text = "Left drag on the preview to place the selected piece.\nRight drag on the
 [node name="ClearBoardButton" type="Button" parent="OptionsScroll/OptionsContent" unique_id=71584107]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1210.0
+offset_top = 1278.0
 offset_right = 188.0
-offset_bottom = 1241.0
+offset_bottom = 1309.0
 text = "Clear Board"
 
 [node name="ResetSetupButton" type="Button" parent="OptionsScroll/OptionsContent" unique_id=208044863]
 layout_mode = 0
 offset_left = 204.0
-offset_top = 1210.0
+offset_top = 1278.0
 offset_right = 320.0
-offset_bottom = 1241.0
+offset_bottom = 1309.0
 text = "Reset Setup"
 
 [node name="StartGameButton" type="Button" parent="OptionsScroll/OptionsContent" unique_id=40242828]
 layout_mode = 0
 offset_left = 204.0
-offset_top = 1260.0
+offset_top = 1328.0
 offset_right = 320.0
-offset_bottom = 1291.0
+offset_bottom = 1359.0
 text = "Start Game\n"
 
 [connection signal="pressed" from="OptionsScroll/OptionsContent/SavePresetButton" to="." method="_on_save_preset_button_pressed"]

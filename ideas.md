@@ -13,3 +13,4 @@
     1. unbalanced option to allow for two different army sums
 1. special rule "Total War"
     1. victory condition changes to one player losing all of their pieces, instead of checkmating the king
+1. Move history and captured pieces list are huge on tiny boards
