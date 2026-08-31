@@ -98,12 +98,37 @@ var undo_snapshots: Array[Dictionary] = []
 var drop_piece_drag_active = false
 var drop_piece_drag_position = Vector2.ZERO
 var drop_pool_hover_owner = ""
+var online_mode = false
+var local_player_side = "white"
 
 func _ready() -> void:
 	get_viewport().size_changed.connect(_on_viewport_resized)
+	_setup_online_match_state()
 	_initialize_board_state()
 	_ensure_promotion_picker()
 	_build_board()
+
+func _exit_tree() -> void:
+	var network_manager = get_node_or_null("/root/NetworkManager")
+	if network_manager == null:
+		return
+	if network_manager.turn_state_received.is_connected(_on_network_turn_state_received):
+		network_manager.turn_state_received.disconnect(_on_network_turn_state_received)
+	if network_manager.online_match_ended.is_connected(_on_online_match_ended):
+		network_manager.online_match_ended.disconnect(_on_online_match_ended)
+
+func _setup_online_match_state() -> void:
+	var network_manager = get_node_or_null("/root/NetworkManager")
+	online_mode = false
+	local_player_side = "white"
+	if network_manager == null:
+		return
+	online_mode = bool(network_manager.is_online_active())
+	local_player_side = str(network_manager.get_local_player_side())
+	if not network_manager.turn_state_received.is_connected(_on_network_turn_state_received):
+		network_manager.turn_state_received.connect(_on_network_turn_state_received)
+	if not network_manager.online_match_ended.is_connected(_on_online_match_ended):
+		network_manager.online_match_ended.connect(_on_online_match_ended)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if promotion_pending:
@@ -321,6 +346,8 @@ func _initialize_board_state() -> void:
 	en_passant_enabled = bool(special_rules.get("en_passant", true))
 	promotion_enabled = bool(special_rules.get("promotion", true))
 	allow_undo_enabled = bool(special_rules.get("allow_undo", false))
+	if online_mode:
+		allow_undo_enabled = false
 	piece_dropping_enabled = bool(special_rules.get("piece_dropping", false))
 	capture_to_drop_pool_enabled = bool(special_rules.get("capture_to_drop_pool", false)) and piece_dropping_enabled
 	limit_army_strength_enabled = bool(special_rules.get("limit_army_strength", false))
@@ -526,13 +553,20 @@ func _draw_undo_button() -> void:
 	add_child(button)
 
 func _on_back_to_main_menu_pressed() -> void:
+	if online_mode:
+		var network_manager = get_node_or_null("/root/NetworkManager")
+		if network_manager != null:
+			network_manager.leave_session()
 	get_tree().change_scene_to_file("res://Scenes/MainMenu.tscn")
 
 func _on_undo_button_pressed() -> void:
+	if online_mode and not _is_local_turn():
+		return
 	if undo_snapshots.is_empty():
 		return
 	var snapshot = undo_snapshots.pop_back()
 	_restore_from_undo_snapshot(snapshot)
+	_publish_turn_state_to_peer()
 
 func _capture_undo_snapshot() -> Dictionary:
 	return {
@@ -566,6 +600,101 @@ func _restore_from_undo_snapshot(snapshot: Dictionary) -> void:
 	drop_piece_drag_active = false
 	drop_pool_hover_owner = ""
 	_build_board()
+
+func _is_local_turn() -> bool:
+	if not online_mode:
+		return true
+	return current_turn == local_player_side
+
+func _publish_turn_state_to_peer() -> void:
+	if not online_mode:
+		return
+	var network_manager = get_node_or_null("/root/NetworkManager")
+	if network_manager == null:
+		return
+	network_manager.submit_turn_state(_export_network_state())
+
+func _on_network_turn_state_received(state: Dictionary) -> void:
+	if not online_mode:
+		return
+	_import_network_state(state)
+	_build_board()
+
+func _on_online_match_ended(reason: String) -> void:
+	if not online_mode:
+		return
+	game_over = true
+	status_message = reason
+	promotion_pending = false
+	pending_promotion_move.clear()
+	_hide_promotion_picker()
+	_build_board()
+
+func _export_network_state() -> Dictionary:
+	var serialized_pieces: Array = []
+	for square in pieces.keys():
+		var piece_data: Dictionary = pieces[square]
+		serialized_pieces.append({
+			"x": square.x,
+			"y": square.y,
+			"piece_id": str(piece_data.get("piece_id", "")),
+			"color": str(piece_data.get("color", "white")),
+			"has_moved": bool(piece_data.get("has_moved", false))
+		})
+
+	return {
+		"pieces": serialized_pieces,
+		"captured_pieces": captured_pieces.duplicate(true),
+		"drop_pools": _duplicate_drop_pools(drop_pools),
+		"move_history": move_history.duplicate(true),
+		"current_turn": current_turn,
+		"status_message": status_message,
+		"game_over": game_over,
+		"en_passant_target": {
+			"x": en_passant_target_square.x,
+			"y": en_passant_target_square.y
+		}
+	}
+
+func _import_network_state(state: Dictionary) -> void:
+	pieces.clear()
+	var serialized_pieces = state.get("pieces", [])
+	if serialized_pieces is Array:
+		for entry in serialized_pieces:
+			if not (entry is Dictionary):
+				continue
+			var square = Vector2i(int(entry.get("x", -1)), int(entry.get("y", -1)))
+			if square.x < 0 or square.y < 0 or square.x >= board_width or square.y >= board_height:
+				continue
+			pieces[square] = {
+				"piece_id": str(entry.get("piece_id", "")),
+				"color": str(entry.get("color", "white")),
+				"has_moved": bool(entry.get("has_moved", false))
+			}
+
+	captured_pieces = state.get("captured_pieces", {"white": [], "black": []}).duplicate(true)
+	drop_pools = _duplicate_drop_pools(state.get("drop_pools", {}))
+	move_history = (state.get("move_history", []) as Array).duplicate(true)
+	current_turn = str(state.get("current_turn", "white"))
+	status_message = str(state.get("status_message", ""))
+	game_over = bool(state.get("game_over", false))
+	var en_passant_target = state.get("en_passant_target", {})
+	if en_passant_target is Dictionary:
+		en_passant_target_square = Vector2i(int(en_passant_target.get("x", -1)), int(en_passant_target.get("y", -1)))
+	else:
+		en_passant_target_square = INVALID_SQUARE
+
+	promotion_pending = false
+	pending_promotion_move.clear()
+	_hide_promotion_picker()
+	selected_square = INVALID_SQUARE
+	legal_moves.clear()
+	legal_drop_squares.clear()
+	selected_drop_piece_id = ""
+	selected_drop_piece_owner = ""
+	drop_piece_drag_active = false
+	drop_pool_hover_owner = ""
+	undo_snapshots.clear()
 
 func _draw_status_feedback_banner() -> void:
 	if status_message == "" or game_over:
@@ -1012,9 +1141,25 @@ func _draw_highlights() -> void:
 		if square != selected_square:
 			add_child(_create_square_overlay(square, LEGAL_MOVE_HIGHLIGHT))
 
+func _is_board_view_flipped() -> bool:
+	return online_mode and local_player_side == "black"
+
+func _board_square_to_view_square(square: Vector2i) -> Vector2i:
+	if not _is_board_view_flipped():
+		return square
+	return Vector2i(board_width - 1 - square.x, board_height - 1 - square.y)
+
+func _view_square_to_board_square(square: Vector2i) -> Vector2i:
+	# 180-degree rotation is its own inverse transform.
+	return _board_square_to_view_square(square)
+
+func _board_square_to_screen_position(square: Vector2i) -> Vector2:
+	var view_square = _board_square_to_view_square(square)
+	return board_origin + Vector2(view_square.x * tile_size, view_square.y * tile_size)
+
 func _create_square_overlay(square: Vector2i, color: Color) -> Polygon2D:
 	var overlay = Polygon2D.new()
-	overlay.position = board_origin + Vector2(square.x * tile_size, square.y * tile_size)
+	overlay.position = _board_square_to_screen_position(square)
 	overlay.color = color
 	overlay.polygon = PackedVector2Array([
 		Vector2(0.0, 0.0),
@@ -1026,7 +1171,7 @@ func _create_square_overlay(square: Vector2i, color: Color) -> Polygon2D:
 
 func _create_board_tile(square: Vector2i, tile_color: Color) -> Polygon2D:
 	var tile = Polygon2D.new()
-	tile.position = board_origin + Vector2(square.x * tile_size, square.y * tile_size)
+	tile.position = _board_square_to_screen_position(square)
 	tile.color = tile_color
 	tile.polygon = PackedVector2Array([
 		Vector2(0.0, 0.0),
@@ -1040,7 +1185,7 @@ func _draw_pieces() -> void:
 	for square in pieces.keys():
 		var piece_data: Dictionary = pieces[square]
 		var piece_node = _create_piece_node(piece_data)
-		piece_node.position = board_origin + Vector2(square.x * tile_size, square.y * tile_size)
+		piece_node.position = _board_square_to_screen_position(square)
 		add_child(piece_node)
 
 func _draw_drop_piece_drag_preview() -> void:
@@ -1251,6 +1396,8 @@ func _get_piece_symbol(piece_id: String) -> String:
 func _handle_board_click(mouse_position: Vector2) -> void:
 	if game_over:
 		return
+	if online_mode and not _is_local_turn():
+		return
 
 	var square = _screen_to_square(mouse_position)
 	if square == INVALID_SQUARE:
@@ -1280,6 +1427,8 @@ func _handle_board_click(mouse_position: Vector2) -> void:
 func _try_begin_drop_pool_drag(mouse_position: Vector2) -> bool:
 	if not piece_dropping_enabled:
 		return false
+	if online_mode and not _is_local_turn():
+		return true
 	var owner = _drop_pool_side_at_position(mouse_position)
 	if owner == "":
 		return false
@@ -1420,7 +1569,7 @@ func _screen_to_square(mouse_position: Vector2) -> Vector2i:
 	if square_x < 0 or square_y < 0 or square_x >= board_width or square_y >= board_height:
 		return Vector2i(-1, -1)
 
-	return Vector2i(square_x, square_y)
+	return _view_square_to_board_square(Vector2i(square_x, square_y))
 
 func _finalize_turn_after_move() -> void:
 	current_turn = _opponent_color(current_turn)
@@ -1429,6 +1578,7 @@ func _finalize_turn_after_move() -> void:
 	legal_drop_squares.clear()
 	_update_game_state(true)
 	_build_board()
+	_publish_turn_state_to_peer()
 
 func _try_move_piece(from_square: Vector2i, to_square: Vector2i) -> bool:
 	if promotion_pending:
