@@ -1577,6 +1577,9 @@ func _on_clear_board_button_pressed() -> void:
 func _on_reset_setup_button_pressed() -> void:
 	_reset_preview_to_default(true, false)
 
+func _on_back_to_main_menu_button_pressed() -> void:
+	get_tree().change_scene_to_file("res://Scenes/MainMenu.tscn")
+
 func _on_start_game_button_pressed() -> void:
 	var height = height_spin_box.value
 	var width = width_spin_box.value

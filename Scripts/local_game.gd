@@ -443,6 +443,7 @@ func _build_board() -> void:
 	_draw_pieces()
 	_draw_drop_piece_drag_preview()
 	_draw_turn_indicator()
+	_draw_back_to_main_menu_button()
 	_draw_undo_button()
 	_draw_status_feedback_banner()
 	if piece_dropping_enabled:
@@ -491,19 +492,41 @@ func _draw_turn_indicator() -> void:
 	turn_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(turn_label)
 
+func _turn_indicator_height() -> float:
+	var swatch_size = clampf(tile_size * 0.24, 14.0, 24.0)
+	return clampf(swatch_size + TURN_INDICATOR_PADDING * 2.0, 40.0, 56.0)
+
+func _hud_top_action_button_size() -> Vector2:
+	var viewport_size = get_viewport_rect().size
+	return Vector2(
+		clampf(tile_size * 1.9, 120.0, min(viewport_size.x * 0.26, 220.0)),
+		clampf(tile_size * 0.56, 30.0, 40.0)
+	)
+
+func _draw_back_to_main_menu_button() -> void:
+	var indicator_height = _turn_indicator_height()
+	var button = Button.new()
+	button.position = Vector2(TURN_INDICATOR_PADDING, TURN_INDICATOR_PADDING + indicator_height + 8.0)
+	button.size = _hud_top_action_button_size()
+	button.text = "Back to Main Menu"
+	button.pressed.connect(_on_back_to_main_menu_pressed)
+	add_child(button)
+
 func _draw_undo_button() -> void:
 	if not allow_undo_enabled:
 		return
-	var viewport_size = get_viewport_rect().size
-	var swatch_size = clampf(tile_size * 0.24, 14.0, 24.0)
-	var indicator_height = clampf(swatch_size + TURN_INDICATOR_PADDING * 2.0, 40.0, 56.0)
+	var indicator_height = _turn_indicator_height()
+	var action_button_size = _hud_top_action_button_size()
 	var button = Button.new()
-	button.position = Vector2(TURN_INDICATOR_PADDING, TURN_INDICATOR_PADDING + indicator_height + 8.0)
-	button.size = Vector2(clampf(tile_size * 1.7, 92.0, min(viewport_size.x * 0.2, 160.0)), clampf(tile_size * 0.56, 30.0, 40.0))
+	button.position = Vector2(TURN_INDICATOR_PADDING, TURN_INDICATOR_PADDING + indicator_height + 8.0 + action_button_size.y + 8.0)
+	button.size = action_button_size
 	button.text = "Undo"
 	button.disabled = undo_snapshots.is_empty() or promotion_pending
 	button.pressed.connect(_on_undo_button_pressed)
 	add_child(button)
+
+func _on_back_to_main_menu_pressed() -> void:
+	get_tree().change_scene_to_file("res://Scenes/MainMenu.tscn")
 
 func _on_undo_button_pressed() -> void:
 	if undo_snapshots.is_empty():
@@ -933,8 +956,9 @@ func _hud_top_reserve_height(viewport_size: Vector2) -> float:
 	if board_width <= 4 or board_height <= 4:
 		baseline_reserve = clampf(max(74.0, viewport_size.y * 0.12), 68.0, 130.0)
 	var banner_reserve = clampf(max(88.0, viewport_size.y * 0.12), 88.0, 150.0)
+	banner_reserve = max(banner_reserve, clampf(max(132.0, viewport_size.y * 0.18), 132.0, 220.0))
 	if allow_undo_enabled:
-		banner_reserve = max(banner_reserve, clampf(max(126.0, viewport_size.y * 0.17), 126.0, 210.0))
+		banner_reserve = max(banner_reserve, clampf(max(172.0, viewport_size.y * 0.24), 172.0, 280.0))
 	return max(baseline_reserve, banner_reserve)
 
 func _hud_bottom_reserve_height(viewport_size: Vector2) -> float:
