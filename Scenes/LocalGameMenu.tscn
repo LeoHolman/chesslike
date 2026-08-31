@@ -291,9 +291,9 @@ text = "Special Rules:"
 [node name="CastlingCheckBox" type="CheckBox" parent="OptionsScroll/OptionsContent" unique_id=402744194]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 802.0
+offset_top = 836.0
 offset_right = 240.0
-offset_bottom = 826.0
+offset_bottom = 860.0
 text = "Enable Castling"
 button_pressed = true
 
@@ -301,18 +301,18 @@ button_pressed = true
 visible = false
 layout_mode = 0
 offset_left = 104.0
-offset_top = 828.0
+offset_top = 862.0
 offset_right = 426.0
-offset_bottom = 858.0
+offset_bottom = 892.0
 color = Color(0.08, 0.08, 0.08, 0.9)
 
 [node name="CastlingSupportHint" type="Label" parent="OptionsScroll/OptionsContent" unique_id=467469973]
 visible = false
 layout_mode = 0
 offset_left = 112.0
-offset_top = 832.0
+offset_top = 866.0
 offset_right = 420.0
-offset_bottom = 856.0
+offset_bottom = 890.0
 theme_override_colors/font_color = Color(1, 0.85, 0.85, 1)
 theme_override_font_sizes/font_size = 14
 text = "Castling requires both players to have a king and rook."
@@ -320,62 +320,62 @@ text = "Castling requires both players to have a king and rook."
 [node name="EnPassantCheckBox" type="CheckBox" parent="OptionsScroll/OptionsContent" unique_id=1615460277]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 870.0
+offset_top = 904.0
 offset_right = 260.0
-offset_bottom = 894.0
+offset_bottom = 928.0
 text = "Enable En Passant"
 button_pressed = true
 
 [node name="PromotionCheckBox" type="CheckBox" parent="OptionsScroll/OptionsContent" unique_id=1333748385]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 904.0
+offset_top = 938.0
 offset_right = 260.0
-offset_bottom = 928.0
+offset_bottom = 962.0
 text = "Enable Promotion"
 button_pressed = true
 
 [node name="PieceDroppingCheckBox" type="CheckBox" parent="OptionsScroll/OptionsContent" unique_id=1380435716]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 938.0
+offset_top = 972.0
 offset_right = 290.0
-offset_bottom = 962.0
+offset_bottom = 996.0
 text = "Enable Piece Dropping"
 
 [node name="CaptureToDropPoolCheckBox" type="CheckBox" parent="OptionsScroll/OptionsContent" unique_id=303977957]
 visible = false
 layout_mode = 0
 offset_left = 104.0
-offset_top = 970.0
+offset_top = 1004.0
 offset_right = 332.0
-offset_bottom = 994.0
+offset_bottom = 1028.0
 text = "Capture to Drop Pool"
 
 [node name="LimitArmyStrengthCheckBox" type="CheckBox" parent="OptionsScroll/OptionsContent" unique_id=715094631]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1002.0
+offset_top = 1036.0
 offset_right = 320.0
-offset_bottom = 1026.0
+offset_bottom = 1060.0
 text = "Limit Army Strength"
 
 [node name="ArmyStrengthCapLabel" type="Label" parent="OptionsScroll/OptionsContent" unique_id=60631354]
 visible = false
 layout_mode = 0
 offset_left = 104.0
-offset_top = 1036.0
+offset_top = 1070.0
 offset_right = 240.0
-offset_bottom = 1059.0
+offset_bottom = 1093.0
 text = "Army Strength Cap"
 
 [node name="ArmyStrengthCapSpinBox" type="SpinBox" parent="OptionsScroll/OptionsContent" unique_id=61484562]
 visible = false
 layout_mode = 0
 offset_left = 250.0
-offset_top = 1032.0
+offset_top = 1066.0
 offset_right = 320.0
-offset_bottom = 1063.0
+offset_bottom = 1097.0
 min_value = 2.0
 value = 32.0
 rounded = true
@@ -384,9 +384,9 @@ rounded = true
 visible = false
 layout_mode = 0
 offset_left = 104.0
-offset_top = 1172.0
+offset_top = 1206.0
 offset_right = 372.0
-offset_bottom = 1226.0
+offset_bottom = 1260.0
 autowrap_mode = 3
 theme_override_colors/font_color = Color(1, 0.85, 0.85, 1)
 theme_override_font_sizes/font_size = 15
@@ -396,41 +396,21 @@ text = ""
 visible = false
 layout_mode = 0
 offset_left = 104.0
-offset_top = 1068.0
+offset_top = 1102.0
 offset_right = 320.0
-offset_bottom = 1092.0
+offset_bottom = 1126.0
 text = "Unbalanced Armies"
 
 [node name="WhiteArmyStrengthCapLabel" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1312455775]
 visible = false
 layout_mode = 0
 offset_left = 128.0
-offset_top = 1102.0
-offset_right = 260.0
-offset_bottom = 1125.0
-text = "Player 1 Cap"
-
-[node name="WhiteArmyStrengthCapSpinBox" type="SpinBox" parent="OptionsScroll/OptionsContent" unique_id=1483410332]
-visible = false
-layout_mode = 0
-offset_left = 250.0
-offset_top = 1098.0
-offset_right = 320.0
-offset_bottom = 1129.0
-min_value = 2.0
-value = 32.0
-rounded = true
-
-[node name="BlackArmyStrengthCapLabel" type="Label" parent="OptionsScroll/OptionsContent" unique_id=698839652]
-visible = false
-layout_mode = 0
-offset_left = 128.0
 offset_top = 1136.0
 offset_right = 260.0
 offset_bottom = 1159.0
-text = "Player 2 Cap"
+text = "Player 1 Cap"
 
-[node name="BlackArmyStrengthCapSpinBox" type="SpinBox" parent="OptionsScroll/OptionsContent" unique_id=799151766]
+[node name="WhiteArmyStrengthCapSpinBox" type="SpinBox" parent="OptionsScroll/OptionsContent" unique_id=1483410332]
 visible = false
 layout_mode = 0
 offset_left = 250.0
@@ -441,36 +421,56 @@ min_value = 2.0
 value = 32.0
 rounded = true
 
+[node name="BlackArmyStrengthCapLabel" type="Label" parent="OptionsScroll/OptionsContent" unique_id=698839652]
+visible = false
+layout_mode = 0
+offset_left = 128.0
+offset_top = 1170.0
+offset_right = 260.0
+offset_bottom = 1193.0
+text = "Player 2 Cap"
+
+[node name="BlackArmyStrengthCapSpinBox" type="SpinBox" parent="OptionsScroll/OptionsContent" unique_id=799151766]
+visible = false
+layout_mode = 0
+offset_left = 250.0
+offset_top = 1166.0
+offset_right = 320.0
+offset_bottom = 1197.0
+min_value = 2.0
+value = 32.0
+rounded = true
+
 [node name="PromotionZonesTitleBackground" type="ColorRect" parent="OptionsScroll/OptionsContent"]
 layout_mode = 0
 offset_left = 76.0
-offset_top = 1172.0
+offset_top = 1206.0
 offset_right = 324.0
-offset_bottom = 1199.0
+offset_bottom = 1233.0
 color = Color(0.16, 0.16, 0.16, 0.78)
 
 [node name="PromotionZonesTitle" type="Label" parent="OptionsScroll/OptionsContent"]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1174.0
+offset_top = 1208.0
 offset_right = 260.0
-offset_bottom = 1197.0
+offset_bottom = 1231.0
 text = "Promotion Zones:"
 
 [node name="Player1PromotionZoneLabel" type="Label" parent="OptionsScroll/OptionsContent"]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1206.0
+offset_top = 1240.0
 offset_right = 238.0
-offset_bottom = 1229.0
+offset_bottom = 1263.0
 text = "Player 1 Rows"
 
 [node name="Player1PromotionZoneSpinBox" type="SpinBox" parent="OptionsScroll/OptionsContent"]
 layout_mode = 0
 offset_left = 250.0
-offset_top = 1202.0
+offset_top = 1236.0
 offset_right = 320.0
-offset_bottom = 1233.0
+offset_bottom = 1267.0
 min_value = 1.0
 value = 1.0
 rounded = true
@@ -478,17 +478,17 @@ rounded = true
 [node name="Player2PromotionZoneLabel" type="Label" parent="OptionsScroll/OptionsContent"]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1234.0
+offset_top = 1268.0
 offset_right = 238.0
-offset_bottom = 1257.0
+offset_bottom = 1291.0
 text = "Player 2 Rows"
 
 [node name="Player2PromotionZoneSpinBox" type="SpinBox" parent="OptionsScroll/OptionsContent"]
 layout_mode = 0
 offset_left = 250.0
-offset_top = 1230.0
+offset_top = 1264.0
 offset_right = 320.0
-offset_bottom = 1261.0
+offset_bottom = 1295.0
 min_value = 1.0
 value = 1.0
 rounded = true
@@ -496,17 +496,17 @@ rounded = true
 [node name="VictoryConditionTitleBackground" type="ColorRect" parent="OptionsScroll/OptionsContent" unique_id=414050202]
 layout_mode = 0
 offset_left = 76.0
-offset_top = 1582.0
+offset_top = 1616.0
 offset_right = 360.0
-offset_bottom = 1609.0
+offset_bottom = 1643.0
 color = Color(0.39, 0.19, 0.06, 0.9)
 
 [node name="VictoryConditionTitle" type="Label" parent="OptionsScroll/OptionsContent" unique_id=136941371]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1584.0
+offset_top = 1618.0
 offset_right = 260.0
-offset_bottom = 1607.0
+offset_bottom = 1641.0
 theme_override_colors/font_color = Color(1, 0.94, 0.72, 1)
 theme_override_font_sizes/font_size = 16
 text = "Victory Condition:"
@@ -514,16 +514,16 @@ text = "Victory Condition:"
 [node name="VictoryConditionOption" type="OptionButton" parent="OptionsScroll/OptionsContent" unique_id=132665205]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1620.0
+offset_top = 1654.0
 offset_right = 320.0
-offset_bottom = 1651.0
+offset_bottom = 1685.0
 
 [node name="VictoryConditionDescription" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1271189780]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1660.0
+offset_top = 1694.0
 offset_right = 380.0
-offset_bottom = 1742.0
+offset_bottom = 1776.0
 autowrap_mode = 3
 theme_override_colors/font_color = Color(1, 0.96, 0.82, 1)
 theme_override_font_sizes/font_size = 14
@@ -532,25 +532,25 @@ text = "Checkmate: win by checkmating the king.\nTotal War: win when the opponen
 [node name="PromotionPiecesTitleBackground" type="ColorRect" parent="OptionsScroll/OptionsContent" unique_id=175393625]
 layout_mode = 0
 offset_left = 76.0
-offset_top = 1272.0
+offset_top = 1306.0
 offset_right = 324.0
-offset_bottom = 1299.0
+offset_bottom = 1333.0
 color = Color(0.16, 0.16, 0.16, 0.78)
 
 [node name="PromotionPiecesTitle" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1858177657]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1274.0
+offset_top = 1308.0
 offset_right = 280.0
-offset_bottom = 1297.0
+offset_bottom = 1331.0
 text = "Promotion Pieces:"
 
 [node name="PromotionPiecesScroll" type="ScrollContainer" parent="OptionsScroll/OptionsContent" unique_id=1022091318]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1302.0
+offset_top = 1336.0
 offset_right = 320.0
-offset_bottom = 1532.0
+offset_bottom = 1566.0
 
 [node name="PromotionPiecesList" type="VBoxContainer" parent="OptionsScroll/OptionsContent/PromotionPiecesScroll" unique_id=57243385]
 custom_minimum_size = Vector2(0, 220)
@@ -561,9 +561,9 @@ theme_override_constants/separation = 4
 [node name="AllowUndoCheckBox" type="CheckBox" parent="OptionsScroll/OptionsContent"]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1540.0
+offset_top = 802.0
 offset_right = 260.0
-offset_bottom = 1564.0
+offset_bottom = 826.0
 text = "Allow Undo"
 
 [node name="PreviewInstructions" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1873652165]
@@ -577,49 +577,49 @@ text = "Left drag on the preview to place the selected piece.\nRight click on th
 [node name="TileColorsTitleBackground" type="ColorRect" parent="OptionsScroll/OptionsContent"]
 layout_mode = 0
 offset_left = 76.0
-offset_top = 1754.0
+offset_top = 1788.0
 offset_right = 324.0
-offset_bottom = 1781.0
+offset_bottom = 1815.0
 color = Color(0.16, 0.16, 0.16, 0.78)
 
 [node name="TileColorsTitle" type="Label" parent="OptionsScroll/OptionsContent"]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1756.0
+offset_top = 1790.0
 offset_right = 220.0
-offset_bottom = 1779.0
+offset_bottom = 1813.0
 text = "Board Tile Colors:"
 
 [node name="LightTileColorLabel" type="Label" parent="OptionsScroll/OptionsContent"]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1790.0
+offset_top = 1824.0
 offset_right = 166.0
-offset_bottom = 1813.0
+offset_bottom = 1847.0
 text = "Light Tiles"
 
 [node name="LightTileColorButton" type="ColorPickerButton" parent="OptionsScroll/OptionsContent"]
 layout_mode = 0
 offset_left = 172.0
-offset_top = 1786.0
+offset_top = 1820.0
 offset_right = 224.0
-offset_bottom = 1817.0
+offset_bottom = 1851.0
 color = Color(1, 1, 1, 1)
 
 [node name="DarkTileColorLabel" type="Label" parent="OptionsScroll/OptionsContent"]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1822.0
+offset_top = 1856.0
 offset_right = 166.0
-offset_bottom = 1845.0
+offset_bottom = 1879.0
 text = "Dark Tiles"
 
 [node name="DarkTileColorButton" type="ColorPickerButton" parent="OptionsScroll/OptionsContent"]
 layout_mode = 0
 offset_left = 172.0
-offset_top = 1818.0
+offset_top = 1852.0
 offset_right = 224.0
-offset_bottom = 1849.0
+offset_bottom = 1883.0
 color = Color(0.41, 0.41, 0.41, 1)
 
 [node name="ClearBoardButton" type="Button" parent="." unique_id=71584107]
