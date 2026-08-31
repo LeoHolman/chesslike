@@ -433,15 +433,16 @@ func _build_board() -> void:
 	_draw_highlights()
 	_draw_pieces()
 	_draw_drop_piece_drag_preview()
-	var next_hud_position = _draw_turn_indicator()
+	_draw_turn_indicator()
+	_draw_status_feedback_banner()
 	if piece_dropping_enabled:
 		_draw_drop_pool_panels()
 	else:
 		_draw_captured_pieces_panels()
-	_draw_move_history_panel(next_hud_position)
+	_draw_move_history_panel()
 	_draw_game_over_banner()
 
-func _draw_turn_indicator() -> Vector2:
+func _draw_turn_indicator() -> void:
 	var font_size = _hud_font_size(0.22, 13, 24)
 	var swatch_size = clampf(tile_size * 0.24, 14.0, 24.0)
 	var indicator_position = Vector2(
@@ -480,17 +481,61 @@ func _draw_turn_indicator() -> Vector2:
 	turn_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(turn_label)
 
-	if status_message != "" and not game_over:
-		var status_label = Label.new()
-		status_label.text = status_message
-		status_label.position = indicator_position + Vector2(TURN_INDICATOR_PADDING, indicator_size.y + 2.0)
-		status_label.add_theme_font_size_override("font_size", _hud_font_size(0.15, 11, 16))
-		status_label.add_theme_color_override("font_color", Color(0.25, 0.08, 0.08))
-		status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		add_child(status_label)
-		return indicator_position + Vector2(0.0, indicator_size.y + 24.0 + HUD_PANEL_SPACING)
+func _draw_status_feedback_banner() -> void:
+	if status_message == "" or game_over:
+		return
 
-	return indicator_position + Vector2(0.0, indicator_size.y + HUD_PANEL_SPACING)
+	var viewport_size = get_viewport_rect().size
+	var panel_width = clampf(viewport_size.x * 0.42, 240.0, 520.0)
+	var panel_height = clampf(viewport_size.y * 0.075, 42.0, 76.0)
+	var panel_position = Vector2(
+		(viewport_size.x - panel_width) * 0.5,
+		TURN_INDICATOR_PADDING
+	)
+	var banner_style = _status_feedback_style(status_message)
+
+	var background = ColorRect.new()
+	background.position = panel_position
+	background.size = Vector2(panel_width, panel_height)
+	background.color = banner_style.get("background", Color(0.22, 0.08, 0.08, 0.9))
+	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(background)
+
+	add_child(_create_colored_border(panel_position, Vector2(panel_width, panel_height), banner_style.get("border", Color(1.0, 0.82, 0.64, 1.0))))
+
+	var feedback_label = Label.new()
+	feedback_label.position = panel_position + Vector2(10.0, 4.0)
+	feedback_label.size = Vector2(panel_width - 20.0, panel_height - 8.0)
+	feedback_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	feedback_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	feedback_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	feedback_label.text = status_message
+	feedback_label.add_theme_font_size_override("font_size", _hud_font_size(0.2, 15, 26))
+	feedback_label.add_theme_color_override("font_color", banner_style.get("text", Color(1.0, 0.96, 0.9, 1.0)))
+	feedback_label.add_theme_constant_override("outline_size", 2)
+	feedback_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 1.0))
+	feedback_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(feedback_label)
+
+func _status_feedback_style(message: String) -> Dictionary:
+	var lower_message = message.to_lower()
+	if lower_message.find("check") != -1:
+		return {
+			"background": Color(0.42, 0.12, 0.08, 0.92),
+			"border": Color(1.0, 0.78, 0.44, 1.0),
+			"text": Color(1.0, 0.95, 0.84, 1.0)
+		}
+	if lower_message.find("limit") != -1 or lower_message.find("blocked") != -1:
+		return {
+			"background": Color(0.46, 0.08, 0.08, 0.92),
+			"border": Color(1.0, 0.62, 0.62, 1.0),
+			"text": Color(1.0, 0.9, 0.9, 1.0)
+		}
+	return {
+		"background": Color(0.08, 0.2, 0.36, 0.9),
+		"border": Color(0.66, 0.84, 1.0, 1.0),
+		"text": Color(0.92, 0.97, 1.0, 1.0)
+	}
 
 
 func _draw_captured_pieces_panels() -> void:
@@ -643,7 +688,7 @@ func _get_legal_drop_squares(piece_id: String, owner: String) -> Array[Vector2i]
 				valid_squares.append(square)
 	return valid_squares
 
-func _draw_move_history_panel(panel_position: Vector2) -> void:
+func _draw_move_history_panel() -> void:
 	var recent_moves: Array[String] = []
 	if move_history.is_empty():
 		recent_moves.append("No moves yet")
@@ -662,6 +707,10 @@ func _draw_move_history_panel(panel_position: Vector2) -> void:
 	if _is_tiny_board():
 		panel_width = clampf(panel_width, 168.0, min(viewport_size.x * 0.30, 240.0))
 		panel_height = clampf(panel_height, 88.0, min(viewport_size.y * 0.26, 150.0))
+	var panel_position = Vector2(
+		viewport_size.x - panel_width - TURN_INDICATOR_PADDING,
+		TURN_INDICATOR_PADDING
+	)
 	_draw_hud_panel(
 		panel_position,
 		Vector2(panel_width, panel_height),
@@ -751,9 +800,11 @@ func _hud_side_reserve_width(viewport_size: Vector2) -> float:
 	return clampf(max(base_reserve, viewport_size.x * 0.18), 160.0, 240.0)
 
 func _hud_top_reserve_height(viewport_size: Vector2) -> float:
-	if board_width > 4 and board_height > 4:
-		return viewport_size.y * BOARD_MARGIN_RATIO
-	return clampf(max(74.0, viewport_size.y * 0.12), 68.0, 130.0)
+	var baseline_reserve = viewport_size.y * BOARD_MARGIN_RATIO
+	if board_width <= 4 or board_height <= 4:
+		baseline_reserve = clampf(max(74.0, viewport_size.y * 0.12), 68.0, 130.0)
+	var banner_reserve = clampf(max(88.0, viewport_size.y * 0.12), 88.0, 150.0)
+	return max(baseline_reserve, banner_reserve)
 
 func _hud_bottom_reserve_height(viewport_size: Vector2) -> float:
 	if board_width > 4 and board_height > 4:
