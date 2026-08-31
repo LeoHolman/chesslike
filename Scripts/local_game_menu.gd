@@ -22,6 +22,7 @@ const PREVIEW_SELECTION_HIGHLIGHT = Color(0.2, 0.6, 1.0, 0.28)
 const PREVIEW_GHOST_TINT = Color(1.0, 1.0, 1.0, 0.45)
 const PREVIEW_DROP_POOL_BACKGROUND = Color(0.12, 0.14, 0.18, 0.8)
 const PREVIEW_DROP_POOL_BORDER = Color(0.82, 0.85, 0.92, 0.95)
+const PREVIEW_DROP_POOL_HOVER_BACKGROUND = Color(0.24, 0.34, 0.48, 0.9)
 const PRESETS = {
 	"Standard Chess": "standard_chess",
 	"Standard Shogi": "standard_shogi"
@@ -47,13 +48,23 @@ var preview_drop_pools = {
 }
 var preview_white_drop_pool_rect = Rect2()
 var preview_black_drop_pool_rect = Rect2()
+var preview_drop_pool_entry_rects = {
+	"white": [],
+	"black": []
+}
 var dragging_preview_piece = false
 var drag_piece_origin_square = INVALID_SQUARE
+var dragging_piece_bank_piece = false
+var piece_bank_drag_piece_id = ""
+var piece_bank_drag_piece_color = "white"
+var piece_bank_drag_preview_position = Vector2.ZERO
+var preview_drop_pool_hover_owner = ""
 
 func _ready() -> void:
 	width_spin_box.value_changed.connect(_refresh_preview)
 	height_spin_box.value_changed.connect(_refresh_preview)
 	board_preview.gui_input.connect(_on_board_preview_gui_input)
+	piece_bank_list.gui_input.connect(_on_piece_bank_gui_input)
 	board_preview.resized.connect(_refresh_preview)
 	board_preview.mouse_exited.connect(_on_board_preview_mouse_exited)
 	preset_list.item_selected.connect(_on_preset_item_selected)
@@ -406,6 +417,7 @@ func _refresh_preview(_value: float = 0.0) -> void:
 	_draw_preview_selection()
 	_draw_preview_pieces()
 	_draw_preview_ghost()
+	_draw_piece_bank_drag_preview()
 	_draw_preview_drop_pools(board_pixel_size)
 	_update_castling_rule_availability()
 
@@ -428,6 +440,8 @@ func _draw_preview_pieces() -> void:
 func _draw_preview_ghost() -> void:
 	if hover_preview_square == INVALID_SQUARE or selected_piece_id == "":
 		return
+	if dragging_piece_bank_piece:
+		return
 	if preview_pieces.has(hover_preview_square):
 		return
 
@@ -438,9 +452,25 @@ func _draw_preview_ghost() -> void:
 	)
 	board_preview.add_child(ghost_piece)
 
+func _draw_piece_bank_drag_preview() -> void:
+	if not dragging_piece_bank_piece:
+		return
+	if not Rect2(Vector2.ZERO, board_preview.size).has_point(piece_bank_drag_preview_position):
+		return
+
+	var drag_piece = _create_preview_piece_node(
+		Vector2i.ZERO,
+		{"piece_id": piece_bank_drag_piece_id, "color": piece_bank_drag_piece_color},
+		PREVIEW_GHOST_TINT
+	)
+	drag_piece.position = piece_bank_drag_preview_position - Vector2(preview_tile_size * 0.5, preview_tile_size * 0.5)
+	board_preview.add_child(drag_piece)
+
 func _draw_preview_drop_pools(board_pixel_size: Vector2) -> void:
 	preview_white_drop_pool_rect = Rect2()
 	preview_black_drop_pool_rect = Rect2()
+	preview_drop_pool_entry_rects["white"] = []
+	preview_drop_pool_entry_rects["black"] = []
 	if not piece_dropping_check_box.button_pressed:
 		return
 
@@ -458,7 +488,7 @@ func _draw_single_preview_drop_pool(pool_rect: Rect2, title: String, pool_owner:
 	var background = ColorRect.new()
 	background.position = pool_rect.position
 	background.size = pool_rect.size
-	background.color = PREVIEW_DROP_POOL_BACKGROUND
+	background.color = PREVIEW_DROP_POOL_HOVER_BACKGROUND if preview_drop_pool_hover_owner == pool_owner else PREVIEW_DROP_POOL_BACKGROUND
 	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	board_preview.add_child(background)
 
@@ -485,21 +515,43 @@ func _draw_single_preview_drop_pool(pool_rect: Rect2, title: String, pool_owner:
 	title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	board_preview.add_child(title_label)
 
-	var body = Label.new()
-	body.position = pool_rect.position + Vector2(8.0, 30.0)
-	body.size = Vector2(pool_rect.size.x - 12.0, pool_rect.size.y - 36.0)
-	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.text = _format_preview_drop_pool_contents(pool_owner)
-	body.add_theme_font_size_override("font_size", 14)
-	body.add_theme_color_override("font_color", Color(0.96, 0.97, 1.0, 1.0))
-	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	board_preview.add_child(body)
+	var entries: Array = _get_preview_drop_pool_display_entries(pool_owner)
+	var entry_rects: Array = []
+	var content_x = pool_rect.position.x + 8.0
+	var current_y = pool_rect.position.y + 30.0
+	var row_height = max(preview_tile_size * 0.5, 20.0)
+	var content_width = pool_rect.size.x - 12.0
+	if entries.is_empty():
+		var empty_label = Label.new()
+		empty_label.position = Vector2(content_x, current_y)
+		empty_label.size = Vector2(content_width, row_height)
+		empty_label.text = "(empty)"
+		empty_label.add_theme_font_size_override("font_size", 14)
+		empty_label.add_theme_color_override("font_color", Color(0.96, 0.97, 1.0, 1.0))
+		empty_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		board_preview.add_child(empty_label)
+		preview_drop_pool_entry_rects[pool_owner] = entry_rects
+		return
 
-func _format_preview_drop_pool_contents(pool_owner: String) -> String:
+	for entry in entries:
+		var piece_id = str(entry.get("piece_id", ""))
+		var count = int(entry.get("count", 0))
+		var row_rect = Rect2(Vector2(content_x, current_y), Vector2(content_width, row_height))
+		var row_label = Label.new()
+		row_label.position = row_rect.position
+		row_label.size = row_rect.size
+		row_label.text = "%s x%d" % [_get_piece_symbol(piece_id), count]
+		row_label.add_theme_font_size_override("font_size", 14)
+		row_label.add_theme_color_override("font_color", Color(0.96, 0.97, 1.0, 1.0))
+		row_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		board_preview.add_child(row_label)
+		entry_rects.append({"piece_id": piece_id, "rect": row_rect})
+		current_y += row_height + 2.0
+
+	preview_drop_pool_entry_rects[pool_owner] = entry_rects
+
+func _get_preview_drop_pool_display_entries(pool_owner: String) -> Array[Dictionary]:
 	var pool_contents: Array = preview_drop_pools.get(pool_owner, [])
-	if pool_contents.is_empty():
-		return "(empty)"
-
 	var count_by_piece = {}
 	for piece_id in pool_contents:
 		var key = str(piece_id)
@@ -507,10 +559,13 @@ func _format_preview_drop_pool_contents(pool_owner: String) -> String:
 
 	var keys = count_by_piece.keys()
 	keys.sort()
-	var parts: Array[String] = []
+	var entries: Array[Dictionary] = []
 	for key in keys:
-		parts.append("%s x%d" % [_get_piece_symbol(str(key)), int(count_by_piece[key])])
-	return "\n".join(parts)
+		entries.append({
+			"piece_id": str(key),
+			"count": int(count_by_piece[key])
+		})
+	return entries
 
 func _create_preview_piece_node(square: Vector2i, piece_data: Dictionary, tint: Color = Color(1.0, 1.0, 1.0, 1.0)) -> Control:
 	var piece_root = Control.new()
@@ -544,6 +599,13 @@ func _piece_outline_color(piece_color: String) -> Color:
 	return Color(1.0, 1.0, 1.0, 1.0)
 
 func _on_board_preview_gui_input(event: InputEvent) -> void:
+	if dragging_piece_bank_piece:
+		if event is InputEventMouseMotion:
+			piece_bank_drag_preview_position = event.position
+			preview_drop_pool_hover_owner = _preview_drop_pool_side_at_position(event.position)
+			_refresh_preview()
+		return
+
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
@@ -574,6 +636,8 @@ func _on_board_preview_gui_input(event: InputEvent) -> void:
 
 		if event.button_index == MOUSE_BUTTON_RIGHT:
 			if event.pressed:
+				if _try_remove_preview_drop_pool_piece(event.position):
+					return
 				is_right_dragging = true
 				is_left_dragging = false
 				drag_changed_any = false
@@ -588,12 +652,87 @@ func _on_board_preview_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		_update_hover_square(event.position)
 		if event.button_mask & MOUSE_BUTTON_MASK_LEFT:
+			if dragging_preview_piece:
+				preview_drop_pool_hover_owner = _preview_drop_pool_side_at_position(event.position)
+				_refresh_preview()
+				return
 			if not dragging_preview_piece:
 				_apply_drag_action(event.position, true)
 		elif event.button_mask & MOUSE_BUTTON_MASK_RIGHT:
 			_apply_drag_action(event.position, false)
 		else:
+			preview_drop_pool_hover_owner = ""
 			_refresh_preview()
+
+func _try_remove_preview_drop_pool_piece(position: Vector2) -> bool:
+	var pool_owner = _preview_drop_pool_side_at_position(position)
+	if pool_owner == "":
+		return false
+	var entry = _get_preview_drop_pool_entry_at_position(pool_owner, position)
+	if entry.is_empty():
+		return true
+	var piece_id = str(entry.get("piece_id", ""))
+	var pool_contents: Array = preview_drop_pools.get(pool_owner, [])
+	var remove_index = pool_contents.find(piece_id)
+	if remove_index == -1:
+		return true
+	pool_contents.remove_at(remove_index)
+	preview_drop_pools[pool_owner] = pool_contents
+	_refresh_preview()
+	return true
+
+func _get_preview_drop_pool_entry_at_position(pool_owner: String, position: Vector2) -> Dictionary:
+	var entries: Array = preview_drop_pool_entry_rects.get(pool_owner, [])
+	for entry in entries:
+		if entry is Dictionary and Rect2(entry.get("rect", Rect2())).has_point(position):
+			return entry
+	return {}
+
+func _on_piece_bank_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			var game_manager = $"/root/GameManager"
+			var selected_index = piece_bank_list.get_item_at_position(event.position, true)
+			if selected_index < 0 or selected_index >= game_manager.PieceBank.size():
+				return
+			piece_bank_list.select(selected_index)
+			selected_piece_id = str(game_manager.PieceBank[selected_index])
+			dragging_piece_bank_piece = true
+			piece_bank_drag_piece_id = str(game_manager.PieceBank[selected_index])
+			piece_bank_drag_piece_color = selected_piece_color
+			piece_bank_drag_preview_position = board_preview.get_local_mouse_position()
+			preview_drop_pool_hover_owner = _preview_drop_pool_side_at_position(piece_bank_drag_preview_position)
+			_refresh_preview()
+		else:
+			_try_commit_piece_bank_drop()
+
+func _input(event: InputEvent) -> void:
+	if not dragging_piece_bank_piece:
+		return
+	if event is InputEventMouseMotion:
+		piece_bank_drag_preview_position = board_preview.get_local_mouse_position()
+		preview_drop_pool_hover_owner = _preview_drop_pool_side_at_position(piece_bank_drag_preview_position)
+		_refresh_preview()
+		return
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+		_try_commit_piece_bank_drop()
+
+func _try_commit_piece_bank_drop() -> void:
+	if not dragging_piece_bank_piece:
+		return
+	var mouse_position = board_preview.get_local_mouse_position()
+	var target_pool = _preview_drop_pool_side_at_position(mouse_position)
+	if target_pool != "":
+		_add_piece_to_preview_drop_pool(target_pool, piece_bank_drag_piece_id)
+	_clear_piece_bank_drag_state()
+	_refresh_preview()
+
+func _clear_piece_bank_drag_state() -> void:
+	dragging_piece_bank_piece = false
+	piece_bank_drag_piece_id = ""
+	piece_bank_drag_piece_color = selected_piece_color
+	piece_bank_drag_preview_position = Vector2.ZERO
+	preview_drop_pool_hover_owner = ""
 
 func _try_drop_dragged_piece_to_pool(position: Vector2) -> bool:
 	if drag_piece_origin_square == INVALID_SQUARE:
@@ -611,6 +750,7 @@ func _try_drop_dragged_piece_to_pool(position: Vector2) -> bool:
 	preview_pieces.erase(drag_piece_origin_square)
 	selected_preview_square = INVALID_SQUARE
 	_add_piece_to_preview_drop_pool(target_pool, str(piece_data.get("piece_id", "")))
+	preview_drop_pool_hover_owner = ""
 	_refresh_preview()
 	return true
 
@@ -630,6 +770,9 @@ func _add_piece_to_preview_drop_pool(pool_owner: String, piece_id: String) -> vo
 
 func _on_board_preview_mouse_exited() -> void:
 	hover_preview_square = INVALID_SQUARE
+	if dragging_piece_bank_piece:
+		piece_bank_drag_preview_position = Vector2(-1.0, -1.0)
+	preview_drop_pool_hover_owner = ""
 	if not is_left_dragging and not is_right_dragging:
 		_refresh_preview()
 

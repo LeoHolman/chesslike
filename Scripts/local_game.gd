@@ -11,6 +11,7 @@ const TURN_INDICATOR_PADDING = 12.0
 const TURN_INDICATOR_BACKGROUND = Color(0.95, 0.93, 0.86, 0.94)
 const TURN_INDICATOR_BORDER = Color(0.2, 0.2, 0.2, 1.0)
 const DROP_POOL_PANEL_BACKGROUND = Color(0.2, 0.23, 0.3, 0.92)
+const DROP_POOL_PANEL_HOVER_BACKGROUND = Color(0.3, 0.38, 0.52, 0.96)
 const DROP_POOL_PANEL_BORDER = Color(0.9, 0.92, 0.98, 1.0)
 const HUD_PANEL_SPACING = 12.0
 const FILE_NAMES = "abcdefghijklmnopqrstuvwxyz"
@@ -52,12 +53,20 @@ var drop_pools = {
 }
 var selected_drop_piece_id = ""
 var selected_drop_piece_owner = ""
+var legal_drop_squares: Array[Vector2i] = []
 var drop_pool_selection_index = {
 	"white": 0,
 	"black": 0
 }
 var white_drop_pool_panel_rect = Rect2()
 var black_drop_pool_panel_rect = Rect2()
+var drop_pool_entry_rects = {
+	"white": [],
+	"black": []
+}
+var drop_piece_drag_active = false
+var drop_piece_drag_position = Vector2.ZERO
+var drop_pool_hover_owner = ""
 
 func _ready() -> void:
 	get_viewport().size_changed.connect(_on_viewport_resized)
@@ -68,8 +77,33 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if promotion_pending:
 		return
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-		_handle_board_click(event.position)
+	if event is InputEventMouseMotion and drop_piece_drag_active:
+		drop_piece_drag_position = event.position
+		drop_pool_hover_owner = _drop_pool_side_at_position(event.position)
+		_build_board()
+		return
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			_handle_pointer_press(event.position)
+		else:
+			_handle_pointer_release(event.position)
+
+func _handle_pointer_press(mouse_position: Vector2) -> void:
+	if piece_dropping_enabled and _try_begin_drop_pool_drag(mouse_position):
+		return
+	_handle_board_click(mouse_position)
+
+func _handle_pointer_release(mouse_position: Vector2) -> void:
+	if not drop_piece_drag_active:
+		return
+	drop_piece_drag_position = mouse_position
+	drop_pool_hover_owner = _drop_pool_side_at_position(mouse_position)
+	var square = _screen_to_square(mouse_position)
+	if square != INVALID_SQUARE and _try_drop_piece_from_pool(square):
+		_finalize_turn_after_move()
+	else:
+		_clear_drop_piece_selection()
+		_build_board()
 
 func _on_viewport_resized() -> void:
 	_layout_promotion_picker()
@@ -261,6 +295,8 @@ func _initialize_board_state() -> void:
 	drop_pools = _get_starting_drop_pools()
 	selected_drop_piece_id = ""
 	selected_drop_piece_owner = ""
+	legal_drop_squares.clear()
+	drop_pool_hover_owner = ""
 	drop_pool_selection_index["white"] = 0
 	drop_pool_selection_index["black"] = 0
 	pieces.clear()
@@ -328,6 +364,8 @@ func _build_board() -> void:
 		child.queue_free()
 	white_drop_pool_panel_rect = Rect2()
 	black_drop_pool_panel_rect = Rect2()
+	drop_pool_entry_rects["white"] = []
+	drop_pool_entry_rects["black"] = []
 
 	board_height = _get_dimension($"/root/GameManager".BoardHeight, board_height)
 	board_width = _get_dimension($"/root/GameManager".BoardWidth, board_width)
@@ -356,6 +394,7 @@ func _build_board() -> void:
 
 	_draw_highlights()
 	_draw_pieces()
+	_draw_drop_piece_drag_preview()
 	var next_hud_position = _draw_turn_indicator()
 	if piece_dropping_enabled:
 		_draw_drop_pool_panels()
@@ -379,6 +418,7 @@ func _draw_turn_indicator() -> Vector2:
 	background.position = indicator_position
 	background.size = indicator_size
 	background.color = TURN_INDICATOR_BACKGROUND
+	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(background)
 
 	var border = _create_indicator_border(indicator_position, indicator_size)
@@ -398,6 +438,7 @@ func _draw_turn_indicator() -> Vector2:
 	turn_label.position = indicator_position + Vector2(TURN_INDICATOR_PADDING + swatch_size + 10.0, (indicator_size.y - font_size) / 2.0 - 2.0)
 	turn_label.add_theme_font_size_override("font_size", font_size)
 	turn_label.add_theme_color_override("font_color", Color(0.1, 0.1, 0.1))
+	turn_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(turn_label)
 
 	if status_message != "":
@@ -406,6 +447,7 @@ func _draw_turn_indicator() -> Vector2:
 		status_label.position = indicator_position + Vector2(TURN_INDICATOR_PADDING, indicator_size.y + 2.0)
 		status_label.add_theme_font_size_override("font_size", int(max(tile_size * 0.18, 15.0)))
 		status_label.add_theme_color_override("font_color", Color(0.25, 0.08, 0.08))
+		status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		add_child(status_label)
 		return indicator_position + Vector2(0.0, indicator_size.y + 24.0 + HUD_PANEL_SPACING)
 
@@ -445,7 +487,8 @@ func _draw_drop_pool_panel(panel_position: Vector2, panel_size: Vector2, title: 
 	var background = ColorRect.new()
 	background.position = panel_position
 	background.size = panel_size
-	background.color = DROP_POOL_PANEL_BACKGROUND
+	background.color = DROP_POOL_PANEL_HOVER_BACKGROUND if drop_pool_hover_owner == owner else DROP_POOL_PANEL_BACKGROUND
+	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(background)
 
 	add_child(_create_colored_border(panel_position, panel_size, DROP_POOL_PANEL_BORDER))
@@ -455,16 +498,71 @@ func _draw_drop_pool_panel(panel_position: Vector2, panel_size: Vector2, title: 
 	title_label.text = title
 	title_label.add_theme_font_size_override("font_size", int(max(tile_size * 0.18, 15.0)))
 	title_label.add_theme_color_override("font_color", Color(0.95, 0.97, 1.0, 1.0))
+	title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(title_label)
 
-	var body_label = Label.new()
-	body_label.position = panel_position + Vector2(TURN_INDICATOR_PADDING, TURN_INDICATOR_PADDING + 22.0)
-	body_label.size = panel_size - Vector2(TURN_INDICATOR_PADDING * 2.0, TURN_INDICATOR_PADDING * 2.0 + 18.0)
-	body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body_label.text = _format_drop_pool_list(owner)
-	body_label.add_theme_font_size_override("font_size", int(max(tile_size * 0.16, 14.0)))
-	body_label.add_theme_color_override("font_color", Color(0.94, 0.96, 1.0, 1.0))
-	add_child(body_label)
+	var entry_rects: Array = []
+	var row_height = max(tile_size * 0.34, 22.0)
+	var content_x = panel_position.x + TURN_INDICATOR_PADDING
+	var content_width = panel_size.x - TURN_INDICATOR_PADDING * 2.0
+	var current_y = panel_position.y + TURN_INDICATOR_PADDING + 22.0
+	var entries = _get_drop_pool_display_entries(owner)
+
+	if entries.is_empty():
+		var empty_label = Label.new()
+		empty_label.position = Vector2(content_x, current_y)
+		empty_label.size = Vector2(content_width, row_height * 2.0)
+		empty_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		empty_label.text = "(empty)"
+		if owner == current_turn:
+			empty_label.text = "(empty)\nDrag from this pool to board"
+		empty_label.add_theme_font_size_override("font_size", int(max(tile_size * 0.16, 14.0)))
+		empty_label.add_theme_color_override("font_color", Color(0.94, 0.96, 1.0, 1.0))
+		empty_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(empty_label)
+		drop_pool_entry_rects[owner] = entry_rects
+		return
+
+	for entry in entries:
+		var piece_id = str(entry.get("piece_id", ""))
+		var count = int(entry.get("count", 0))
+		var row_rect = Rect2(Vector2(content_x, current_y), Vector2(content_width, row_height))
+		var selected = owner == selected_drop_piece_owner and piece_id == selected_drop_piece_id
+
+		if selected:
+			var row_background = ColorRect.new()
+			row_background.position = row_rect.position
+			row_background.size = row_rect.size
+			row_background.color = Color(0.32, 0.42, 0.56, 0.72)
+			row_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			add_child(row_background)
+
+		var row_label = Label.new()
+		row_label.position = row_rect.position + Vector2(4.0, 1.0)
+		row_label.size = row_rect.size - Vector2(4.0, 0.0)
+		row_label.text = "%s x%d" % [_get_piece_symbol(piece_id), count]
+		row_label.add_theme_font_size_override("font_size", int(max(tile_size * 0.16, 14.0)))
+		row_label.add_theme_color_override("font_color", Color(0.94, 0.96, 1.0, 1.0))
+		row_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(row_label)
+
+		entry_rects.append({
+			"piece_id": piece_id,
+			"rect": row_rect
+		})
+		current_y += row_height + 4.0
+
+	if owner == current_turn:
+		var helper_label = Label.new()
+		helper_label.position = Vector2(content_x, min(current_y + 2.0, panel_position.y + panel_size.y - row_height))
+		helper_label.size = Vector2(content_width, row_height)
+		helper_label.text = "Drag from pool to board"
+		helper_label.add_theme_font_size_override("font_size", int(max(tile_size * 0.13, 12.0)))
+		helper_label.add_theme_color_override("font_color", Color(0.8, 0.85, 0.94, 1.0))
+		helper_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(helper_label)
+
+	drop_pool_entry_rects[owner] = entry_rects
 
 func _create_colored_border(position: Vector2, size: Vector2, border_color: Color) -> Line2D:
 	var border = Line2D.new()
@@ -480,13 +578,8 @@ func _create_colored_border(position: Vector2, size: Vector2, border_color: Colo
 	])
 	return border
 
-func _format_drop_pool_list(owner: String) -> String:
+func _get_drop_pool_display_entries(owner: String) -> Array[Dictionary]:
 	var pool_contents: Array = drop_pools.get(owner, [])
-	if pool_contents.is_empty():
-		if owner == current_turn:
-			return "(empty)\nClick to select a drop piece"
-		return "(empty)"
-
 	var count_by_piece = {}
 	for piece_id in pool_contents:
 		var key = str(piece_id)
@@ -494,16 +587,22 @@ func _format_drop_pool_list(owner: String) -> String:
 
 	var keys = count_by_piece.keys()
 	keys.sort()
-	var lines: Array[String] = []
+	var entries: Array[Dictionary] = []
 	for key in keys:
-		var prefix = ""
-		if owner == selected_drop_piece_owner and str(key) == selected_drop_piece_id:
-			prefix = "> "
-		lines.append("%s%s x%d" % [prefix, _get_piece_symbol(str(key)), int(count_by_piece[key])])
+		entries.append({
+			"piece_id": str(key),
+			"count": int(count_by_piece[key])
+		})
+	return entries
 
-	if owner == current_turn:
-		lines.append("Click pool to cycle select")
-	return "\n".join(lines)
+func _get_legal_drop_squares(piece_id: String, owner: String) -> Array[Vector2i]:
+	var valid_squares: Array[Vector2i] = []
+	for y in board_height:
+		for x in board_width:
+			var square = Vector2i(x, y)
+			if _is_legal_drop_piece_from_pool(piece_id, owner, square):
+				valid_squares.append(square)
+	return valid_squares
 
 func _draw_move_history_panel(panel_position: Vector2) -> void:
 	var recent_moves: Array[String] = []
@@ -578,6 +677,9 @@ func _turn_color_swatch(color: String) -> Color:
 	return Color(0.7, 0.7, 0.7, 1.0)
 
 func _draw_highlights() -> void:
+	for square in legal_drop_squares:
+		add_child(_create_square_overlay(square, LEGAL_MOVE_HIGHLIGHT))
+
 	if selected_square != INVALID_SQUARE:
 		add_child(_create_square_overlay(selected_square, SELECTED_HIGHLIGHT))
 
@@ -604,6 +706,17 @@ func _draw_pieces() -> void:
 		piece_node.position = board_origin + Vector2(square.x * tile_size, square.y * tile_size)
 		add_child(piece_node)
 
+func _draw_drop_piece_drag_preview() -> void:
+	if not drop_piece_drag_active or selected_drop_piece_id == "":
+		return
+	var preview_piece = _create_piece_node({
+		"piece_id": selected_drop_piece_id,
+		"color": selected_drop_piece_owner
+	})
+	preview_piece.modulate = Color(1.0, 1.0, 1.0, 0.72)
+	preview_piece.position = drop_piece_drag_position - Vector2(tile_size * 0.5, tile_size * 0.5)
+	add_child(preview_piece)
+
 func _create_piece_node(piece_data: Dictionary) -> Node2D:
 	var piece_root = Node2D.new()
 
@@ -617,6 +730,7 @@ func _create_piece_node(piece_data: Dictionary) -> Node2D:
 	label.add_theme_constant_override("outline_size", max(int(tile_size * 0.06), 2))
 	label.add_theme_color_override("font_color", _piece_fill_color(piece_data.get("color", "white")))
 	label.add_theme_color_override("font_outline_color", _piece_outline_color(piece_data.get("color", "white")))
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	piece_root.add_child(label)
 
 	return piece_root
@@ -710,21 +824,11 @@ func _get_piece_symbol(piece_id: String) -> String:
 func _handle_board_click(mouse_position: Vector2) -> void:
 	if game_over:
 		return
-	if piece_dropping_enabled and _handle_drop_pool_click(mouse_position):
-		return
 
 	var square = _screen_to_square(mouse_position)
 	if square == INVALID_SQUARE:
 		_clear_selection()
 		_clear_drop_piece_selection()
-		return
-
-	if selected_drop_piece_id != "":
-		if _try_drop_piece_from_pool(square):
-			_finalize_turn_after_move()
-		else:
-			_clear_drop_piece_selection()
-			_build_board()
 		return
 
 	if selected_square == INVALID_SQUARE:
@@ -746,42 +850,49 @@ func _handle_board_click(mouse_position: Vector2) -> void:
 	else:
 		_clear_selection()
 
-func _handle_drop_pool_click(mouse_position: Vector2) -> bool:
+func _try_begin_drop_pool_drag(mouse_position: Vector2) -> bool:
 	if not piece_dropping_enabled:
 		return false
-	var owner = ""
-	if white_drop_pool_panel_rect.has_point(mouse_position):
-		owner = "white"
-	elif black_drop_pool_panel_rect.has_point(mouse_position):
-		owner = "black"
+	var owner = _drop_pool_side_at_position(mouse_position)
 	if owner == "":
 		return false
 
 	if owner != current_turn:
 		return true
-
-	var pool_contents: Array = drop_pools.get(owner, [])
-	if pool_contents.is_empty():
+	var selected_entry = _get_drop_pool_entry_at_position(owner, mouse_position)
+	if selected_entry.is_empty():
 		return true
-
-	var next_index = int(drop_pool_selection_index.get(owner, 0))
-	if selected_drop_piece_owner == owner and selected_drop_piece_id != "":
-		next_index += 1
-	next_index = posmod(next_index, pool_contents.size())
-	drop_pool_selection_index[owner] = next_index
 	selected_drop_piece_owner = owner
-	selected_drop_piece_id = str(pool_contents[next_index])
+	selected_drop_piece_id = str(selected_entry.get("piece_id", ""))
+	legal_drop_squares = _get_legal_drop_squares(selected_drop_piece_id, owner)
+	drop_piece_drag_active = true
+	drop_piece_drag_position = mouse_position
+	drop_pool_hover_owner = owner
 	selected_square = INVALID_SQUARE
 	legal_moves.clear()
 	_build_board()
 	return true
+
+func _drop_pool_side_at_position(mouse_position: Vector2) -> String:
+	if white_drop_pool_panel_rect.has_point(mouse_position):
+		return "white"
+	if black_drop_pool_panel_rect.has_point(mouse_position):
+		return "black"
+	return ""
+
+func _get_drop_pool_entry_at_position(owner: String, mouse_position: Vector2) -> Dictionary:
+	var entries: Array = drop_pool_entry_rects.get(owner, [])
+	for entry in entries:
+		if entry is Dictionary and Rect2(entry.get("rect", Rect2())).has_point(mouse_position):
+			return entry
+	return {}
 
 func _try_drop_piece_from_pool(target_square: Vector2i) -> bool:
 	if not piece_dropping_enabled:
 		return false
 	if selected_drop_piece_id == "" or selected_drop_piece_owner != current_turn:
 		return false
-	if pieces.has(target_square):
+	if not _is_legal_drop_piece_from_pool(selected_drop_piece_id, current_turn, target_square):
 		return false
 
 	var pool_contents: Array = drop_pools.get(current_turn, [])
@@ -800,9 +911,27 @@ func _try_drop_piece_from_pool(target_square: Vector2i) -> bool:
 	_clear_drop_piece_selection()
 	return true
 
+func _is_legal_drop_piece_from_pool(piece_id: String, owner: String, target_square: Vector2i) -> bool:
+	if target_square == INVALID_SQUARE:
+		return false
+	if pieces.has(target_square):
+		return false
+	if owner == "" or piece_id == "":
+		return false
+	var simulated_board = pieces.duplicate(true)
+	simulated_board[target_square] = {
+		"piece_id": piece_id,
+		"color": owner,
+		"has_moved": false
+	}
+	return not _is_king_in_check(owner, simulated_board)
+
 func _clear_drop_piece_selection() -> void:
 	selected_drop_piece_id = ""
 	selected_drop_piece_owner = ""
+	legal_drop_squares.clear()
+	drop_piece_drag_active = false
+	drop_pool_hover_owner = ""
 
 func _select_square(square: Vector2i) -> void:
 	selected_square = square
@@ -868,6 +997,7 @@ func _finalize_turn_after_move() -> void:
 	current_turn = _opponent_color(current_turn)
 	selected_square = INVALID_SQUARE
 	legal_moves.clear()
+	legal_drop_squares.clear()
 	_update_game_state(true)
 	_build_board()
 
@@ -1104,10 +1234,11 @@ func _has_any_legal_moves(piece_color: String) -> bool:
 	if piece_dropping_enabled:
 		var pool_contents: Array = drop_pools.get(piece_color, [])
 		if not pool_contents.is_empty():
-			for y in board_height:
-				for x in board_width:
-					if not pieces.has(Vector2i(x, y)):
-						return true
+			for piece_id in pool_contents:
+				for y in board_height:
+					for x in board_width:
+						if _is_legal_drop_piece_from_pool(str(piece_id), piece_color, Vector2i(x, y)):
+							return true
 	return false
 
 func _update_game_state(record_history: bool) -> void:
