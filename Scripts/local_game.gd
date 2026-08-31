@@ -1141,9 +1141,25 @@ func _draw_highlights() -> void:
 		if square != selected_square:
 			add_child(_create_square_overlay(square, LEGAL_MOVE_HIGHLIGHT))
 
+func _is_board_view_flipped() -> bool:
+	return online_mode and local_player_side == "black"
+
+func _board_square_to_view_square(square: Vector2i) -> Vector2i:
+	if not _is_board_view_flipped():
+		return square
+	return Vector2i(board_width - 1 - square.x, board_height - 1 - square.y)
+
+func _view_square_to_board_square(square: Vector2i) -> Vector2i:
+	# 180-degree rotation is its own inverse transform.
+	return _board_square_to_view_square(square)
+
+func _board_square_to_screen_position(square: Vector2i) -> Vector2:
+	var view_square = _board_square_to_view_square(square)
+	return board_origin + Vector2(view_square.x * tile_size, view_square.y * tile_size)
+
 func _create_square_overlay(square: Vector2i, color: Color) -> Polygon2D:
 	var overlay = Polygon2D.new()
-	overlay.position = board_origin + Vector2(square.x * tile_size, square.y * tile_size)
+	overlay.position = _board_square_to_screen_position(square)
 	overlay.color = color
 	overlay.polygon = PackedVector2Array([
 		Vector2(0.0, 0.0),
@@ -1155,7 +1171,7 @@ func _create_square_overlay(square: Vector2i, color: Color) -> Polygon2D:
 
 func _create_board_tile(square: Vector2i, tile_color: Color) -> Polygon2D:
 	var tile = Polygon2D.new()
-	tile.position = board_origin + Vector2(square.x * tile_size, square.y * tile_size)
+	tile.position = _board_square_to_screen_position(square)
 	tile.color = tile_color
 	tile.polygon = PackedVector2Array([
 		Vector2(0.0, 0.0),
@@ -1169,7 +1185,7 @@ func _draw_pieces() -> void:
 	for square in pieces.keys():
 		var piece_data: Dictionary = pieces[square]
 		var piece_node = _create_piece_node(piece_data)
-		piece_node.position = board_origin + Vector2(square.x * tile_size, square.y * tile_size)
+		piece_node.position = _board_square_to_screen_position(square)
 		add_child(piece_node)
 
 func _draw_drop_piece_drag_preview() -> void:
@@ -1553,7 +1569,7 @@ func _screen_to_square(mouse_position: Vector2) -> Vector2i:
 	if square_x < 0 or square_y < 0 or square_x >= board_width or square_y >= board_height:
 		return Vector2i(-1, -1)
 
-	return Vector2i(square_x, square_y)
+	return _view_square_to_board_square(Vector2i(square_x, square_y))
 
 func _finalize_turn_after_move() -> void:
 	current_turn = _opponent_color(current_turn)
