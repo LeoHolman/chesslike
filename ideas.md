@@ -1,4 +1,7 @@
 # Ideas
 1. board editor to change promotion zone
-1. in game feedback small and in the corner, please move move history to right hand side of board and make the in game feedback more obvious and easier to read
 1. Add special rule for spell cards
+1. export custom games for sharing with other people
+1. export move history
+1. undo
+1. network connection to play with another player online

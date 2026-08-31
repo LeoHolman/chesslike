@@ -493,11 +493,13 @@ func _draw_status_feedback_banner() -> void:
 		TURN_INDICATOR_PADDING
 	)
 	var banner_style = _status_feedback_style(status_message)
+	var background_color: Color = banner_style.get("background", _player_color(current_turn))
+	var text_color = _high_contrast_text_color(background_color)
 
 	var background = ColorRect.new()
 	background.position = panel_position
 	background.size = Vector2(panel_width, panel_height)
-	background.color = banner_style.get("background", Color(0.22, 0.08, 0.08, 0.9))
+	background.color = background_color
 	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(background)
 
@@ -511,31 +513,29 @@ func _draw_status_feedback_banner() -> void:
 	feedback_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	feedback_label.text = status_message
 	feedback_label.add_theme_font_size_override("font_size", _hud_font_size(0.2, 15, 26))
-	feedback_label.add_theme_color_override("font_color", banner_style.get("text", Color(1.0, 0.96, 0.9, 1.0)))
-	feedback_label.add_theme_constant_override("outline_size", 2)
-	feedback_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 1.0))
+	feedback_label.add_theme_color_override("font_color", text_color)
+	feedback_label.add_theme_constant_override("outline_size", 0)
 	feedback_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(feedback_label)
 
 func _status_feedback_style(message: String) -> Dictionary:
-	var lower_message = message.to_lower()
-	if lower_message.find("check") != -1:
-		return {
-			"background": Color(0.42, 0.12, 0.08, 0.92),
-			"border": Color(1.0, 0.78, 0.44, 1.0),
-			"text": Color(1.0, 0.95, 0.84, 1.0)
-		}
-	if lower_message.find("limit") != -1 or lower_message.find("blocked") != -1:
-		return {
-			"background": Color(0.46, 0.08, 0.08, 0.92),
-			"border": Color(1.0, 0.62, 0.62, 1.0),
-			"text": Color(1.0, 0.9, 0.9, 1.0)
-		}
+	var owner = _status_message_owner(message)
+	var background = _player_color(owner)
+	background.a = 0.92
+	var border = _high_contrast_text_color(background)
+	border.a = 0.95
 	return {
-		"background": Color(0.08, 0.2, 0.36, 0.9),
-		"border": Color(0.66, 0.84, 1.0, 1.0),
-		"text": Color(0.92, 0.97, 1.0, 1.0)
+		"background": background,
+		"border": border
 	}
+
+func _status_message_owner(message: String) -> String:
+	var lower_message = message.to_lower()
+	if lower_message.find("player 2") != -1:
+		return "black"
+	if lower_message.find("player 1") != -1:
+		return "white"
+	return current_turn
 
 
 func _draw_captured_pieces_panels() -> void:
@@ -689,34 +689,100 @@ func _get_legal_drop_squares(piece_id: String, owner: String) -> Array[Vector2i]
 	return valid_squares
 
 func _draw_move_history_panel() -> void:
-	var recent_moves: Array[String] = []
+	var history_lines: Array[String] = []
 	if move_history.is_empty():
-		recent_moves.append("No moves yet")
+		history_lines.append("No moves yet")
 	else:
-		var move_lines = 4 if _is_tiny_board() else 6
-		var start_index = max(move_history.size() - move_lines, 0)
-		for index in range(start_index, move_history.size()):
-			recent_moves.append(move_history[index])
+		for index in range(move_history.size()):
+			history_lines.append("%d. %s" % [index + 1, move_history[index]])
 
-	var panel_height = max(tile_size * 2.2, 110.0)
-	if recent_moves.size() > 4:
-		panel_height = max(panel_height, 34.0 + recent_moves.size() * 15.0)
 	var viewport_size = get_viewport_rect().size
 	var panel_width = clampf(max(tile_size * 2.8, 180.0), 180.0, max(210.0, min(viewport_size.x * 0.36, 320.0)))
-	panel_height = clampf(panel_height, 95.0, max(120.0, min(viewport_size.y * 0.34, 210.0)))
+	var panel_height = clampf(max(tile_size * 3.2, 180.0), 170.0, max(210.0, min(viewport_size.y * 0.56, 420.0)))
 	if _is_tiny_board():
 		panel_width = clampf(panel_width, 168.0, min(viewport_size.x * 0.30, 240.0))
-		panel_height = clampf(panel_height, 88.0, min(viewport_size.y * 0.26, 150.0))
+		panel_height = clampf(panel_height, 132.0, min(viewport_size.y * 0.42, 260.0))
 	var panel_position = Vector2(
 		viewport_size.x - panel_width - TURN_INDICATOR_PADDING,
 		TURN_INDICATOR_PADDING
 	)
-	_draw_hud_panel(
-		panel_position,
-		Vector2(panel_width, panel_height),
-		"Move History",
-		recent_moves
-	)
+
+	var panel_size = Vector2(panel_width, panel_height)
+	var background = ColorRect.new()
+	background.position = panel_position
+	background.size = panel_size
+	background.color = TURN_INDICATOR_BACKGROUND
+	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(background)
+	add_child(_create_indicator_border(panel_position, panel_size))
+
+	var title_label = Label.new()
+	title_label.position = panel_position + Vector2(TURN_INDICATOR_PADDING, TURN_INDICATOR_PADDING - 2.0)
+	title_label.size = Vector2(panel_size.x - TURN_INDICATOR_PADDING * 2.0, 20.0)
+	title_label.text = "Move History"
+	title_label.add_theme_font_size_override("font_size", _hud_font_size(0.17, 12, 16))
+	title_label.add_theme_color_override("font_color", Color(0.1, 0.1, 0.1))
+	title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(title_label)
+
+	var scroll = ScrollContainer.new()
+	scroll.position = panel_position + Vector2(TURN_INDICATOR_PADDING, TURN_INDICATOR_PADDING + 20.0)
+	scroll.size = panel_size - Vector2(TURN_INDICATOR_PADDING * 2.0, TURN_INDICATOR_PADDING * 2.0 + 22.0)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	add_child(scroll)
+
+	var content = VBoxContainer.new()
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content.add_theme_constant_override("separation", 2)
+	scroll.add_child(content)
+
+	for index in range(history_lines.size()):
+		var line = history_lines[index]
+		var owner = _history_entry_owner(index, line)
+		var row_background = _player_color(owner)
+		row_background.a = 0.88
+		var row_border = _high_contrast_text_color(row_background)
+		row_border.a = 0.9
+
+		var row_panel = PanelContainer.new()
+		row_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var row_style = StyleBoxFlat.new()
+		row_style.bg_color = row_background
+		row_style.set_corner_radius_all(4)
+		if row_border.a > 0.0:
+			row_style.border_width_left = 1
+			row_style.border_width_top = 1
+			row_style.border_width_right = 1
+			row_style.border_width_bottom = 1
+			row_style.border_color = row_border
+		row_panel.add_theme_stylebox_override("panel", row_style)
+		content.add_child(row_panel)
+
+		var line_label = Label.new()
+		line_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		line_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		line_label.text = line
+		line_label.add_theme_font_size_override("font_size", _hud_font_size(0.14, 10, 14))
+		line_label.add_theme_color_override("font_color", _high_contrast_text_color(row_background))
+		line_label.add_theme_constant_override("outline_size", 0)
+		row_panel.add_child(line_label)
+
+func _history_entry_owner(entry_index: int, entry_line: String) -> String:
+	var lower_line = entry_line.to_lower()
+	if lower_line.find("player 2") != -1:
+		return "black"
+	if lower_line.find("player 1") != -1:
+		return "white"
+	if lower_line == "no moves yet":
+		return "white"
+	return "white" if entry_index % 2 == 0 else "black"
+
+func _high_contrast_text_color(background: Color) -> Color:
+	if _color_luma(background) < 0.5:
+		return Color(1.0, 1.0, 1.0, 1.0)
+	return Color(0.0, 0.0, 0.0, 1.0)
 
 func _draw_game_over_banner() -> void:
 	if not game_over or status_message == "":
@@ -1026,13 +1092,11 @@ func _record_capture(capturing_color: String, captured_piece: Dictionary) -> voi
 	captured_pieces[capturing_color] = piece_list
 
 func _record_move(moving_piece: Dictionary, from_square: Vector2i, to_square: Vector2i, captured_piece: Dictionary, move_info: Dictionary) -> void:
-	var move_number = move_history.size() + 1
 	if bool(move_info.get("is_castling", false)):
 		var castling_notation = "O-O"
 		if to_square.x < from_square.x:
 			castling_notation = "O-O-O"
-		move_history.append("%d. %s %s" % [
-			move_number,
+		move_history.append("%s | %s" % [
 			_display_color(str(moving_piece.get("color", "white"))),
 			castling_notation
 		])
@@ -1053,8 +1117,7 @@ func _record_move(moving_piece: Dictionary, from_square: Vector2i, to_square: Ve
 	if bool(move_info.get("is_en_passant", false)):
 		en_passant_suffix = " e.p."
 
-	move_history.append("%d. %s %s %s%s%s%s%s" % [
-		move_number,
+	move_history.append("%s | %s %s%s%s%s%s" % [
 		_display_color(str(moving_piece.get("color", "white"))),
 		_get_piece_symbol(str(moving_piece.get("piece_id", ""))),
 		_square_to_notation(from_square),
@@ -1157,8 +1220,7 @@ func _try_drop_piece_from_pool(target_square: Vector2i) -> bool:
 	pool_contents.remove_at(remove_index)
 	drop_pools[current_turn] = pool_contents
 	_add_piece(target_square, selected_drop_piece_id, current_turn)
-	move_history.append("%d. %s drops %s @ %s" % [
-		move_history.size() + 1,
+	move_history.append("%s | drops %s @ %s" % [
 		_display_color(current_turn),
 		_get_piece_symbol(selected_drop_piece_id),
 		_square_to_notation(target_square)
