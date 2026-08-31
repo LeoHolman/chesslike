@@ -10,6 +10,8 @@ extends Control
 @onready var castling_check_box: CheckBox = $OptionsScroll/OptionsContent/CastlingCheckBox
 @onready var en_passant_check_box: CheckBox = $OptionsScroll/OptionsContent/EnPassantCheckBox
 @onready var promotion_check_box: CheckBox = $OptionsScroll/OptionsContent/PromotionCheckBox
+@onready var castling_support_hint_background: ColorRect = $OptionsScroll/OptionsContent/CastlingSupportHintBackground
+@onready var castling_support_hint: Label = $OptionsScroll/OptionsContent/CastlingSupportHint
 @onready var promotion_pieces_title: Label = $OptionsScroll/OptionsContent/PromotionPiecesTitle
 @onready var promotion_pieces_list: VBoxContainer = $OptionsScroll/OptionsContent/PromotionPiecesList
 
@@ -32,6 +34,8 @@ var is_left_dragging = false
 var is_right_dragging = false
 var drag_changed_any = false
 var promotion_piece_checkboxes: Dictionary = {}
+var castling_user_preference = true
+var is_updating_castling_availability = false
 
 func _ready() -> void:
 	width_spin_box.value_changed.connect(_refresh_preview)
@@ -81,11 +85,13 @@ func _setup_piece_color_picker() -> void:
 	piece_color_option.item_selected.connect(_on_piece_color_selected)
 
 func _setup_special_rules() -> void:
+	castling_check_box.toggled.connect(_on_castling_rule_toggled)
 	promotion_check_box.toggled.connect(_on_promotion_rule_toggled)
 	_build_promotion_piece_checkboxes()
 	_apply_special_rules($"/root/GameManager".SpecialRules)
 	_apply_promotion_piece_pool($"/root/GameManager".PromotionPiecePool)
 	_update_promotion_piece_visibility()
+	_update_castling_rule_availability()
 
 func _build_special_rules() -> Dictionary:
 	return {
@@ -139,6 +145,37 @@ func _update_promotion_piece_visibility() -> void:
 	promotion_pieces_title.visible = show_promotion_piece_pool
 	promotion_pieces_list.visible = show_promotion_piece_pool
 
+func _update_castling_rule_availability() -> void:
+	var supports_castling = _preview_supports_castling()
+	is_updating_castling_availability = true
+	castling_check_box.disabled = not supports_castling
+	if supports_castling:
+		castling_support_hint.visible = false
+		castling_support_hint_background.visible = false
+		castling_check_box.button_pressed = castling_user_preference
+	else:
+		castling_support_hint.visible = true
+		castling_support_hint_background.visible = true
+		castling_check_box.button_pressed = false
+	is_updating_castling_availability = false
+
+func _preview_supports_castling() -> bool:
+	return _preview_has_piece("white", "king") and _preview_has_piece("black", "king") and _preview_has_piece("white", "rook") and _preview_has_piece("black", "rook")
+
+func _preview_has_piece(piece_color: String, piece_id: String) -> bool:
+	for square in preview_pieces.keys():
+		var piece_data: Dictionary = preview_pieces[square]
+		if piece_data.get("color", "") == piece_color and piece_data.get("piece_id", "") == piece_id:
+			return true
+	return false
+
+func _on_castling_rule_toggled(is_enabled: bool) -> void:
+	if is_updating_castling_availability:
+		return
+	if castling_check_box.disabled:
+		return
+	castling_user_preference = is_enabled
+
 func _on_promotion_rule_toggled(_is_enabled: bool) -> void:
 	_update_promotion_piece_visibility()
 
@@ -154,9 +191,11 @@ func _on_promotion_piece_toggled(is_checked: bool, piece_id: String) -> void:
 		check_box.button_pressed = true
 
 func _apply_special_rules(special_rules: Dictionary) -> void:
+	castling_user_preference = bool(special_rules.get("castling", true))
 	castling_check_box.button_pressed = bool(special_rules.get("castling", true))
 	en_passant_check_box.button_pressed = bool(special_rules.get("en_passant", true))
 	promotion_check_box.button_pressed = bool(special_rules.get("promotion", true))
+	_update_castling_rule_availability()
 
 func _reset_preview_to_default(should_refresh: bool = true, use_standard_layout: bool = true) -> void:
 	width_spin_box.value = 8
@@ -283,6 +322,7 @@ func _refresh_preview(_value: float = 0.0) -> void:
 	_draw_preview_selection()
 	_draw_preview_pieces()
 	_draw_preview_ghost()
+	_update_castling_rule_availability()
 
 func _draw_preview_selection() -> void:
 	if selected_preview_square == INVALID_SQUARE:

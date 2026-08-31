@@ -23,7 +23,7 @@ grow_vertical = 2
 horizontal_scroll_mode = 0
 
 [node name="OptionsContent" type="Control" parent="OptionsScroll" unique_id=1806613797]
-custom_minimum_size = Vector2(0, 1220)
+custom_minimum_size = Vector2(0, 1240)
 layout_mode = 2
 size_flags_horizontal = 3
 
@@ -193,72 +193,91 @@ offset_bottom = 746.0
 text = "Enable Castling"
 button_pressed = true
 
+[node name="CastlingSupportHintBackground" type="ColorRect" parent="OptionsScroll/OptionsContent" unique_id=1416506514]
+visible = false
+layout_mode = 0
+offset_left = 104.0
+offset_top = 748.0
+offset_right = 426.0
+offset_bottom = 778.0
+color = Color(0.08, 0.08, 0.08, 0.9)
+
+[node name="CastlingSupportHint" type="Label" parent="OptionsScroll/OptionsContent" unique_id=467469973]
+visible = false
+layout_mode = 0
+offset_left = 112.0
+offset_top = 752.0
+offset_right = 420.0
+offset_bottom = 776.0
+theme_override_colors/font_color = Color(1, 0.85, 0.85, 1)
+theme_override_font_sizes/font_size = 14
+text = "Castling requires white/black king and rook."
+
 [node name="EnPassantCheckBox" type="CheckBox" parent="OptionsScroll/OptionsContent" unique_id=1615460277]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 752.0
+offset_top = 790.0
 offset_right = 260.0
-offset_bottom = 776.0
+offset_bottom = 814.0
 text = "Enable En Passant"
 button_pressed = true
 
 [node name="PromotionCheckBox" type="CheckBox" parent="OptionsScroll/OptionsContent" unique_id=1333748385]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 782.0
+offset_top = 824.0
 offset_right = 260.0
-offset_bottom = 806.0
+offset_bottom = 848.0
 text = "Enable Promotion"
 button_pressed = true
 
 [node name="PromotionPiecesTitle" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1858177657]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 824.0
+offset_top = 866.0
 offset_right = 280.0
-offset_bottom = 847.0
+offset_bottom = 889.0
 text = "Promotion Pieces:"
 
 [node name="PromotionPiecesList" type="VBoxContainer" parent="OptionsScroll/OptionsContent" unique_id=57243385]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 852.0
+offset_top = 894.0
 offset_right = 320.0
-offset_bottom = 1020.0
+offset_bottom = 1048.0
 theme_override_constants/separation = 4
 
 [node name="PreviewInstructions" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1873652165]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1046.0
+offset_top = 1064.0
 offset_right = 384.0
-offset_bottom = 1092.0
+offset_bottom = 1110.0
 text = "Left drag on the preview to place the selected piece.\nRight drag on the preview to remove pieces."
 
 [node name="ClearBoardButton" type="Button" parent="OptionsScroll/OptionsContent" unique_id=71584107]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1122.0
+offset_top = 1140.0
 offset_right = 188.0
-offset_bottom = 1153.0
+offset_bottom = 1171.0
 text = "Clear Board"
 
 [node name="ResetSetupButton" type="Button" parent="OptionsScroll/OptionsContent" unique_id=208044863]
 layout_mode = 0
 offset_left = 204.0
-offset_top = 1122.0
+offset_top = 1140.0
 offset_right = 320.0
-offset_bottom = 1153.0
+offset_bottom = 1171.0
 text = "Reset Setup"
 
 [node name="StartGameButton" type="Button" parent="OptionsScroll/OptionsContent" unique_id=40242828]
 layout_mode = 0
 offset_left = 204.0
-offset_top = 1178.0
+offset_top = 1190.0
 offset_right = 320.0
-offset_bottom = 1209.0
-text = "Start Game
-"
+offset_bottom = 1221.0
+text = "Start Game\n"
 
 [connection signal="pressed" from="OptionsScroll/OptionsContent/SavePresetButton" to="." method="_on_save_preset_button_pressed"]
 [connection signal="pressed" from="OptionsScroll/OptionsContent/DeletePresetButton" to="." method="_on_delete_preset_button_pressed"]

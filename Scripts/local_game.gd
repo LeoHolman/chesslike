@@ -228,6 +228,7 @@ func _initialize_board_state() -> void:
 	if board_width < 1 or board_height < 1:
 		return
 	_load_starting_pieces()
+	castling_enabled = castling_enabled and _board_supports_castling()
 	_update_game_state(false)
 
 func _add_piece(square: Vector2i, piece_id: String, piece_color: String) -> void:
@@ -1027,6 +1028,16 @@ func _is_castling_move_legal(piece_data: Dictionary, from_square: Vector2i, to_s
 	move_info["rook_from"] = rook_from
 	move_info["rook_to"] = Vector2i(from_square.x + direction, from_square.y)
 	return true
+
+func _board_supports_castling() -> bool:
+	return _has_piece_on_board("white", "king") and _has_piece_on_board("black", "king") and _has_piece_on_board("white", "rook") and _has_piece_on_board("black", "rook")
+
+func _has_piece_on_board(piece_color: String, piece_id: String) -> bool:
+	for square in pieces.keys():
+		var piece_data: Dictionary = pieces[square]
+		if piece_data.get("color", "") == piece_color and piece_data.get("piece_id", "") == piece_id:
+			return true
+	return false
 
 func _is_path_clear(from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
 	var step_x = signi(to_square.x - from_square.x)
