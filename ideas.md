@@ -4,13 +4,12 @@
     1. capture move
     1. regular move
     1. jump or slide pattern
-1. add piece dropping
-    1. drop pool
-    1. special rule for capture moves to drop
 1. board editor to change promotion zone
 1. add concept of numerical piece value
     1. set limit of army sum
     1. unbalanced option to allow for two different army sums
-1. special rule "Total War"
-    1. victory condition changes to one player losing all of their pieces, instead of checkmating the king
 1. Move history and captured pieces list are huge on tiny boards
+1. Style drop pools to make color match player
+1. Capture list show image tags instead of text description
+1. Clipping victory condition description
+1. Make the Victory text more obvious

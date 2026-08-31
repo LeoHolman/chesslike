@@ -1247,8 +1247,6 @@ func _update_game_state(record_history: bool) -> void:
 	if victory_condition == "total_war":
 		var white_piece_count = _count_pieces_on_board("white")
 		var black_piece_count = _count_pieces_on_board("black")
-		var white_can_capture = _has_any_legal_captures("white")
-		var black_can_capture = _has_any_legal_captures("black")
 		status_message = ""
 		game_over = false
 
@@ -1333,76 +1331,215 @@ func _has_any_drop_pool_pieces() -> bool:
 
 
 func _is_total_war_dead_position() -> bool:
+	if _is_opposite_color_bishop_dead_position():
+		return true
+	var state = {
+		"board": pieces.duplicate(true),
+		"turn": current_turn,
+		"drop_pools": _duplicate_drop_pools(drop_pools),
+		"en_passant_target": en_passant_target_square
+	}
+	var memo = {}
+	var active = {}
+	return not _can_reach_future_capture(state, memo, active)
+
+func _is_opposite_color_bishop_dead_position() -> bool:
 	if _has_any_drop_pool_pieces():
 		return false
-	return not _can_any_future_capture_occur()
-
-func _can_any_future_capture_occur() -> bool:
-	var piece_entries: Array[Dictionary] = []
+	var white_bishop_colors = {}
+	var black_bishop_colors = {}
 	for square in pieces.keys():
-		piece_entries.append({
-			"square": square,
-			"piece": pieces[square]
-		})
+		var piece_data: Dictionary = pieces[square]
+		if str(piece_data.get("piece_id", "")) != "bishop":
+			return false
+		var square_color = (square.x + square.y) % 2
+		if piece_data.get("color", "") == "white":
+			white_bishop_colors[square_color] = true
+		elif piece_data.get("color", "") == "black":
+			black_bishop_colors[square_color] = true
 
-	var reachable_cache = {}
-	for attacker_entry in piece_entries:
-		var attacker_piece: Dictionary = attacker_entry.get("piece", {})
-		var attacker_color = str(attacker_piece.get("color", ""))
-		for target_entry in piece_entries:
-			var target_piece: Dictionary = target_entry.get("piece", {})
-			if str(target_piece.get("color", "")) == attacker_color:
-				continue
-			if _can_piece_eventually_capture_piece(attacker_entry, target_entry, reachable_cache):
-				return true
+	if white_bishop_colors.is_empty() or black_bishop_colors.is_empty():
+		return false
+	for square_color in white_bishop_colors.keys():
+		if black_bishop_colors.has(square_color):
+			return false
+	return true
+
+func _can_reach_future_capture(state: Dictionary, memo: Dictionary, active: Dictionary) -> bool:
+	var state_key = _build_total_war_state_key(state)
+	if memo.has(state_key):
+		return bool(memo[state_key])
+	if active.has(state_key):
+		return false
+
+	active[state_key] = true
+	var turn_color = str(state.get("turn", "white"))
+	var board_state: Dictionary = state.get("board", {})
+	var drop_pool_state: Dictionary = state.get("drop_pools", {})
+	var en_passant_target: Vector2i = state.get("en_passant_target", INVALID_SQUARE)
+
+	if _has_any_legal_captures_on_state(turn_color, board_state, en_passant_target):
+		active.erase(state_key)
+		memo[state_key] = true
+		return true
+
+	for next_state in _generate_non_capturing_total_war_successors(state):
+		if _can_reach_future_capture(next_state, memo, active):
+			active.erase(state_key)
+			memo[state_key] = true
+			return true
+
+	active.erase(state_key)
+	memo[state_key] = false
 	return false
 
-func _can_piece_eventually_capture_piece(attacker_entry: Dictionary, target_entry: Dictionary, reachable_cache: Dictionary) -> bool:
-	var attacker_square: Vector2i = attacker_entry.get("square", INVALID_SQUARE)
-	var attacker_piece: Dictionary = attacker_entry.get("piece", {})
-	var target_square: Vector2i = target_entry.get("square", INVALID_SQUARE)
-	var target_piece: Dictionary = target_entry.get("piece", {})
-	var attacker_reachable = _get_reachable_squares_on_empty_board(attacker_square, attacker_piece, reachable_cache)
-	var target_reachable = _get_reachable_squares_on_empty_board(target_square, target_piece, reachable_cache)
+func _generate_non_capturing_total_war_successors(state: Dictionary) -> Array[Dictionary]:
+	var successors: Array[Dictionary] = []
+	var board_state: Dictionary = state.get("board", {})
+	var turn_color = str(state.get("turn", "white"))
+	var drop_pool_state: Dictionary = state.get("drop_pools", {})
+	var en_passant_target: Vector2i = state.get("en_passant_target", INVALID_SQUARE)
 
-	for from_square in attacker_reachable:
-		for destination_square in target_reachable:
-			if from_square == destination_square:
-				continue
-			if _can_piece_attack_square(attacker_piece, from_square, destination_square, {}):
-				return true
-	return false
-
-func _get_reachable_squares_on_empty_board(start_square: Vector2i, piece_data: Dictionary, reachable_cache: Dictionary) -> Array[Vector2i]:
-	var cache_key = "%s|%s|%d|%d" % [
-		str(piece_data.get("piece_id", "")),
-		str(piece_data.get("color", "")),
-		start_square.x,
-		start_square.y
-	]
-	if reachable_cache.has(cache_key):
-		return reachable_cache[cache_key]
-
-	var visited = {}
-	var frontier: Array[Vector2i] = [start_square]
-	var reachable: Array[Vector2i] = [start_square]
-	visited[start_square] = true
-
-	while not frontier.is_empty():
-		var current_square = frontier.pop_back()
+	for from_square in board_state.keys():
+		var piece_data: Dictionary = board_state[from_square]
+		if piece_data.get("color", "") != turn_color:
+			continue
 		for y in board_height:
 			for x in board_width:
-				var next_square = Vector2i(x, y)
-				if visited.has(next_square):
+				var to_square = Vector2i(x, y)
+				var move_info = _analyze_move_on_state(piece_data, from_square, to_square, board_state, true, en_passant_target)
+				if not bool(move_info.get("is_legal", false)):
 					continue
-				var move_info = _create_move_info()
-				if _is_base_legal_piece_move(piece_data, current_square, next_square, {}, move_info):
-					visited[next_square] = true
-					reachable.append(next_square)
-					frontier.append(next_square)
+				if move_info.get("capture_square", INVALID_SQUARE) != INVALID_SQUARE:
+					continue
+				for promotion_piece_id in _get_promotion_results_for_state(move_info):
+					var next_move_info = move_info.duplicate(true)
+					next_move_info["promotion_piece_id"] = promotion_piece_id
+					var next_board = _simulate_move_with_info(board_state, from_square, to_square, piece_data, next_move_info)
+					successors.append({
+						"board": next_board,
+						"turn": _opponent_color(turn_color),
+						"drop_pools": _duplicate_drop_pools(drop_pool_state),
+						"en_passant_target": next_move_info.get("new_en_passant_target", INVALID_SQUARE)
+					})
 
-	reachable_cache[cache_key] = reachable
-	return reachable
+	if piece_dropping_enabled:
+		var seen_drop_piece_ids = {}
+		var pool_contents: Array = drop_pool_state.get(turn_color, [])
+		for piece_id in pool_contents:
+			var piece_key = str(piece_id)
+			if seen_drop_piece_ids.has(piece_key):
+				continue
+			seen_drop_piece_ids[piece_key] = true
+			for y in board_height:
+				for x in board_width:
+					var target_square = Vector2i(x, y)
+					if not _is_legal_drop_piece_on_state(piece_key, turn_color, target_square, board_state):
+						continue
+					var next_board = board_state.duplicate(true)
+					next_board[target_square] = {
+						"piece_id": piece_key,
+						"color": turn_color,
+						"has_moved": false
+					}
+					var next_drop_pools = _duplicate_drop_pools(drop_pool_state)
+					var next_pool_contents: Array = next_drop_pools.get(turn_color, [])
+					var remove_index = next_pool_contents.find(piece_key)
+					if remove_index != -1:
+						next_pool_contents.remove_at(remove_index)
+						next_drop_pools[turn_color] = next_pool_contents
+					successors.append({
+						"board": next_board,
+						"turn": _opponent_color(turn_color),
+						"drop_pools": next_drop_pools,
+						"en_passant_target": INVALID_SQUARE
+					})
+
+	return successors
+
+func _has_any_legal_captures_on_state(piece_color: String, board_state: Dictionary, en_passant_target: Vector2i) -> bool:
+	for from_square in board_state.keys():
+		var piece_data: Dictionary = board_state[from_square]
+		if piece_data.get("color", "") != piece_color:
+			continue
+		for to_square in board_state.keys():
+			var target_piece: Dictionary = board_state[to_square]
+			if target_piece.get("color", "") == piece_color:
+				continue
+			var move_info = _analyze_move_on_state(piece_data, from_square, to_square, board_state, true, en_passant_target)
+			if bool(move_info.get("is_legal", false)) and move_info.get("capture_square", INVALID_SQUARE) != INVALID_SQUARE:
+				return true
+	return false
+
+func _analyze_move_on_state(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, validate_king_safety: bool, en_passant_target: Vector2i) -> Dictionary:
+	var previous_en_passant_target = en_passant_target_square
+	en_passant_target_square = en_passant_target
+	var move_info = _analyze_move(piece_data, from_square, to_square, board_state, validate_king_safety)
+	en_passant_target_square = previous_en_passant_target
+	return move_info
+
+func _is_legal_drop_piece_on_state(piece_id: String, owner: String, target_square: Vector2i, board_state: Dictionary) -> bool:
+	if target_square == INVALID_SQUARE:
+		return false
+	if board_state.has(target_square):
+		return false
+	if owner == "" or piece_id == "":
+		return false
+	var simulated_board = board_state.duplicate(true)
+	simulated_board[target_square] = {
+		"piece_id": piece_id,
+		"color": owner,
+		"has_moved": false
+	}
+	return not _is_king_in_check(owner, simulated_board)
+
+func _get_promotion_results_for_state(move_info: Dictionary) -> Array[String]:
+	if not bool(move_info.get("requires_promotion", false)) or not promotion_enabled:
+		return [str(move_info.get("promotion_piece_id", ""))]
+	var results = _get_promotion_piece_pool().duplicate()
+	if results.is_empty():
+		results.append("queen")
+	return results
+
+func _duplicate_drop_pools(source_drop_pools: Dictionary) -> Dictionary:
+	return {
+		"white": (source_drop_pools.get("white", []) as Array).duplicate(true),
+		"black": (source_drop_pools.get("black", []) as Array).duplicate(true)
+	}
+
+func _build_total_war_state_key(state: Dictionary) -> String:
+	var board_state: Dictionary = state.get("board", {})
+	var board_entries: Array[String] = []
+	var squares = board_state.keys()
+	squares.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		if a.x == b.x:
+			return a.y < b.y
+		return a.x < b.x
+	)
+	for square in squares:
+		var piece_data: Dictionary = board_state[square]
+		board_entries.append("%d,%d,%s,%s,%s" % [
+			square.x,
+			square.y,
+			str(piece_data.get("piece_id", "")),
+			str(piece_data.get("color", "")),
+			str(bool(piece_data.get("has_moved", false)))
+		])
+
+	var drop_pool_state: Dictionary = state.get("drop_pools", {})
+	var white_pool: Array = (drop_pool_state.get("white", []) as Array).duplicate(true)
+	var black_pool: Array = (drop_pool_state.get("black", []) as Array).duplicate(true)
+	white_pool.sort()
+	black_pool.sort()
+	var en_passant_target: Vector2i = state.get("en_passant_target", INVALID_SQUARE)
+	return "%s|%s|%s|%s|%d,%d" % [
+		str(state.get("turn", "white")),
+		";".join(board_entries),
+		",".join(PackedStringArray(white_pool)),
+		",".join(PackedStringArray(black_pool)),
+		en_passant_target.x,
+		en_passant_target.y
+	]
 
 func _is_pawn_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, move_info: Dictionary) -> bool:
 	var direction = 1
