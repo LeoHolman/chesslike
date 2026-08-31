@@ -18,6 +18,7 @@ var SpecialRules = {
 	"castling": true,
 	"en_passant": true,
 	"promotion": true,
+	"allow_undo": false,
 	"piece_dropping": false,
 	"capture_to_drop_pool": false,
 	"limit_army_strength": false,

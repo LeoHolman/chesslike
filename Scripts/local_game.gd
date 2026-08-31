@@ -93,6 +93,8 @@ var promotion_zone_rows = {
 	"white": 1,
 	"black": 1
 }
+var allow_undo_enabled = false
+var undo_snapshots: Array[Dictionary] = []
 var drop_piece_drag_active = false
 var drop_piece_drag_position = Vector2.ZERO
 var drop_pool_hover_owner = ""
@@ -318,6 +320,7 @@ func _initialize_board_state() -> void:
 	castling_enabled = bool(special_rules.get("castling", true))
 	en_passant_enabled = bool(special_rules.get("en_passant", true))
 	promotion_enabled = bool(special_rules.get("promotion", true))
+	allow_undo_enabled = bool(special_rules.get("allow_undo", false))
 	piece_dropping_enabled = bool(special_rules.get("piece_dropping", false))
 	capture_to_drop_pool_enabled = bool(special_rules.get("capture_to_drop_pool", false)) and piece_dropping_enabled
 	limit_army_strength_enabled = bool(special_rules.get("limit_army_strength", false))
@@ -334,6 +337,7 @@ func _initialize_board_state() -> void:
 	selected_drop_piece_id = ""
 	selected_drop_piece_owner = ""
 	legal_drop_squares.clear()
+	undo_snapshots.clear()
 	drop_pool_hover_owner = ""
 	drop_pool_selection_index["white"] = 0
 	drop_pool_selection_index["black"] = 0
@@ -439,6 +443,7 @@ func _build_board() -> void:
 	_draw_pieces()
 	_draw_drop_piece_drag_preview()
 	_draw_turn_indicator()
+	_draw_undo_button()
 	_draw_status_feedback_banner()
 	if piece_dropping_enabled:
 		_draw_drop_pool_panels()
@@ -485,6 +490,59 @@ func _draw_turn_indicator() -> void:
 	turn_label.add_theme_color_override("font_color", Color(0.1, 0.1, 0.1))
 	turn_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(turn_label)
+
+func _draw_undo_button() -> void:
+	if not allow_undo_enabled:
+		return
+	var viewport_size = get_viewport_rect().size
+	var swatch_size = clampf(tile_size * 0.24, 14.0, 24.0)
+	var indicator_height = clampf(swatch_size + TURN_INDICATOR_PADDING * 2.0, 40.0, 56.0)
+	var button = Button.new()
+	button.position = Vector2(TURN_INDICATOR_PADDING, TURN_INDICATOR_PADDING + indicator_height + 8.0)
+	button.size = Vector2(clampf(tile_size * 1.7, 92.0, min(viewport_size.x * 0.2, 160.0)), clampf(tile_size * 0.56, 30.0, 40.0))
+	button.text = "Undo"
+	button.disabled = undo_snapshots.is_empty() or promotion_pending
+	button.pressed.connect(_on_undo_button_pressed)
+	add_child(button)
+
+func _on_undo_button_pressed() -> void:
+	if undo_snapshots.is_empty():
+		return
+	var snapshot = undo_snapshots.pop_back()
+	_restore_from_undo_snapshot(snapshot)
+
+func _capture_undo_snapshot() -> Dictionary:
+	return {
+		"pieces": pieces.duplicate(true),
+		"captured_pieces": captured_pieces.duplicate(true),
+		"drop_pools": _duplicate_drop_pools(drop_pools),
+		"move_history": move_history.duplicate(true),
+		"current_turn": current_turn,
+		"status_message": status_message,
+		"game_over": game_over,
+		"en_passant_target": en_passant_target_square
+	}
+
+func _restore_from_undo_snapshot(snapshot: Dictionary) -> void:
+	pieces = snapshot.get("pieces", {}).duplicate(true)
+	captured_pieces = snapshot.get("captured_pieces", {"white": [], "black": []}).duplicate(true)
+	drop_pools = _duplicate_drop_pools(snapshot.get("drop_pools", {}))
+	move_history = (snapshot.get("move_history", []) as Array).duplicate(true)
+	current_turn = str(snapshot.get("current_turn", "white"))
+	status_message = str(snapshot.get("status_message", ""))
+	game_over = bool(snapshot.get("game_over", false))
+	en_passant_target_square = snapshot.get("en_passant_target", INVALID_SQUARE)
+	promotion_pending = false
+	pending_promotion_move.clear()
+	_hide_promotion_picker()
+	selected_square = INVALID_SQUARE
+	legal_moves.clear()
+	legal_drop_squares.clear()
+	selected_drop_piece_id = ""
+	selected_drop_piece_owner = ""
+	drop_piece_drag_active = false
+	drop_pool_hover_owner = ""
+	_build_board()
 
 func _draw_status_feedback_banner() -> void:
 	if status_message == "" or game_over:
@@ -875,6 +933,8 @@ func _hud_top_reserve_height(viewport_size: Vector2) -> float:
 	if board_width <= 4 or board_height <= 4:
 		baseline_reserve = clampf(max(74.0, viewport_size.y * 0.12), 68.0, 130.0)
 	var banner_reserve = clampf(max(88.0, viewport_size.y * 0.12), 88.0, 150.0)
+	if allow_undo_enabled:
+		banner_reserve = max(banner_reserve, clampf(max(126.0, viewport_size.y * 0.17), 126.0, 210.0))
 	return max(baseline_reserve, banner_reserve)
 
 func _hud_bottom_reserve_height(viewport_size: Vector2) -> float:
@@ -1242,6 +1302,7 @@ func _try_drop_piece_from_pool(target_square: Vector2i) -> bool:
 	var remove_index = pool_contents.find(selected_drop_piece_id)
 	if remove_index == -1:
 		return false
+	undo_snapshots.append(_capture_undo_snapshot())
 	pool_contents.remove_at(remove_index)
 	drop_pools[current_turn] = pool_contents
 	_add_piece(target_square, selected_drop_piece_id, current_turn)
@@ -1370,6 +1431,7 @@ func _try_move_piece(from_square: Vector2i, to_square: Vector2i) -> bool:
 func _commit_move(from_square: Vector2i, to_square: Vector2i, moving_piece: Dictionary, move_info: Dictionary) -> bool:
 	if not pieces.has(from_square):
 		return false
+	undo_snapshots.append(_capture_undo_snapshot())
 
 	var captured_piece: Dictionary = {}
 	var capture_square = move_info.get("capture_square", INVALID_SQUARE)

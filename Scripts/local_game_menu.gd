@@ -11,6 +11,7 @@ extends Control
 @onready var castling_check_box: CheckBox = $OptionsScroll/OptionsContent/CastlingCheckBox
 @onready var en_passant_check_box: CheckBox = $OptionsScroll/OptionsContent/EnPassantCheckBox
 @onready var promotion_check_box: CheckBox = $OptionsScroll/OptionsContent/PromotionCheckBox
+@onready var allow_undo_check_box: CheckBox = $OptionsScroll/OptionsContent/AllowUndoCheckBox
 @onready var promotion_zones_title_background: ColorRect = $OptionsScroll/OptionsContent/PromotionZonesTitleBackground
 @onready var promotion_zones_title: Label = $OptionsScroll/OptionsContent/PromotionZonesTitle
 @onready var player1_promotion_zone_label: Label = $OptionsScroll/OptionsContent/Player1PromotionZoneLabel
@@ -246,6 +247,7 @@ func _build_special_rules() -> Dictionary:
 		"castling": castling_check_box.button_pressed,
 		"en_passant": en_passant_check_box.button_pressed,
 		"promotion": promotion_check_box.button_pressed,
+		"allow_undo": allow_undo_check_box.button_pressed,
 		"piece_dropping": piece_dropping_check_box.button_pressed,
 		"capture_to_drop_pool": capture_to_drop_pool_check_box.button_pressed,
 		"limit_army_strength": limit_army_strength_check_box.button_pressed,
@@ -430,6 +432,7 @@ func _apply_special_rules(special_rules: Dictionary) -> void:
 	castling_check_box.button_pressed = bool(special_rules.get("castling", true))
 	en_passant_check_box.button_pressed = bool(special_rules.get("en_passant", true))
 	promotion_check_box.button_pressed = bool(special_rules.get("promotion", true))
+	allow_undo_check_box.button_pressed = bool(special_rules.get("allow_undo", false))
 	piece_dropping_check_box.button_pressed = bool(special_rules.get("piece_dropping", false))
 	capture_to_drop_pool_check_box.button_pressed = bool(special_rules.get("capture_to_drop_pool", false))
 	limit_army_strength_check_box.button_pressed = bool(special_rules.get("limit_army_strength", false))
@@ -600,6 +603,7 @@ func _reset_preview_to_default(should_refresh: bool = true, use_standard_layout:
 		"castling": true,
 		"en_passant": true,
 		"promotion": true,
+		"allow_undo": false,
 		"piece_dropping": false,
 		"capture_to_drop_pool": false,
 		"limit_army_strength": false,
@@ -644,6 +648,7 @@ func _apply_preset(preset_id: String) -> void:
 				"castling": true,
 				"en_passant": true,
 				"promotion": true,
+				"allow_undo": false,
 				"piece_dropping": false,
 				"capture_to_drop_pool": false,
 				"limit_army_strength": false,
@@ -671,6 +676,7 @@ func _apply_preset(preset_id: String) -> void:
 				"castling": false,
 				"en_passant": false,
 				"promotion": false,
+				"allow_undo": false,
 				"piece_dropping": true,
 				"capture_to_drop_pool": true,
 				"limit_army_strength": false,
