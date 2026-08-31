@@ -3,6 +3,7 @@ extends Control
 @onready var width_spin_box: SpinBox = $OptionsScroll/OptionsContent/WidthSpinBox
 @onready var height_spin_box: SpinBox = $OptionsScroll/OptionsContent/HeightSpinBox
 @onready var board_preview: Control = $PreviewArea/BoardPreview
+@onready var preview_warning_label: Label = $PreviewWarningLabel
 @onready var piece_bank_list: ItemList = $OptionsScroll/OptionsContent/PieceBankList
 @onready var piece_color_option: OptionButton = $OptionsScroll/OptionsContent/PieceColorOption
 @onready var preset_list: ItemList = $OptionsScroll/OptionsContent/PresetList
@@ -32,9 +33,11 @@ extends Control
 const INVALID_SQUARE = Vector2i(-1, -1)
 const PREVIEW_SELECTION_HIGHLIGHT = Color(0.2, 0.6, 1.0, 0.28)
 const PREVIEW_GHOST_TINT = Color(1.0, 1.0, 1.0, 0.45)
-const PREVIEW_DROP_POOL_BACKGROUND = Color(0.12, 0.14, 0.18, 0.8)
+const PREVIEW_WHITE_DROP_POOL_BACKGROUND = Color(0.18, 0.24, 0.38, 0.86)
+const PREVIEW_BLACK_DROP_POOL_BACKGROUND = Color(0.34, 0.18, 0.18, 0.86)
 const PREVIEW_DROP_POOL_BORDER = Color(0.82, 0.85, 0.92, 0.95)
-const PREVIEW_DROP_POOL_HOVER_BACKGROUND = Color(0.24, 0.34, 0.48, 0.9)
+const PREVIEW_WHITE_DROP_POOL_HOVER_BACKGROUND = Color(0.26, 0.36, 0.56, 0.92)
+const PREVIEW_BLACK_DROP_POOL_HOVER_BACKGROUND = Color(0.46, 0.24, 0.24, 0.92)
 const PRESETS = {
 	"Standard Chess": "standard_chess",
 	"Standard Shogi": "standard_shogi"
@@ -73,6 +76,7 @@ var piece_bank_drag_preview_position = Vector2.ZERO
 var preview_drop_pool_hover_owner = ""
 var is_updating_army_strength_cap = false
 var is_updating_unbalanced_army_strength_caps = false
+var preview_warning_message_serial = 0
 
 func _ready() -> void:
 	width_spin_box.value_changed.connect(_refresh_preview)
@@ -147,9 +151,9 @@ func _on_victory_condition_selected(_index: int) -> void:
 
 func _update_victory_condition_description() -> void:
 	if victory_condition_option.selected == 1:
-		victory_condition_description.text = "Total War: win when the opponent has no pieces left on the board. If neither side has any legal capture remaining, the game is a stalemate."
+		victory_condition_description.text = "TOTAL WAR\nWin when the opponent has no pieces left on the board.\nIf neither side has any legal capture remaining, the game is a stalemate."
 	else:
-		victory_condition_description.text = "Checkmate: win by checkmating the king."
+		victory_condition_description.text = "CHECKMATE\nWin by checkmating the king."
 
 func _setup_special_rules() -> void:
 	castling_check_box.toggled.connect(_on_castling_rule_toggled)
@@ -286,16 +290,16 @@ func _on_limit_army_strength_toggled(is_enabled: bool) -> void:
 	_update_army_strength_limit_visibility()
 	if is_enabled:
 		_ensure_army_strength_cap_meets_current_position()
-		_clear_army_strength_warning()
+		_clear_army_strength_warning(true)
 	else:
-		_clear_army_strength_warning()
+		_clear_army_strength_warning(true)
 	_refresh_preview()
 
 func _on_unbalanced_armies_toggled(_is_enabled: bool) -> void:
 	_update_army_strength_limit_visibility()
 	if _is_army_strength_rule_enabled():
 		_ensure_army_strength_cap_meets_current_position()
-	_clear_army_strength_warning()
+	_clear_army_strength_warning(true)
 	_refresh_preview()
 
 func _on_army_strength_cap_value_changed(_value: float) -> void:
@@ -409,12 +413,32 @@ func _format_owner_name(owner: String) -> String:
 	return owner.capitalize()
 
 func _set_army_strength_warning(owner: String, total_strength: int, cap: int) -> void:
-	army_strength_warning_label.text = "%s would exceed cap (%d > %d)." % [_format_owner_name(owner), total_strength, cap]
+	var warning_text = "%s cap blocked: %d / %d\nRemove a piece or raise the cap." % [_format_owner_name(owner), total_strength, cap]
+	army_strength_warning_label.text = warning_text
 	army_strength_warning_label.visible = true
+	_show_preview_warning(warning_text)
 
-func _clear_army_strength_warning() -> void:
+func _clear_army_strength_warning(clear_preview_warning: bool = false) -> void:
 	army_strength_warning_label.text = ""
 	army_strength_warning_label.visible = false
+	if clear_preview_warning:
+		preview_warning_message_serial += 1
+		preview_warning_label.text = ""
+		preview_warning_label.visible = false
+
+func _show_preview_warning(message: String) -> void:
+	preview_warning_message_serial += 1
+	var message_serial = preview_warning_message_serial
+	preview_warning_label.text = message
+	preview_warning_label.visible = true
+	_hide_preview_warning_after_delay(message_serial)
+
+func _hide_preview_warning_after_delay(message_serial: int) -> void:
+	await get_tree().create_timer(3.0).timeout
+	if message_serial != preview_warning_message_serial:
+		return
+	preview_warning_label.text = ""
+	preview_warning_label.visible = false
 
 func _preview_respects_army_strength(preview_board_state: Dictionary, preview_pool_state: Dictionary) -> bool:
 	if not _is_army_strength_rule_enabled():
@@ -509,7 +533,7 @@ func _reset_preview_to_default(should_refresh: bool = true, use_standard_layout:
 	drag_changed_any = false
 	if should_refresh:
 		_refresh_preview()
-	_clear_army_strength_warning()
+	_clear_army_strength_warning(true)
 
 func _apply_preset(preset_id: String) -> void:
 	match preset_id:
@@ -747,7 +771,7 @@ func _draw_single_preview_drop_pool(pool_rect: Rect2, title: String, pool_owner:
 	var background = ColorRect.new()
 	background.position = pool_rect.position
 	background.size = pool_rect.size
-	background.color = PREVIEW_DROP_POOL_HOVER_BACKGROUND if preview_drop_pool_hover_owner == pool_owner else PREVIEW_DROP_POOL_BACKGROUND
+	background.color = _preview_drop_pool_color(pool_owner, preview_drop_pool_hover_owner == pool_owner)
 	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	board_preview.add_child(background)
 
@@ -775,7 +799,7 @@ func _draw_single_preview_drop_pool(pool_rect: Rect2, title: String, pool_owner:
 	else:
 		title_label.text = title
 	title_label.add_theme_font_size_override("font_size", 13)
-	title_label.add_theme_color_override("font_color", Color(0.93, 0.94, 0.97, 1.0))
+	title_label.add_theme_color_override("font_color", _preview_drop_pool_text_color(pool_owner))
 	title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	board_preview.add_child(title_label)
 
@@ -797,7 +821,7 @@ func _draw_single_preview_drop_pool(pool_rect: Rect2, title: String, pool_owner:
 		empty_label.clip_text = true
 		empty_label.text = "(empty)"
 		empty_label.add_theme_font_size_override("font_size", 14)
-		empty_label.add_theme_color_override("font_color", Color(0.96, 0.97, 1.0, 1.0))
+		empty_label.add_theme_color_override("font_color", _preview_drop_pool_text_color(pool_owner))
 		empty_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		board_preview.add_child(empty_label)
 		preview_drop_pool_entry_rects[pool_owner] = entry_rects
@@ -819,7 +843,7 @@ func _draw_single_preview_drop_pool(pool_rect: Rect2, title: String, pool_owner:
 		row_label.clip_text = true
 		row_label.text = "%s x%d" % [_get_piece_symbol(piece_id), count]
 		row_label.add_theme_font_size_override("font_size", row_font_size)
-		row_label.add_theme_color_override("font_color", Color(0.96, 0.97, 1.0, 1.0))
+		row_label.add_theme_color_override("font_color", _preview_drop_pool_text_color(pool_owner))
 		row_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		board_preview.add_child(row_label)
 		entry_rects.append({"piece_id": piece_id, "rect": row_rect})
@@ -838,6 +862,16 @@ func _draw_single_preview_drop_pool(pool_rect: Rect2, title: String, pool_owner:
 		board_preview.add_child(overflow_label)
 
 	preview_drop_pool_entry_rects[pool_owner] = entry_rects
+
+func _preview_drop_pool_color(owner: String, hovered: bool) -> Color:
+	if owner == "white":
+		return PREVIEW_WHITE_DROP_POOL_HOVER_BACKGROUND if hovered else PREVIEW_WHITE_DROP_POOL_BACKGROUND
+	return PREVIEW_BLACK_DROP_POOL_HOVER_BACKGROUND if hovered else PREVIEW_BLACK_DROP_POOL_BACKGROUND
+
+func _preview_drop_pool_text_color(owner: String) -> Color:
+	if owner == "white":
+		return Color(0.93, 0.95, 1.0, 1.0)
+	return Color(1.0, 0.92, 0.9, 1.0)
 
 func _get_preview_drop_pool_display_entries(pool_owner: String) -> Array[Dictionary]:
 	var pool_contents: Array = preview_drop_pools.get(pool_owner, [])
@@ -1274,7 +1308,7 @@ func _on_clear_board_button_pressed() -> void:
 	}
 	last_drag_square = INVALID_SQUARE
 	selected_preview_square = INVALID_SQUARE
-	_clear_army_strength_warning()
+	_clear_army_strength_warning(true)
 	_refresh_preview()
 
 func _on_reset_setup_button_pressed() -> void:
