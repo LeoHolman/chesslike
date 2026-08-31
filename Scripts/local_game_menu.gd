@@ -103,7 +103,7 @@ func _populate_piece_bank() -> void:
 		var symbol = piece_data.get("symbol", "?")
 		var icon_texture = game_manager.get_piece_icon_texture(str(piece_id))
 		if icon_texture != null:
-			piece_bank_list.add_item("%s (%s)" % [display_name, symbol], icon_texture)
+			piece_bank_list.add_item("%s (%s)" % [display_name, symbol], _scaled_item_icon(icon_texture, 24))
 		else:
 			piece_bank_list.add_item("%s (%s)" % [display_name, symbol])
 
@@ -903,9 +903,13 @@ func _create_preview_piece_node(square: Vector2i, piece_data: Dictionary, tint: 
 
 	var icon_texture = $"/root/GameManager".get_piece_icon_texture(piece_id)
 	if icon_texture != null:
+		var icon_extent = max(preview_tile_size * 0.68, 12.0)
+		var icon_offset = (preview_tile_size - icon_extent) * 0.5
 		var icon = TextureRect.new()
-		icon.size = piece_root.size
+		icon.position = Vector2(icon_offset, icon_offset)
+		icon.size = Vector2(icon_extent, icon_extent)
 		icon.texture = icon_texture
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		icon.modulate = tint
@@ -926,6 +930,15 @@ func _create_preview_piece_node(square: Vector2i, piece_data: Dictionary, tint: 
 	piece_root.add_child(label)
 
 	return piece_root
+
+func _scaled_item_icon(texture: Texture2D, target_size: int) -> Texture2D:
+	if texture == null or target_size <= 0:
+		return texture
+	var image = texture.get_image()
+	if image == null or image.is_empty():
+		return texture
+	image.resize(target_size, target_size, Image.INTERPOLATE_LANCZOS)
+	return ImageTexture.create_from_image(image)
 
 func _piece_fill_color(piece_color: String) -> Color:
 	if piece_color == "white":

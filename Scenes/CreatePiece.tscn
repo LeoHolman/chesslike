@@ -108,7 +108,7 @@ theme_override_constants/separation = 8
 [node name="MovementLabel" type="Label" parent="Scroll/RootMargin/RootVBox/MainColumns/RightPanel"]
 layout_mode = 2
 autowrap_mode = 3
-text = "Movement Grid (6x6). Center cell X is the piece.\nClick cells: . -> J (jump) -> S (slide) -> B (both)."
+text = "Movement Grid (9x9). Center cell X is the piece.\nClick cells: . -> J (jump) -> S (slide) -> B (both)."
 
 [node name="MovementGrid" type="GridContainer" parent="Scroll/RootMargin/RootVBox/MainColumns/RightPanel"]
 layout_mode = 2

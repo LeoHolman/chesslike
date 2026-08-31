@@ -827,9 +827,13 @@ func _create_piece_node(piece_data: Dictionary) -> Node2D:
 	var piece_id = str(piece_data.get("piece_id", ""))
 	var icon_texture = $"/root/GameManager".get_piece_icon_texture(piece_id)
 	if icon_texture != null:
+		var icon_extent = max(tile_size * 0.68, 14.0)
+		var icon_offset = (tile_size - icon_extent) * 0.5
 		var icon = TextureRect.new()
-		icon.size = Vector2(tile_size, tile_size)
+		icon.position = Vector2(icon_offset, icon_offset)
+		icon.size = Vector2(icon_extent, icon_extent)
 		icon.texture = icon_texture
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		piece_root.add_child(icon)

@@ -1,11 +1,11 @@
 extends Control
 
-const GRID_SIZE = 6
+const GRID_SIZE = 9
 const CELL_NONE = 0
 const CELL_JUMP = 1
 const CELL_SLIDE = 2
 const CELL_BOTH = 3
-const ORIGIN_CELL = Vector2i(3, 3)
+const ORIGIN_CELL = Vector2i(4, 4)
 
 @onready var piece_name_input: LineEdit = %PieceNameInput
 @onready var piece_id_input: LineEdit = %PieceIdInput
