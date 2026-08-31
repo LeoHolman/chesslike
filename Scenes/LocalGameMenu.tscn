@@ -88,6 +88,45 @@ offset_bottom = 464.0
 allow_reselect = true
 select_mode = 0
 
+[node name="PieceColorLabel" type="Label" parent="." unique_id=1048543921]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 476.0
+offset_right = 160.0
+offset_bottom = 499.0
+text = "Piece Color:"
+
+[node name="PieceColorOption" type="OptionButton" parent="." unique_id=1416766760]
+layout_mode = 0
+offset_left = 204.0
+offset_top = 470.0
+offset_right = 320.0
+offset_bottom = 501.0
+
+[node name="PreviewInstructions" type="Label" parent="." unique_id=1873652165]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 516.0
+offset_right = 384.0
+offset_bottom = 562.0
+text = "Left drag on the preview to place the selected piece.\nRight drag on the preview to remove pieces."
+
+[node name="ClearBoardButton" type="Button" parent="." unique_id=71584107]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 576.0
+offset_right = 188.0
+offset_bottom = 607.0
+text = "Clear Board"
+
+[node name="ResetSetupButton" type="Button" parent="." unique_id=208044863]
+layout_mode = 0
+offset_left = 204.0
+offset_top = 576.0
+offset_right = 320.0
+offset_bottom = 607.0
+text = "Reset Setup"
+
 [node name="LocalGameTitle" type="Label" parent="." unique_id=1654476851]
 layout_mode = 0
 offset_left = 80.0
@@ -99,10 +138,12 @@ text = "Create Local game"
 [node name="StartGameButton" type="Button" parent="." unique_id=40242828]
 layout_mode = 0
 offset_left = 204.0
-offset_top = 484.0
+offset_top = 628.0
 offset_right = 320.0
-offset_bottom = 515.0
+offset_bottom = 659.0
 text = "Start Game
 "
 
+[connection signal="pressed" from="ClearBoardButton" to="." method="_on_clear_board_button_pressed"]
+[connection signal="pressed" from="ResetSetupButton" to="." method="_on_reset_setup_button_pressed"]
 [connection signal="pressed" from="StartGameButton" to="." method="_on_start_game_button_pressed"]

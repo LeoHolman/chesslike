@@ -3,6 +3,7 @@ extends Node
 
 var BoardHeight;
 var BoardWidth;
+var StartingPieces = []
 var PieceBank = ["rook"]
 var PieceDefinitions = {
 	"rook": {

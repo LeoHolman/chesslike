@@ -40,12 +40,9 @@ func _initialize_board_state() -> void:
 	legal_moves.clear()
 	current_turn = "white"
 	pieces.clear()
-	if board_width < 2 or board_height < 2:
+	if board_width < 1 or board_height < 1:
 		return
-	_add_piece(Vector2i(0, 0), "rook", "black")
-	_add_piece(Vector2i(board_width - 1, 0), "rook", "black")
-	_add_piece(Vector2i(0, board_height - 1), "rook", "white")
-	_add_piece(Vector2i(board_width - 1, board_height - 1), "rook", "white")
+	_load_starting_pieces()
 
 func _add_piece(square: Vector2i, piece_id: String, piece_color: String) -> void:
 	pieces[square] = {
@@ -61,6 +58,41 @@ func _get_dimension(value: Variant, fallback: int) -> int:
 	if value is String:
 		return max(value.to_int(), 1)
 	return max(fallback, 1)
+
+func _get_index(value: Variant, fallback: int) -> int:
+	if value is int:
+		return max(value, 0)
+	if value is float:
+		return max(roundi(value), 0)
+	if value is String:
+		return max(value.to_int(), 0)
+	return max(fallback, 0)
+
+func _load_starting_pieces() -> bool:
+	var starting_pieces = $"/root/GameManager".StartingPieces
+	if not (starting_pieces is Array):
+		return false
+	if starting_pieces.is_empty():
+		return false
+
+	for piece_entry in starting_pieces:
+		if not (piece_entry is Dictionary):
+			continue
+
+		var square = Vector2i(
+			_get_index(piece_entry.get("x", 0), 0),
+			_get_index(piece_entry.get("y", 0), 0)
+		)
+		if square.x >= board_width or square.y >= board_height:
+			continue
+
+		_add_piece(
+			square,
+			str(piece_entry.get("piece_id", "rook")),
+			str(piece_entry.get("color", "white"))
+		)
+
+	return not pieces.is_empty()
 
 func _build_board() -> void:
 	for child in get_children():
@@ -197,13 +229,22 @@ func _create_piece_node(piece_data: Dictionary) -> Node2D:
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.text = _get_piece_symbol(piece_data.get("piece_id", ""))
 	label.add_theme_font_size_override("font_size", int(tile_size * 0.55))
-	if piece_data.get("color", "white") == "white":
-		label.modulate = Color(0.12, 0.12, 0.12)
-	else:
-		label.modulate = Color(0.85, 0.1, 0.1)
+	label.add_theme_constant_override("outline_size", max(int(tile_size * 0.06), 2))
+	label.add_theme_color_override("font_color", _piece_fill_color(piece_data.get("color", "white")))
+	label.add_theme_color_override("font_outline_color", _piece_outline_color(piece_data.get("color", "white")))
 	piece_root.add_child(label)
 
 	return piece_root
+
+func _piece_fill_color(piece_color: String) -> Color:
+	if piece_color == "white":
+		return Color(1.0, 1.0, 1.0, 1.0)
+	return Color(0.08, 0.08, 0.08, 1.0)
+
+func _piece_outline_color(piece_color: String) -> Color:
+	if piece_color == "white":
+		return Color(0.08, 0.08, 0.08, 1.0)
+	return Color(1.0, 1.0, 1.0, 1.0)
 
 func _get_piece_symbol(piece_id: String) -> String:
 	var piece_definitions = $"/root/GameManager".PieceDefinitions
