@@ -11,20 +11,42 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_2iipm")
 
+[node name="PreviewArea" type="Panel" parent="." unique_id=1969587985]
+layout_mode = 1
+anchors_preset = 11
+anchor_left = 0.56
+anchor_top = 0.12
+anchor_right = 0.94
+anchor_bottom = 0.88
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="BoardPreview" type="Control" parent="PreviewArea" unique_id=762790320]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = -16.0
+grow_horizontal = 2
+grow_vertical = 2
+
 [node name="BoardWidth" type="Label" parent="." unique_id=328760141]
 layout_mode = 0
-offset_left = 256.0
-offset_top = 128.0
-offset_right = 296.0
-offset_bottom = 151.0
+offset_left = 80.0
+offset_top = 186.0
+offset_right = 190.0
+offset_bottom = 209.0
 text = "Board Width:"
 
 [node name="WidthSpinBox" type="SpinBox" parent="." unique_id=375682489]
 layout_mode = 0
-offset_left = 384.0
-offset_top = 128.0
-offset_right = 470.5
-offset_bottom = 159.0
+offset_left = 204.0
+offset_top = 178.0
+offset_right = 320.0
+offset_bottom = 209.0
 min_value = 3.0
 max_value = 15.0
 value = 8.0
@@ -32,18 +54,18 @@ rounded = true
 
 [node name="BoardHeight" type="Label" parent="." unique_id=1042435751]
 layout_mode = 0
-offset_left = 256.0
-offset_top = 192.0
-offset_right = 358.0
-offset_bottom = 215.0
+offset_left = 80.0
+offset_top = 248.0
+offset_right = 190.0
+offset_bottom = 271.0
 text = "Board Height:"
 
 [node name="HeightSpinBox" type="SpinBox" parent="." unique_id=1253021372]
 layout_mode = 0
-offset_left = 384.0
-offset_top = 192.0
-offset_right = 470.5
-offset_bottom = 223.0
+offset_left = 204.0
+offset_top = 240.0
+offset_right = 320.0
+offset_bottom = 271.0
 min_value = 3.0
 max_value = 15.0
 value = 8.0
@@ -51,18 +73,18 @@ rounded = true
 
 [node name="LocalGameTitle" type="Label" parent="." unique_id=1654476851]
 layout_mode = 0
-offset_left = 440.0
-offset_top = 40.0
-offset_right = 583.0
-offset_bottom = 63.0
+offset_left = 80.0
+offset_top = 96.0
+offset_right = 220.0
+offset_bottom = 119.0
 text = "Create Local game"
 
 [node name="StartGameButton" type="Button" parent="." unique_id=40242828]
 layout_mode = 0
-offset_left = 464.0
-offset_top = 416.0
-offset_right = 560.0
-offset_bottom = 447.0
+offset_left = 204.0
+offset_top = 314.0
+offset_right = 320.0
+offset_bottom = 345.0
 text = "Start Game
 "
 
