@@ -24,6 +24,8 @@ extends Control
 @onready var army_strength_warning_label: Label = $OptionsScroll/OptionsContent/ArmyStrengthWarningLabel
 @onready var castling_support_hint_background: ColorRect = $OptionsScroll/OptionsContent/CastlingSupportHintBackground
 @onready var castling_support_hint: Label = $OptionsScroll/OptionsContent/CastlingSupportHint
+@onready var player1_color_button: ColorPickerButton = $OptionsScroll/OptionsContent/Player1ColorButton
+@onready var player2_color_button: ColorPickerButton = $OptionsScroll/OptionsContent/Player2ColorButton
 @onready var victory_condition_option: OptionButton = $OptionsScroll/OptionsContent/VictoryConditionOption
 @onready var victory_condition_description: Label = $OptionsScroll/OptionsContent/VictoryConditionDescription
 @onready var promotion_pieces_title_background: ColorRect = $OptionsScroll/OptionsContent/PromotionPiecesTitleBackground
@@ -77,6 +79,10 @@ var preview_drop_pool_hover_owner = ""
 var is_updating_army_strength_cap = false
 var is_updating_unbalanced_army_strength_caps = false
 var preview_warning_message_serial = 0
+var player_side_colors = {
+	"white": Color(1.0, 1.0, 1.0, 1.0),
+	"black": Color(0.08, 0.08, 0.08, 1.0)
+}
 
 func _ready() -> void:
 	width_spin_box.value_changed.connect(_refresh_preview)
@@ -89,6 +95,7 @@ func _ready() -> void:
 	_populate_piece_bank()
 	_populate_presets()
 	_setup_piece_color_picker()
+	_setup_player_color_pickers()
 	_setup_victory_condition_picker()
 	_setup_special_rules()
 	_reset_preview_to_default(false, false)
@@ -126,10 +133,19 @@ func _populate_presets() -> void:
 
 func _setup_piece_color_picker() -> void:
 	piece_color_option.clear()
-	piece_color_option.add_item("White")
-	piece_color_option.add_item("Black")
+	piece_color_option.add_item("Player 1")
+	piece_color_option.add_item("Player 2")
 	piece_color_option.select(0)
 	piece_color_option.item_selected.connect(_on_piece_color_selected)
+
+func _setup_player_color_pickers() -> void:
+	player1_color_button.color_changed.connect(_on_player_color_changed.bind("white"))
+	player2_color_button.color_changed.connect(_on_player_color_changed.bind("black"))
+	_apply_player_colors_from_serialized($"/root/GameManager".PlayerColors)
+
+func _on_player_color_changed(new_color: Color, owner: String) -> void:
+	player_side_colors[owner] = Color(new_color.r, new_color.g, new_color.b, 1.0)
+	_refresh_preview()
 
 func _setup_victory_condition_picker() -> void:
 	victory_condition_option.clear()
@@ -411,9 +427,9 @@ func _get_preview_army_strength_for_owner(owner: String, preview_board_state: Di
 
 func _format_owner_name(owner: String) -> String:
 	if owner == "white":
-		return "White"
+		return "Player 1"
 	if owner == "black":
-		return "Black"
+		return "Player 2"
 	return owner.capitalize()
 
 func _set_army_strength_warning(owner: String, total_strength: int, cap: int) -> void:
@@ -520,6 +536,7 @@ func _reset_preview_to_default(should_refresh: bool = true, use_standard_layout:
 	_set_unbalanced_army_strength_cap_value("black", 32)
 	_apply_promotion_piece_pool(["queen", "rook", "bishop", "knight"])
 	_apply_victory_condition("checkmate")
+	_apply_player_colors_from_serialized({})
 	_update_promotion_piece_visibility()
 	_update_piece_dropping_visibility()
 	selected_piece_color = "white"
@@ -560,6 +577,7 @@ func _apply_preset(preset_id: String) -> void:
 			_set_unbalanced_army_strength_cap_value("black", 32)
 			_apply_promotion_piece_pool(["queen", "rook", "bishop", "knight"])
 			_apply_victory_condition("checkmate")
+			_apply_player_colors_from_serialized({})
 			preview_drop_pools = {
 				"white": [],
 				"black": []
@@ -584,6 +602,7 @@ func _apply_preset(preset_id: String) -> void:
 			_set_unbalanced_army_strength_cap_value("black", 32)
 			_apply_promotion_piece_pool(["rook", "bishop", "silver_general", "gold_general", "lance", "shogi_knight", "shogi_pawn"])
 			_apply_victory_condition("checkmate")
+			_apply_player_colors_from_serialized({})
 			preview_drop_pools = {
 				"white": [],
 				"black": []
@@ -611,6 +630,7 @@ func _apply_saved_preset_config(preset_config: Dictionary) -> void:
 		_set_unbalanced_army_strength_cap_value("white", int(preset_config.get("army_strength_cap", 32)))
 		_set_unbalanced_army_strength_cap_value("black", int(preset_config.get("army_strength_cap", 32)))
 	_apply_promotion_piece_pool(preset_config.get("promotion_pieces", ["queen", "rook", "bishop", "knight"]))
+	_apply_player_colors_from_serialized(preset_config.get("player_colors", {}))
 	_update_promotion_piece_visibility()
 	_update_piece_dropping_visibility()
 	_ensure_army_strength_cap_meets_current_position()
@@ -768,8 +788,8 @@ func _draw_preview_drop_pools(board_pixel_size: Vector2) -> void:
 	preview_white_drop_pool_rect = Rect2(8.0, pool_y, pool_width, pool_height)
 	preview_black_drop_pool_rect = Rect2(board_preview.size.x - pool_width - 8.0, pool_y, pool_width, pool_height)
 
-	_draw_single_preview_drop_pool(preview_white_drop_pool_rect, "White Drop Pool", "white")
-	_draw_single_preview_drop_pool(preview_black_drop_pool_rect, "Black Drop Pool", "black")
+	_draw_single_preview_drop_pool(preview_white_drop_pool_rect, "Player 1 Drop Pool", "white")
+	_draw_single_preview_drop_pool(preview_black_drop_pool_rect, "Player 2 Drop Pool", "black")
 
 func _draw_single_preview_drop_pool(pool_rect: Rect2, title: String, pool_owner: String) -> void:
 	var background = ColorRect.new()
@@ -868,14 +888,18 @@ func _draw_single_preview_drop_pool(pool_rect: Rect2, title: String, pool_owner:
 	preview_drop_pool_entry_rects[pool_owner] = entry_rects
 
 func _preview_drop_pool_color(owner: String, hovered: bool) -> Color:
-	if owner == "white":
-		return PREVIEW_WHITE_DROP_POOL_HOVER_BACKGROUND if hovered else PREVIEW_WHITE_DROP_POOL_BACKGROUND
-	return PREVIEW_BLACK_DROP_POOL_HOVER_BACKGROUND if hovered else PREVIEW_BLACK_DROP_POOL_BACKGROUND
+	var base_color = _get_player_color(owner)
+	var dim = 0.16
+	var bright = 0.28 if hovered else 0.20
+	return Color(
+		clampf(base_color.r * 0.55 + bright, 0.0, 1.0),
+		clampf(base_color.g * 0.55 + bright, 0.0, 1.0),
+		clampf(base_color.b * 0.55 + bright, 0.0, 1.0),
+		0.92 if hovered else 0.86
+	)
 
 func _preview_drop_pool_text_color(owner: String) -> Color:
-	if owner == "white":
-		return Color(0.93, 0.95, 1.0, 1.0)
-	return Color(1.0, 0.92, 0.9, 1.0)
+	return _best_contrast_text_color(_preview_drop_pool_color(owner, false))
 
 func _get_preview_drop_pool_display_entries(pool_owner: String) -> Array[Dictionary]:
 	var pool_contents: Array = preview_drop_pools.get(pool_owner, [])
@@ -941,14 +965,61 @@ func _scaled_item_icon(texture: Texture2D, target_size: int) -> Texture2D:
 	return ImageTexture.create_from_image(image)
 
 func _piece_fill_color(piece_color: String) -> Color:
-	if piece_color == "white":
-		return Color(1.0, 1.0, 1.0, 1.0)
-	return Color(0.08, 0.08, 0.08, 1.0)
+	return _get_player_color(piece_color)
 
 func _piece_outline_color(piece_color: String) -> Color:
-	if piece_color == "white":
-		return Color(0.08, 0.08, 0.08, 1.0)
-	return Color(1.0, 1.0, 1.0, 1.0)
+	var fill = _get_player_color(piece_color)
+	return Color(0.08, 0.08, 0.08, 1.0) if _color_luma(fill) > 0.56 else Color(1.0, 1.0, 1.0, 1.0)
+
+func _get_player_color(owner: String) -> Color:
+	if owner == "black":
+		return player_side_colors.get("black", Color(0.08, 0.08, 0.08, 1.0))
+	return player_side_colors.get("white", Color(1.0, 1.0, 1.0, 1.0))
+
+func _color_luma(color_value: Color) -> float:
+	return color_value.r * 0.299 + color_value.g * 0.587 + color_value.b * 0.114
+
+func _best_contrast_text_color(background: Color) -> Color:
+	return Color(0.08, 0.08, 0.08, 1.0) if _color_luma(background) > 0.55 else Color(0.95, 0.95, 0.95, 1.0)
+
+func _serialize_color(color_value: Color) -> Dictionary:
+	return {
+		"r": color_value.r,
+		"g": color_value.g,
+		"b": color_value.b,
+		"a": 1.0
+	}
+
+func _color_from_variant(source: Variant, fallback: Color) -> Color:
+	if source is Dictionary:
+		return Color(
+			float(source.get("r", fallback.r)),
+			float(source.get("g", fallback.g)),
+			float(source.get("b", fallback.b)),
+			1.0
+		)
+	if source is Array and source.size() >= 3:
+		return Color(float(source[0]), float(source[1]), float(source[2]), 1.0)
+	return fallback
+
+func _apply_player_colors_from_serialized(serialized: Variant) -> void:
+	var fallback_white = Color(1.0, 1.0, 1.0, 1.0)
+	var fallback_black = Color(0.08, 0.08, 0.08, 1.0)
+	var white_color = fallback_white
+	var black_color = fallback_black
+	if serialized is Dictionary:
+		white_color = _color_from_variant(serialized.get("white", fallback_white), fallback_white)
+		black_color = _color_from_variant(serialized.get("black", fallback_black), fallback_black)
+	player_side_colors["white"] = white_color
+	player_side_colors["black"] = black_color
+	player1_color_button.color = white_color
+	player2_color_button.color = black_color
+
+func _serialize_player_colors() -> Dictionary:
+	return {
+		"white": _serialize_color(_get_player_color("white")),
+		"black": _serialize_color(_get_player_color("black"))
+	}
 
 func _on_board_preview_gui_input(event: InputEvent) -> void:
 	if dragging_piece_bank_piece:
@@ -1293,7 +1364,8 @@ func _build_preset_config() -> Dictionary:
 			"white": _get_unbalanced_army_strength_cap_value("white"),
 			"black": _get_unbalanced_army_strength_cap_value("black")
 		},
-		"promotion_pieces": _build_promotion_piece_pool()
+		"promotion_pieces": _build_promotion_piece_pool(),
+		"player_colors": _serialize_player_colors()
 	}
 
 func _on_save_preset_button_pressed() -> void:
@@ -1357,6 +1429,7 @@ func _on_start_game_button_pressed() -> void:
 	$"/root/GameManager".ArmyStrengthCapWhite = _get_unbalanced_army_strength_cap_value("white")
 	$"/root/GameManager".ArmyStrengthCapBlack = _get_unbalanced_army_strength_cap_value("black")
 	$"/root/GameManager".PromotionPiecePool = _build_promotion_piece_pool()
+	$"/root/GameManager".PlayerColors = _serialize_player_colors()
 	
 	#var LocalGame = load("res://Scenes/LocalGame.tscn")
 	#get_tree().current_scene.add_child(LocalGame)

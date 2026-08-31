@@ -166,7 +166,7 @@ offset_left = 80.0
 offset_top = 432.0
 offset_right = 160.0
 offset_bottom = 455.0
-text = "Piece Color:"
+text = "Place As:"
 
 [node name="PieceColorOption" type="OptionButton" parent="OptionsScroll/OptionsContent" unique_id=1416766760]
 layout_mode = 0
@@ -174,6 +174,54 @@ offset_left = 204.0
 offset_top = 426.0
 offset_right = 320.0
 offset_bottom = 457.0
+
+[node name="PlayerColorsTitleBackground" type="ColorRect" parent="OptionsScroll/OptionsContent"]
+layout_mode = 0
+offset_left = 76.0
+offset_top = 470.0
+offset_right = 324.0
+offset_bottom = 497.0
+color = Color(0.16, 0.16, 0.16, 0.78)
+
+[node name="PlayerColorsTitle" type="Label" parent="OptionsScroll/OptionsContent"]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 472.0
+offset_right = 210.0
+offset_bottom = 495.0
+text = "Player Colors:"
+
+[node name="Player1ColorLabel" type="Label" parent="OptionsScroll/OptionsContent"]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 504.0
+offset_right = 140.0
+offset_bottom = 527.0
+text = "Player 1"
+
+[node name="Player1ColorButton" type="ColorPickerButton" parent="OptionsScroll/OptionsContent"]
+layout_mode = 0
+offset_left = 142.0
+offset_top = 500.0
+offset_right = 192.0
+offset_bottom = 531.0
+color = Color(1, 1, 1, 1)
+
+[node name="Player2ColorLabel" type="Label" parent="OptionsScroll/OptionsContent"]
+layout_mode = 0
+offset_left = 206.0
+offset_top = 504.0
+offset_right = 266.0
+offset_bottom = 527.0
+text = "Player 2"
+
+[node name="Player2ColorButton" type="ColorPickerButton" parent="OptionsScroll/OptionsContent"]
+layout_mode = 0
+offset_left = 268.0
+offset_top = 500.0
+offset_right = 320.0
+offset_bottom = 531.0
+color = Color(0.08, 0.08, 0.08, 1)
 
 [node name="PresetsTitleBackground" type="ColorRect" parent="OptionsScroll/OptionsContent" unique_id=1695805726]
 layout_mode = 0
@@ -267,7 +315,7 @@ offset_right = 420.0
 offset_bottom = 832.0
 theme_override_colors/font_color = Color(1, 0.85, 0.85, 1)
 theme_override_font_sizes/font_size = 14
-text = "Castling requires white/black king and rook."
+text = "Castling requires both players to have a king and rook."
 
 [node name="EnPassantCheckBox" type="CheckBox" parent="OptionsScroll/OptionsContent" unique_id=1615460277]
 layout_mode = 0
@@ -360,7 +408,7 @@ offset_left = 128.0
 offset_top = 1078.0
 offset_right = 260.0
 offset_bottom = 1101.0
-text = "White Cap"
+text = "Player 1 Cap"
 
 [node name="WhiteArmyStrengthCapSpinBox" type="SpinBox" parent="OptionsScroll/OptionsContent" unique_id=1483410332]
 visible = false
@@ -380,7 +428,7 @@ offset_left = 128.0
 offset_top = 1112.0
 offset_right = 260.0
 offset_bottom = 1135.0
-text = "Black Cap"
+text = "Player 2 Cap"
 
 [node name="BlackArmyStrengthCapSpinBox" type="SpinBox" parent="OptionsScroll/OptionsContent" unique_id=799151766]
 visible = false
@@ -461,9 +509,9 @@ theme_override_constants/separation = 4
 [node name="PreviewInstructions" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1873652165]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 470.0
+offset_top = 1512.0
 offset_right = 384.0
-offset_bottom = 516.0
+offset_bottom = 1552.0
 text = "Left drag on the preview to place the selected piece.\nRight drag on the preview to remove pieces."
 
 [node name="ClearBoardButton" type="Button" parent="." unique_id=71584107]

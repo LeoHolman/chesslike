@@ -25,6 +25,8 @@ const CUSTOM_CAPTURE_MODE_NON_CAPTURE = "non_capture"
 const CUSTOM_CAPTURE_MODE_CAPTURE_ONLY = "capture_only"
 const CUSTOM_SLIDE_SCOPE_INFINITE = "infinite"
 const CUSTOM_SLIDE_SCOPE_HALTING = "halting"
+const DEFAULT_PLAYER1_COLOR = Color(1.0, 1.0, 1.0, 1.0)
+const DEFAULT_PLAYER2_COLOR = Color(0.08, 0.08, 0.08, 1.0)
 
 var board_height = 8
 var board_width = 8
@@ -78,6 +80,10 @@ var black_drop_pool_panel_rect = Rect2()
 var drop_pool_entry_rects = {
 	"white": [],
 	"black": []
+}
+var player_side_colors = {
+	"white": DEFAULT_PLAYER1_COLOR,
+	"black": DEFAULT_PLAYER2_COLOR
 }
 var drop_piece_drag_active = false
 var drop_piece_drag_position = Vector2.ZERO
@@ -311,6 +317,7 @@ func _initialize_board_state() -> void:
 	army_strength_cap = max(int($"/root/GameManager".ArmyStrengthCap), 2)
 	army_strength_cap_white = max(int($"/root/GameManager".ArmyStrengthCapWhite), 2)
 	army_strength_cap_black = max(int($"/root/GameManager".ArmyStrengthCapBlack), 2)
+	player_side_colors = _get_player_side_colors($"/root/GameManager".PlayerColors)
 	promotion_piece_options = _get_promotion_piece_pool()
 	en_passant_target_square = INVALID_SQUARE
 	drop_pools = _get_starting_drop_pools()
@@ -497,8 +504,8 @@ func _draw_captured_pieces_panels() -> void:
 		get_viewport_rect().size.x - panel_size.x - TURN_INDICATOR_PADDING,
 		get_viewport_rect().size.y - panel_size.y - TURN_INDICATOR_PADDING
 	)
-	_draw_hud_panel(left_position, panel_size, "White Captures", [_format_captured_strength_summary("white"), _format_captured_piece_list("white")])
-	_draw_hud_panel(right_position, panel_size, "Black Captures", [_format_captured_strength_summary("black"), _format_captured_piece_list("black")])
+	_draw_hud_panel(left_position, panel_size, "Player 1 Captures", [_format_captured_strength_summary("white"), _format_captured_piece_list("white")])
+	_draw_hud_panel(right_position, panel_size, "Player 2 Captures", [_format_captured_strength_summary("black"), _format_captured_piece_list("black")])
 
 func _draw_drop_pool_panels() -> void:
 	var panel_size = _get_hud_panel_size(3.0, 2.0, 168.0, 102.0)
@@ -513,8 +520,8 @@ func _draw_drop_pool_panels() -> void:
 	white_drop_pool_panel_rect = Rect2(left_position, panel_size)
 	black_drop_pool_panel_rect = Rect2(right_position, panel_size)
 
-	_draw_drop_pool_panel(left_position, panel_size, "White Drop Pool", "white")
-	_draw_drop_pool_panel(right_position, panel_size, "Black Drop Pool", "black")
+	_draw_drop_pool_panel(left_position, panel_size, "Player 1 Drop Pool", "white")
+	_draw_drop_pool_panel(right_position, panel_size, "Player 2 Drop Pool", "black")
 
 func _draw_drop_pool_panel(panel_position: Vector2, panel_size: Vector2, title: String, owner: String) -> void:
 	var background = ColorRect.new()
@@ -756,9 +763,14 @@ func _hud_bottom_reserve_height(viewport_size: Vector2) -> float:
 	return clampf(max(base_reserve, viewport_size.y * 0.22), 138.0, 220.0)
 
 func _drop_pool_panel_color(owner: String, hovered: bool) -> Color:
-	if owner == "white":
-		return WHITE_POOL_PANEL_HOVER_BACKGROUND if hovered else WHITE_POOL_PANEL_BACKGROUND
-	return BLACK_POOL_PANEL_HOVER_BACKGROUND if hovered else BLACK_POOL_PANEL_BACKGROUND
+	var base_color = _player_color(owner)
+	var bright = 0.26 if hovered else 0.20
+	return Color(
+		clampf(base_color.r * 0.55 + bright, 0.0, 1.0),
+		clampf(base_color.g * 0.55 + bright, 0.0, 1.0),
+		clampf(base_color.b * 0.55 + bright, 0.0, 1.0),
+		0.96 if hovered else 0.92
+	)
 
 func _create_indicator_border(position: Vector2, size: Vector2) -> Line2D:
 	var border = Line2D.new()
@@ -776,17 +788,13 @@ func _create_indicator_border(position: Vector2, size: Vector2) -> Line2D:
 
 func _display_color(color: String) -> String:
 	if color == "white":
-		return "White"
+		return "Player 1"
 	if color == "black":
-		return "Black"
+		return "Player 2"
 	return color.capitalize()
 
 func _turn_color_swatch(color: String) -> Color:
-	if color == "white":
-		return Color(1.0, 1.0, 1.0, 1.0)
-	if color == "black":
-		return Color(0.08, 0.08, 0.08, 1.0)
-	return Color(0.7, 0.7, 0.7, 1.0)
+	return _player_color(color)
 
 func _draw_highlights() -> void:
 	for square in legal_drop_squares:
@@ -862,14 +870,42 @@ func _create_piece_node(piece_data: Dictionary) -> Node2D:
 	return piece_root
 
 func _piece_fill_color(piece_color: String) -> Color:
-	if piece_color == "white":
-		return Color(1.0, 1.0, 1.0, 1.0)
-	return Color(0.08, 0.08, 0.08, 1.0)
+	return _player_color(piece_color)
 
 func _piece_outline_color(piece_color: String) -> Color:
-	if piece_color == "white":
-		return Color(0.08, 0.08, 0.08, 1.0)
-	return Color(1.0, 1.0, 1.0, 1.0)
+	var fill = _player_color(piece_color)
+	return Color(0.08, 0.08, 0.08, 1.0) if _color_luma(fill) > 0.56 else Color(1.0, 1.0, 1.0, 1.0)
+
+func _player_color(owner: String) -> Color:
+	if owner == "black":
+		return player_side_colors.get("black", DEFAULT_PLAYER2_COLOR)
+	return player_side_colors.get("white", DEFAULT_PLAYER1_COLOR)
+
+func _color_luma(color_value: Color) -> float:
+	return color_value.r * 0.299 + color_value.g * 0.587 + color_value.b * 0.114
+
+func _get_player_side_colors(serialized: Variant) -> Dictionary:
+	var parsed = {
+		"white": DEFAULT_PLAYER1_COLOR,
+		"black": DEFAULT_PLAYER2_COLOR
+	}
+	if not (serialized is Dictionary):
+		return parsed
+	parsed["white"] = _color_from_variant(serialized.get("white", {}), DEFAULT_PLAYER1_COLOR)
+	parsed["black"] = _color_from_variant(serialized.get("black", {}), DEFAULT_PLAYER2_COLOR)
+	return parsed
+
+func _color_from_variant(source: Variant, fallback: Color) -> Color:
+	if source is Dictionary:
+		return Color(
+			float(source.get("r", fallback.r)),
+			float(source.get("g", fallback.g)),
+			float(source.get("b", fallback.b)),
+			1.0
+		)
+	if source is Array and source.size() >= 3:
+		return Color(float(source[0]), float(source[1]), float(source[2]), 1.0)
+	return fallback
 
 func _format_captured_piece_list(capturing_color: String) -> String:
 	var piece_list: Array = captured_pieces.get(capturing_color, [])
@@ -1639,16 +1675,16 @@ func _update_game_state(record_history: bool) -> void:
 
 		if white_piece_count == 0:
 			game_over = true
-			status_message = "Black wins - Total War"
+			status_message = "%s wins - Total War" % _display_color("black")
 			if record_history:
-				move_history.append("Total War. Black wins.")
+				move_history.append("Total War. %s wins." % _display_color("black"))
 			return
 
 		if black_piece_count == 0:
 			game_over = true
-			status_message = "White wins - Total War"
+			status_message = "%s wins - Total War" % _display_color("white")
 			if record_history:
-				move_history.append("Total War. White wins.")
+				move_history.append("Total War. %s wins." % _display_color("white"))
 			return
 
 		if _is_total_war_dead_position():
