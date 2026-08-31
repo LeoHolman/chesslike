@@ -6,6 +6,7 @@ extends Control
 @onready var piece_bank_list: ItemList = $OptionsScroll/OptionsContent/PieceBankList
 @onready var piece_color_option: OptionButton = $OptionsScroll/OptionsContent/PieceColorOption
 @onready var preset_list: ItemList = $OptionsScroll/OptionsContent/PresetList
+@onready var preset_name_input: LineEdit = $OptionsScroll/OptionsContent/PresetNameInput
 
 const INVALID_SQUARE = Vector2i(-1, -1)
 const PREVIEW_SELECTION_HIGHLIGHT = Color(0.2, 0.6, 1.0, 0.28)
@@ -59,6 +60,12 @@ func _populate_presets() -> void:
 	for preset_name in PRESETS.keys():
 		preset_list.add_item(preset_name)
 
+	var saved_presets: Dictionary = $"/root/GameManager".SavedPresets
+	var custom_names = saved_presets.keys()
+	custom_names.sort()
+	for preset_name in custom_names:
+		preset_list.add_item(str(preset_name))
+
 func _setup_piece_color_picker() -> void:
 	piece_color_option.clear()
 	piece_color_option.add_item("White")
@@ -95,7 +102,22 @@ func _apply_preset(preset_id: String) -> void:
 			_apply_standard_chess_layout()
 			_refresh_preview()
 		_:
+			var saved_presets: Dictionary = $"/root/GameManager".SavedPresets
+			if saved_presets.has(preset_id):
+				_apply_saved_preset_config(saved_presets[preset_id])
 			return
+
+func _apply_saved_preset_config(preset_config: Dictionary) -> void:
+	width_spin_box.value = _get_dimension(preset_config.get("width", 8), 8)
+	height_spin_box.value = _get_dimension(preset_config.get("height", 8), 8)
+	preview_pieces = _deserialize_preview_pieces(preset_config.get("pieces", []))
+	last_drag_square = INVALID_SQUARE
+	hover_preview_square = INVALID_SQUARE
+	selected_preview_square = INVALID_SQUARE
+	is_left_dragging = false
+	is_right_dragging = false
+	drag_changed_any = false
+	_refresh_preview()
 
 func _apply_standard_chess_layout() -> void:
 	var back_rank = ["rook", "knight", "bishop", "queen", "king", "bishop", "knight", "rook"]
@@ -116,6 +138,8 @@ func _on_preset_item_selected(index: int) -> void:
 	var preset_name = preset_list.get_item_text(index)
 	if PRESETS.has(preset_name):
 		_apply_preset(str(PRESETS[preset_name]))
+		return
+	_apply_preset(preset_name)
 
 func _on_piece_color_selected(index: int) -> void:
 	if index == 1:
@@ -366,6 +390,61 @@ func _serialize_preview_pieces() -> Array:
 			"color": piece_data.get("color", "white")
 		})
 	return serialized_pieces
+
+func _deserialize_preview_pieces(serialized_pieces: Array) -> Dictionary:
+	var deserialized_pieces = {}
+	for piece_entry in serialized_pieces:
+		if not (piece_entry is Dictionary):
+			continue
+		var square = Vector2i(
+			int(piece_entry.get("x", 0)),
+			int(piece_entry.get("y", 0))
+		)
+		deserialized_pieces[square] = {
+			"piece_id": str(piece_entry.get("piece_id", "")),
+			"color": str(piece_entry.get("color", "white"))
+		}
+	return deserialized_pieces
+
+func _build_preset_config() -> Dictionary:
+	return {
+		"width": _get_dimension(width_spin_box.value, 8),
+		"height": _get_dimension(height_spin_box.value, 8),
+		"pieces": _serialize_preview_pieces()
+	}
+
+func _on_save_preset_button_pressed() -> void:
+	var preset_name = preset_name_input.text.strip_edges()
+	if preset_name == "":
+		preset_name_input.placeholder_text = "Enter preset name"
+		return
+	if PRESETS.has(preset_name):
+		preset_name_input.text = ""
+		preset_name_input.placeholder_text = "Name reserved"
+		return
+
+	$"/root/GameManager".save_preset(preset_name, _build_preset_config())
+	preset_name_input.text = ""
+	preset_name_input.placeholder_text = "Preset saved"
+	_populate_presets()
+
+func _on_delete_preset_button_pressed() -> void:
+	var selected_items = preset_list.get_selected_items()
+	if selected_items.is_empty():
+		preset_name_input.text = ""
+		preset_name_input.placeholder_text = "Select a preset"
+		return
+
+	var preset_name = preset_list.get_item_text(selected_items[0])
+	if PRESETS.has(preset_name):
+		preset_name_input.text = ""
+		preset_name_input.placeholder_text = "Built-in preset"
+		return
+
+	if $"/root/GameManager".delete_preset(preset_name):
+		preset_name_input.text = ""
+		preset_name_input.placeholder_text = "Preset deleted"
+		_populate_presets()
 
 func _on_clear_board_button_pressed() -> void:
 	preview_pieces.clear()
