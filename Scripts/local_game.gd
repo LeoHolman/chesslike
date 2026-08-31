@@ -137,7 +137,7 @@ func _build_board() -> void:
 	_draw_highlights()
 	_draw_pieces()
 	var next_hud_position = _draw_turn_indicator()
-	next_hud_position = _draw_captured_pieces_panel(next_hud_position)
+	_draw_captured_pieces_panels()
 	_draw_move_history_panel(next_hud_position)
 
 func _draw_turn_indicator() -> Vector2:
@@ -179,14 +179,19 @@ func _draw_turn_indicator() -> Vector2:
 
 	return indicator_position + Vector2(0.0, indicator_size.y + HUD_PANEL_SPACING)
 
-func _draw_captured_pieces_panel(panel_position: Vector2) -> Vector2:
+
+func _draw_captured_pieces_panels() -> void:
 	var panel_size = Vector2(max(tile_size * 3.2, 220.0), max(tile_size * 1.7, 92.0))
-	var lines = [
-		"White: %s" % _format_captured_piece_list("white"),
-		"Black: %s" % _format_captured_piece_list("black")
-	]
-	_draw_hud_panel(panel_position, panel_size, "Captured Pieces", lines)
-	return panel_position + Vector2(0.0, panel_size.y + HUD_PANEL_SPACING)
+	var left_position = Vector2(
+		TURN_INDICATOR_PADDING,
+		get_viewport_rect().size.y - panel_size.y - TURN_INDICATOR_PADDING
+	)
+	var right_position = Vector2(
+		get_viewport_rect().size.x - panel_size.x - TURN_INDICATOR_PADDING,
+		get_viewport_rect().size.y - panel_size.y - TURN_INDICATOR_PADDING
+	)
+	_draw_hud_panel(left_position, panel_size, "White Captures", [_format_captured_piece_list("white")])
+	_draw_hud_panel(right_position, panel_size, "Black Captures", [_format_captured_piece_list("black")])
 
 func _draw_move_history_panel(panel_position: Vector2) -> void:
 	var recent_moves: Array[String] = []
