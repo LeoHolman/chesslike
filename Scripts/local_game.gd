@@ -7,10 +7,11 @@ const BASE_TILE_SIZE = 100.0
 const INVALID_SQUARE = Vector2i(-1, -1)
 const SELECTED_HIGHLIGHT = Color(1.0, 0.84, 0.0, 0.38)
 const LEGAL_MOVE_HIGHLIGHT = Color(0.18, 0.75, 0.3, 0.35)
-const TURN_INDICATOR_GAP = 56.0
 const TURN_INDICATOR_PADDING = 12.0
 const TURN_INDICATOR_BACKGROUND = Color(0.95, 0.93, 0.86, 0.94)
 const TURN_INDICATOR_BORDER = Color(0.2, 0.2, 0.2, 1.0)
+const HUD_PANEL_SPACING = 12.0
+const FILE_NAMES = "abcdefghijklmnopqrstuvwxyz"
 
 var board_height = 8
 var board_width = 8
@@ -20,6 +21,11 @@ var pieces = {}
 var selected_square = INVALID_SQUARE
 var legal_moves: Array[Vector2i] = []
 var current_turn = "white"
+var move_history: Array[String] = []
+var captured_pieces = {
+	"white": [],
+	"black": []
+}
 
 func _ready() -> void:
 	get_viewport().size_changed.connect(_on_viewport_resized)
@@ -39,6 +45,11 @@ func _initialize_board_state() -> void:
 	selected_square = INVALID_SQUARE
 	legal_moves.clear()
 	current_turn = "white"
+	move_history.clear()
+	captured_pieces = {
+		"white": [],
+		"black": []
+	}
 	pieces.clear()
 	if board_width < 1 or board_height < 1:
 		return
@@ -125,9 +136,11 @@ func _build_board() -> void:
 
 	_draw_highlights()
 	_draw_pieces()
-	_draw_turn_indicator()
+	var next_hud_position = _draw_turn_indicator()
+	next_hud_position = _draw_captured_pieces_panel(next_hud_position)
+	_draw_move_history_panel(next_hud_position)
 
-func _draw_turn_indicator() -> void:
+func _draw_turn_indicator() -> Vector2:
 	var font_size = int(max(tile_size * 0.26, 18.0))
 	var swatch_size = max(tile_size * 0.28, 18.0)
 	var indicator_position = Vector2(
@@ -163,6 +176,61 @@ func _draw_turn_indicator() -> void:
 	turn_label.add_theme_font_size_override("font_size", font_size)
 	turn_label.add_theme_color_override("font_color", Color(0.1, 0.1, 0.1))
 	add_child(turn_label)
+
+	return indicator_position + Vector2(0.0, indicator_size.y + HUD_PANEL_SPACING)
+
+func _draw_captured_pieces_panel(panel_position: Vector2) -> Vector2:
+	var panel_size = Vector2(max(tile_size * 3.2, 220.0), max(tile_size * 1.7, 92.0))
+	var lines = [
+		"White: %s" % _format_captured_piece_list("white"),
+		"Black: %s" % _format_captured_piece_list("black")
+	]
+	_draw_hud_panel(panel_position, panel_size, "Captured Pieces", lines)
+	return panel_position + Vector2(0.0, panel_size.y + HUD_PANEL_SPACING)
+
+func _draw_move_history_panel(panel_position: Vector2) -> void:
+	var recent_moves: Array[String] = []
+	if move_history.is_empty():
+		recent_moves.append("No moves yet")
+	else:
+		var start_index = max(move_history.size() - 6, 0)
+		for index in range(start_index, move_history.size()):
+			recent_moves.append(move_history[index])
+
+	var panel_height = max(tile_size * 2.8, 150.0)
+	if recent_moves.size() > 4:
+		panel_height = max(panel_height, 40.0 + recent_moves.size() * 18.0)
+	_draw_hud_panel(
+		panel_position,
+		Vector2(max(tile_size * 3.6, 250.0), panel_height),
+		"Move History",
+		recent_moves
+	)
+
+func _draw_hud_panel(panel_position: Vector2, panel_size: Vector2, title: String, lines: Array) -> void:
+	var background = ColorRect.new()
+	background.position = panel_position
+	background.size = panel_size
+	background.color = TURN_INDICATOR_BACKGROUND
+	add_child(background)
+
+	add_child(_create_indicator_border(panel_position, panel_size))
+
+	var title_label = Label.new()
+	title_label.position = panel_position + Vector2(TURN_INDICATOR_PADDING, TURN_INDICATOR_PADDING - 2.0)
+	title_label.text = title
+	title_label.add_theme_font_size_override("font_size", int(max(tile_size * 0.19, 16.0)))
+	title_label.add_theme_color_override("font_color", Color(0.1, 0.1, 0.1))
+	add_child(title_label)
+
+	var body_label = Label.new()
+	body_label.position = panel_position + Vector2(TURN_INDICATOR_PADDING, TURN_INDICATOR_PADDING + 22.0)
+	body_label.size = panel_size - Vector2(TURN_INDICATOR_PADDING * 2.0, TURN_INDICATOR_PADDING * 2.0 + 18.0)
+	body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body_label.text = "\n".join(lines)
+	body_label.add_theme_font_size_override("font_size", int(max(tile_size * 0.16, 14.0)))
+	body_label.add_theme_color_override("font_color", Color(0.14, 0.14, 0.14))
+	add_child(body_label)
 
 func _create_indicator_border(position: Vector2, size: Vector2) -> Line2D:
 	var border = Line2D.new()
@@ -245,6 +313,50 @@ func _piece_outline_color(piece_color: String) -> Color:
 	if piece_color == "white":
 		return Color(0.08, 0.08, 0.08, 1.0)
 	return Color(1.0, 1.0, 1.0, 1.0)
+
+func _format_captured_piece_list(capturing_color: String) -> String:
+	var piece_list: Array = captured_pieces.get(capturing_color, [])
+	if piece_list.is_empty():
+		return "-"
+
+	var formatted_pieces: Array[String] = []
+	for piece_data in piece_list:
+		if piece_data is Dictionary:
+			formatted_pieces.append("%s %s" % [
+				_display_color(str(piece_data.get("color", "white"))),
+				_get_piece_symbol(str(piece_data.get("piece_id", "")))
+			])
+	return ", ".join(formatted_pieces)
+
+func _square_to_notation(square: Vector2i) -> String:
+	var file_name = "?"
+	if square.x >= 0 and square.x < FILE_NAMES.length():
+		file_name = FILE_NAMES.substr(square.x, 1)
+	return "%s%s" % [file_name, board_height - square.y]
+
+func _record_capture(capturing_color: String, captured_piece: Dictionary) -> void:
+	var piece_list: Array = captured_pieces.get(capturing_color, [])
+	piece_list.append(captured_piece.duplicate(true))
+	captured_pieces[capturing_color] = piece_list
+
+func _record_move(moving_piece: Dictionary, from_square: Vector2i, to_square: Vector2i, captured_piece: Dictionary) -> void:
+	var move_number = move_history.size() + 1
+	var move_connector = " -> "
+	var capture_suffix = ""
+	if not captured_piece.is_empty():
+		move_connector = " x "
+		capture_suffix = " (%s %s)" % [
+			_display_color(str(captured_piece.get("color", "white"))),
+			_get_piece_symbol(str(captured_piece.get("piece_id", "")))
+		]
+	move_history.append("%d. %s %s %s%s%s" % [
+		move_number,
+		_display_color(str(moving_piece.get("color", "white"))),
+		_get_piece_symbol(str(moving_piece.get("piece_id", ""))),
+		_square_to_notation(from_square),
+		move_connector,
+		_square_to_notation(to_square) + capture_suffix
+	])
 
 func _get_piece_symbol(piece_id: String) -> String:
 	var piece_definitions = $"/root/GameManager".PieceDefinitions
@@ -348,6 +460,7 @@ func _try_move_piece(from_square: Vector2i, to_square: Vector2i) -> bool:
 		return false
 
 	var moving_piece: Dictionary = pieces[from_square]
+	var captured_piece: Dictionary = {}
 	if not _is_legal_piece_move(moving_piece, from_square, to_square):
 		return false
 
@@ -355,9 +468,13 @@ func _try_move_piece(from_square: Vector2i, to_square: Vector2i) -> bool:
 		var target_piece: Dictionary = pieces[to_square]
 		if target_piece.get("color", "") == moving_piece.get("color", ""):
 			return false
+		captured_piece = target_piece.duplicate(true)
 
 	pieces.erase(from_square)
 	pieces[to_square] = moving_piece
+	if not captured_piece.is_empty():
+		_record_capture(str(moving_piece.get("color", "white")), captured_piece)
+	_record_move(moving_piece, from_square, to_square, captured_piece)
 	return true
 
 func _is_legal_piece_move(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i) -> bool:
