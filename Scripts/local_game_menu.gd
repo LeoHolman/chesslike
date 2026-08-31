@@ -14,8 +14,9 @@ extends Control
 @onready var capture_to_drop_pool_check_box: CheckBox = $OptionsScroll/OptionsContent/CaptureToDropPoolCheckBox
 @onready var castling_support_hint_background: ColorRect = $OptionsScroll/OptionsContent/CastlingSupportHintBackground
 @onready var castling_support_hint: Label = $OptionsScroll/OptionsContent/CastlingSupportHint
+@onready var promotion_pieces_title_background: ColorRect = $OptionsScroll/OptionsContent/PromotionPiecesTitleBackground
 @onready var promotion_pieces_title: Label = $OptionsScroll/OptionsContent/PromotionPiecesTitle
-@onready var promotion_pieces_list: VBoxContainer = $OptionsScroll/OptionsContent/PromotionPiecesList
+@onready var promotion_pieces_list: VBoxContainer = $OptionsScroll/OptionsContent/PromotionPiecesScroll/PromotionPiecesList
 
 const INVALID_SQUARE = Vector2i(-1, -1)
 const PREVIEW_SELECTION_HIGHLIGHT = Color(0.2, 0.6, 1.0, 0.28)
@@ -170,8 +171,9 @@ func _apply_promotion_piece_pool(piece_pool: Array) -> void:
 
 func _update_promotion_piece_visibility() -> void:
 	var show_promotion_piece_pool = promotion_check_box.button_pressed
+	promotion_pieces_title_background.visible = show_promotion_piece_pool
 	promotion_pieces_title.visible = show_promotion_piece_pool
-	promotion_pieces_list.visible = show_promotion_piece_pool
+	promotion_pieces_list.get_parent().visible = show_promotion_piece_pool
 
 func _update_piece_dropping_visibility() -> void:
 	var show_capture_rule = piece_dropping_check_box.button_pressed
@@ -507,9 +509,14 @@ func _draw_single_preview_drop_pool(pool_rect: Rect2, title: String, pool_owner:
 
 	var title_label = Label.new()
 	title_label.position = pool_rect.position + Vector2(8.0, 6.0)
-	title_label.size = Vector2(pool_rect.size.x - 12.0, 22.0)
+	title_label.size = Vector2(max(pool_rect.size.x - 16.0, 20.0), 40.0)
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	title_label.text = title
+	title_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	if title.ends_with(" Drop Pool"):
+		title_label.text = "%s\nDrop Pool" % title.trim_suffix(" Drop Pool")
+	else:
+		title_label.text = title
 	title_label.add_theme_font_size_override("font_size", 13)
 	title_label.add_theme_color_override("font_color", Color(0.93, 0.94, 0.97, 1.0))
 	title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -518,13 +525,19 @@ func _draw_single_preview_drop_pool(pool_rect: Rect2, title: String, pool_owner:
 	var entries: Array = _get_preview_drop_pool_display_entries(pool_owner)
 	var entry_rects: Array = []
 	var content_x = pool_rect.position.x + 8.0
-	var current_y = pool_rect.position.y + 30.0
-	var row_height = max(preview_tile_size * 0.5, 20.0)
-	var content_width = pool_rect.size.x - 12.0
+	var current_y = pool_rect.position.y + 48.0
+	var row_height = max(preview_tile_size * 0.42, 18.0)
+	var row_spacing = 2.0
+	var content_width = max(pool_rect.size.x - 16.0, 24.0)
+	var body_height = max(pool_rect.size.y - 58.0, row_height)
+	var max_rows = max(int(floor((body_height + row_spacing) / (row_height + row_spacing))), 1)
+	var row_font_size = int(clampf(preview_tile_size * 0.34, 10.0, 13.0))
 	if entries.is_empty():
 		var empty_label = Label.new()
 		empty_label.position = Vector2(content_x, current_y)
-		empty_label.size = Vector2(content_width, row_height)
+		empty_label.size = Vector2(content_width, body_height)
+		empty_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		empty_label.clip_text = true
 		empty_label.text = "(empty)"
 		empty_label.add_theme_font_size_override("font_size", 14)
 		empty_label.add_theme_color_override("font_color", Color(0.96, 0.97, 1.0, 1.0))
@@ -533,20 +546,39 @@ func _draw_single_preview_drop_pool(pool_rect: Rect2, title: String, pool_owner:
 		preview_drop_pool_entry_rects[pool_owner] = entry_rects
 		return
 
-	for entry in entries:
+	var rows_to_draw = min(entries.size(), max_rows)
+	var hidden_entries = max(entries.size() - rows_to_draw, 0)
+	if hidden_entries > 0 and rows_to_draw > 1:
+		rows_to_draw -= 1
+
+	for index in range(rows_to_draw):
+		var entry = entries[index]
 		var piece_id = str(entry.get("piece_id", ""))
 		var count = int(entry.get("count", 0))
 		var row_rect = Rect2(Vector2(content_x, current_y), Vector2(content_width, row_height))
 		var row_label = Label.new()
 		row_label.position = row_rect.position
 		row_label.size = row_rect.size
+		row_label.clip_text = true
 		row_label.text = "%s x%d" % [_get_piece_symbol(piece_id), count]
-		row_label.add_theme_font_size_override("font_size", 14)
+		row_label.add_theme_font_size_override("font_size", row_font_size)
 		row_label.add_theme_color_override("font_color", Color(0.96, 0.97, 1.0, 1.0))
 		row_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		board_preview.add_child(row_label)
 		entry_rects.append({"piece_id": piece_id, "rect": row_rect})
-		current_y += row_height + 2.0
+		current_y += row_height + row_spacing
+
+	if hidden_entries > 0:
+		var overflow_rect = Rect2(Vector2(content_x, current_y), Vector2(content_width, row_height))
+		var overflow_label = Label.new()
+		overflow_label.position = overflow_rect.position
+		overflow_label.size = overflow_rect.size
+		overflow_label.clip_text = true
+		overflow_label.text = "+%d more" % hidden_entries
+		overflow_label.add_theme_font_size_override("font_size", row_font_size)
+		overflow_label.add_theme_color_override("font_color", Color(0.82, 0.88, 0.98, 1.0))
+		overflow_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		board_preview.add_child(overflow_label)
 
 	preview_drop_pool_entry_rects[pool_owner] = entry_rects
 
