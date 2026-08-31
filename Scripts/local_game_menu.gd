@@ -26,6 +26,8 @@ extends Control
 @onready var castling_support_hint: Label = $OptionsScroll/OptionsContent/CastlingSupportHint
 @onready var player1_color_button: ColorPickerButton = $OptionsScroll/OptionsContent/Player1ColorButton
 @onready var player2_color_button: ColorPickerButton = $OptionsScroll/OptionsContent/Player2ColorButton
+@onready var light_tile_color_button: ColorPickerButton = $OptionsScroll/OptionsContent/LightTileColorButton
+@onready var dark_tile_color_button: ColorPickerButton = $OptionsScroll/OptionsContent/DarkTileColorButton
 @onready var victory_condition_option: OptionButton = $OptionsScroll/OptionsContent/VictoryConditionOption
 @onready var victory_condition_description: Label = $OptionsScroll/OptionsContent/VictoryConditionDescription
 @onready var promotion_pieces_title_background: ColorRect = $OptionsScroll/OptionsContent/PromotionPiecesTitleBackground
@@ -83,6 +85,10 @@ var player_side_colors = {
 	"white": Color(1.0, 1.0, 1.0, 1.0),
 	"black": Color(0.08, 0.08, 0.08, 1.0)
 }
+var board_tile_colors = {
+	"light": Color(1.0, 1.0, 1.0, 1.0),
+	"dark": Color(0.41, 0.41, 0.41, 1.0)
+}
 
 func _ready() -> void:
 	width_spin_box.value_changed.connect(_refresh_preview)
@@ -96,6 +102,7 @@ func _ready() -> void:
 	_populate_presets()
 	_setup_piece_color_picker()
 	_setup_player_color_pickers()
+	_setup_tile_color_pickers()
 	_setup_victory_condition_picker()
 	_setup_special_rules()
 	_reset_preview_to_default(false, false)
@@ -145,6 +152,15 @@ func _setup_player_color_pickers() -> void:
 
 func _on_player_color_changed(new_color: Color, owner: String) -> void:
 	player_side_colors[owner] = Color(new_color.r, new_color.g, new_color.b, 1.0)
+	_refresh_preview()
+
+func _setup_tile_color_pickers() -> void:
+	light_tile_color_button.color_changed.connect(_on_tile_color_changed.bind("light"))
+	dark_tile_color_button.color_changed.connect(_on_tile_color_changed.bind("dark"))
+	_apply_tile_colors_from_serialized($"/root/GameManager".TileColors)
+
+func _on_tile_color_changed(new_color: Color, tile_kind: String) -> void:
+	board_tile_colors[tile_kind] = Color(new_color.r, new_color.g, new_color.b, 1.0)
 	_refresh_preview()
 
 func _setup_victory_condition_picker() -> void:
@@ -537,6 +553,7 @@ func _reset_preview_to_default(should_refresh: bool = true, use_standard_layout:
 	_apply_promotion_piece_pool(["queen", "rook", "bishop", "knight"])
 	_apply_victory_condition("checkmate")
 	_apply_player_colors_from_serialized({})
+	_apply_tile_colors_from_serialized({})
 	_update_promotion_piece_visibility()
 	_update_piece_dropping_visibility()
 	selected_piece_color = "white"
@@ -578,6 +595,7 @@ func _apply_preset(preset_id: String) -> void:
 			_apply_promotion_piece_pool(["queen", "rook", "bishop", "knight"])
 			_apply_victory_condition("checkmate")
 			_apply_player_colors_from_serialized({})
+			_apply_tile_colors_from_serialized({})
 			preview_drop_pools = {
 				"white": [],
 				"black": []
@@ -603,6 +621,7 @@ func _apply_preset(preset_id: String) -> void:
 			_apply_promotion_piece_pool(["rook", "bishop", "silver_general", "gold_general", "lance", "shogi_knight", "shogi_pawn"])
 			_apply_victory_condition("checkmate")
 			_apply_player_colors_from_serialized({})
+			_apply_tile_colors_from_serialized({})
 			preview_drop_pools = {
 				"white": [],
 				"black": []
@@ -631,6 +650,7 @@ func _apply_saved_preset_config(preset_config: Dictionary) -> void:
 		_set_unbalanced_army_strength_cap_value("black", int(preset_config.get("army_strength_cap", 32)))
 	_apply_promotion_piece_pool(preset_config.get("promotion_pieces", ["queen", "rook", "bishop", "knight"]))
 	_apply_player_colors_from_serialized(preset_config.get("player_colors", {}))
+	_apply_tile_colors_from_serialized(preset_config.get("tile_colors", {}))
 	_update_promotion_piece_visibility()
 	_update_piece_dropping_visibility()
 	_ensure_army_strength_cap_meets_current_position()
@@ -713,7 +733,7 @@ func _refresh_preview(_value: float = 0.0) -> void:
 			var tile = ColorRect.new()
 			tile.size = Vector2(preview_tile_size, preview_tile_size)
 			tile.position = preview_board_origin + Vector2(x * preview_tile_size, y * preview_tile_size)
-			tile.color = Color.WHITE if is_white else Color.DIM_GRAY
+			tile.color = _get_board_tile_color(is_white)
 			tile.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			board_preview.add_child(tile)
 			is_white = !is_white
@@ -1020,6 +1040,30 @@ func _serialize_player_colors() -> Dictionary:
 		"white": _serialize_color(_get_player_color("white")),
 		"black": _serialize_color(_get_player_color("black"))
 	}
+
+func _apply_tile_colors_from_serialized(serialized: Variant) -> void:
+	var fallback_light = Color(1.0, 1.0, 1.0, 1.0)
+	var fallback_dark = Color(0.41, 0.41, 0.41, 1.0)
+	var light_color = fallback_light
+	var dark_color = fallback_dark
+	if serialized is Dictionary:
+		light_color = _color_from_variant(serialized.get("light", fallback_light), fallback_light)
+		dark_color = _color_from_variant(serialized.get("dark", fallback_dark), fallback_dark)
+	board_tile_colors["light"] = light_color
+	board_tile_colors["dark"] = dark_color
+	light_tile_color_button.color = light_color
+	dark_tile_color_button.color = dark_color
+
+func _serialize_tile_colors() -> Dictionary:
+	return {
+		"light": _serialize_color(board_tile_colors.get("light", Color(1.0, 1.0, 1.0, 1.0))),
+		"dark": _serialize_color(board_tile_colors.get("dark", Color(0.41, 0.41, 0.41, 1.0)))
+	}
+
+func _get_board_tile_color(is_light_tile: bool) -> Color:
+	if is_light_tile:
+		return board_tile_colors.get("light", Color(1.0, 1.0, 1.0, 1.0))
+	return board_tile_colors.get("dark", Color(0.41, 0.41, 0.41, 1.0))
 
 func _on_board_preview_gui_input(event: InputEvent) -> void:
 	if dragging_piece_bank_piece:
@@ -1365,7 +1409,8 @@ func _build_preset_config() -> Dictionary:
 			"black": _get_unbalanced_army_strength_cap_value("black")
 		},
 		"promotion_pieces": _build_promotion_piece_pool(),
-		"player_colors": _serialize_player_colors()
+		"player_colors": _serialize_player_colors(),
+		"tile_colors": _serialize_tile_colors()
 	}
 
 func _on_save_preset_button_pressed() -> void:
@@ -1430,6 +1475,7 @@ func _on_start_game_button_pressed() -> void:
 	$"/root/GameManager".ArmyStrengthCapBlack = _get_unbalanced_army_strength_cap_value("black")
 	$"/root/GameManager".PromotionPiecePool = _build_promotion_piece_pool()
 	$"/root/GameManager".PlayerColors = _serialize_player_colors()
+	$"/root/GameManager".TileColors = _serialize_tile_colors()
 	
 	#var LocalGame = load("res://Scenes/LocalGame.tscn")
 	#get_tree().current_scene.add_child(LocalGame)

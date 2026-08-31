@@ -36,6 +36,10 @@ var PlayerColors = {
 	"white": {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0},
 	"black": {"r": 0.08, "g": 0.08, "b": 0.08, "a": 1.0}
 }
+var TileColors = {
+	"light": {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0},
+	"dark": {"r": 0.41, "g": 0.41, "b": 0.41, "a": 1.0}
+}
 var SavedPresets = {}
 var PieceBank = [
 	"pawn",

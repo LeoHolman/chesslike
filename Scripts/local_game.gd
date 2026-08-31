@@ -85,6 +85,10 @@ var player_side_colors = {
 	"white": DEFAULT_PLAYER1_COLOR,
 	"black": DEFAULT_PLAYER2_COLOR
 }
+var board_tile_colors = {
+	"light": Color(1.0, 1.0, 1.0, 1.0),
+	"dark": Color(0.41, 0.41, 0.41, 1.0)
+}
 var drop_piece_drag_active = false
 var drop_piece_drag_position = Vector2.ZERO
 var drop_pool_hover_owner = ""
@@ -318,6 +322,7 @@ func _initialize_board_state() -> void:
 	army_strength_cap_white = max(int($"/root/GameManager".ArmyStrengthCapWhite), 2)
 	army_strength_cap_black = max(int($"/root/GameManager".ArmyStrengthCapBlack), 2)
 	player_side_colors = _get_player_side_colors($"/root/GameManager".PlayerColors)
+	board_tile_colors = _get_board_tile_colors($"/root/GameManager".TileColors)
 	promotion_piece_options = _get_promotion_piece_pool()
 	en_passant_target_square = INVALID_SQUARE
 	drop_pools = _get_starting_drop_pools()
@@ -422,14 +427,8 @@ func _build_board() -> void:
 
 	for y in board_height:
 		for x in board_width:
-			var tile
-			if (x + y) % 2 == 0:
-				tile = WhiteTile.instantiate()
-			else:
-				tile = BlackTile.instantiate()
-			add_child(tile)
-			tile.position = board_origin + Vector2(x * tile_size, y * tile_size)
-			tile.scale = Vector2(tile_size / BASE_TILE_SIZE, tile_size / BASE_TILE_SIZE)
+			var tile_color = board_tile_colors.get("light", Color(1.0, 1.0, 1.0, 1.0)) if (x + y) % 2 == 0 else board_tile_colors.get("dark", Color(0.41, 0.41, 0.41, 1.0))
+			add_child(_create_board_tile(Vector2i(x, y), tile_color))
 
 	_draw_highlights()
 	_draw_pieces()
@@ -819,6 +818,18 @@ func _create_square_overlay(square: Vector2i, color: Color) -> Polygon2D:
 	])
 	return overlay
 
+func _create_board_tile(square: Vector2i, tile_color: Color) -> Polygon2D:
+	var tile = Polygon2D.new()
+	tile.position = board_origin + Vector2(square.x * tile_size, square.y * tile_size)
+	tile.color = tile_color
+	tile.polygon = PackedVector2Array([
+		Vector2(0.0, 0.0),
+		Vector2(tile_size, 0.0),
+		Vector2(tile_size, tile_size),
+		Vector2(0.0, tile_size)
+	])
+	return tile
+
 func _draw_pieces() -> void:
 	for square in pieces.keys():
 		var piece_data: Dictionary = pieces[square]
@@ -893,6 +904,17 @@ func _get_player_side_colors(serialized: Variant) -> Dictionary:
 		return parsed
 	parsed["white"] = _color_from_variant(serialized.get("white", {}), DEFAULT_PLAYER1_COLOR)
 	parsed["black"] = _color_from_variant(serialized.get("black", {}), DEFAULT_PLAYER2_COLOR)
+	return parsed
+
+func _get_board_tile_colors(serialized: Variant) -> Dictionary:
+	var parsed = {
+		"light": Color(1.0, 1.0, 1.0, 1.0),
+		"dark": Color(0.41, 0.41, 0.41, 1.0)
+	}
+	if not (serialized is Dictionary):
+		return parsed
+	parsed["light"] = _color_from_variant(serialized.get("light", {}), parsed["light"])
+	parsed["dark"] = _color_from_variant(serialized.get("dark", {}), parsed["dark"])
 	return parsed
 
 func _color_from_variant(source: Variant, fallback: Color) -> Color:
