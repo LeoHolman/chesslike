@@ -71,6 +71,23 @@ max_value = 15.0
 value = 8.0
 rounded = true
 
+[node name="PieceBankTitle" type="Label" parent="." unique_id=1435119969]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 302.0
+offset_right = 218.0
+offset_bottom = 325.0
+text = "Available Pieces:"
+
+[node name="PieceBankList" type="ItemList" parent="." unique_id=528792132]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 332.0
+offset_right = 320.0
+offset_bottom = 464.0
+allow_reselect = true
+select_mode = 0
+
 [node name="LocalGameTitle" type="Label" parent="." unique_id=1654476851]
 layout_mode = 0
 offset_left = 80.0
@@ -82,9 +99,9 @@ text = "Create Local game"
 [node name="StartGameButton" type="Button" parent="." unique_id=40242828]
 layout_mode = 0
 offset_left = 204.0
-offset_top = 314.0
+offset_top = 484.0
 offset_right = 320.0
-offset_bottom = 345.0
+offset_bottom = 515.0
 text = "Start Game
 "
 

@@ -3,11 +3,22 @@ extends Control
 @onready var width_spin_box: SpinBox = $WidthSpinBox
 @onready var height_spin_box: SpinBox = $HeightSpinBox
 @onready var board_preview: Control = $PreviewArea/BoardPreview
+@onready var piece_bank_list: ItemList = $PieceBankList
 
 func _ready() -> void:
 	width_spin_box.value_changed.connect(_refresh_preview)
 	height_spin_box.value_changed.connect(_refresh_preview)
+	_populate_piece_bank()
 	_refresh_preview(0.0)
+
+func _populate_piece_bank() -> void:
+	piece_bank_list.clear()
+	var game_manager = $"/root/GameManager"
+	for piece_id in game_manager.PieceBank:
+		var piece_data = game_manager.PieceDefinitions.get(piece_id, {})
+		var display_name = piece_data.get("name", str(piece_id))
+		var symbol = piece_data.get("symbol", "?")
+		piece_bank_list.add_item("%s (%s)" % [display_name, symbol])
 
 func _refresh_preview(_value: float = 0.0) -> void:
 	for child in board_preview.get_children():
