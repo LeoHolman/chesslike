@@ -3,6 +3,13 @@ extends Node
 const PRESET_SAVE_PATH = "user://saved_presets.json"
 const CUSTOM_PIECES_SAVE_PATH = "user://custom_pieces.json"
 const CUSTOM_PIECE_ICON_DIR = "user://custom_piece_icons"
+const CUSTOM_MOVE_KIND_JUMP = "jump"
+const CUSTOM_MOVE_KIND_SLIDE = "slide"
+const CUSTOM_CAPTURE_MODE_ANY = "any"
+const CUSTOM_CAPTURE_MODE_NON_CAPTURE = "non_capture"
+const CUSTOM_CAPTURE_MODE_CAPTURE_ONLY = "capture_only"
+const CUSTOM_SLIDE_SCOPE_INFINITE = "infinite"
+const CUSTOM_SLIDE_SCOPE_HALTING = "halting"
 
 var BoardHeight;
 var BoardWidth;
@@ -207,7 +214,51 @@ func _normalize_custom_piece_data(custom_piece_id: String, source_data: Dictiona
 			continue
 		slide_directions.append(parsed_slide)
 
-	if jump_offsets.is_empty() and slide_directions.is_empty():
+	var movement_rules = _normalize_custom_movement_rules(source_data.get("movement_rules", []))
+	if movement_rules.is_empty():
+		for jump_offset in jump_offsets:
+			movement_rules.append({
+				"x": jump_offset.x,
+				"y": jump_offset.y,
+				"kind": CUSTOM_MOVE_KIND_JUMP,
+				"capture_mode": CUSTOM_CAPTURE_MODE_ANY,
+				"initial_only": false,
+				"slide_scope": CUSTOM_SLIDE_SCOPE_INFINITE
+			})
+		for slide_direction in slide_directions:
+			var normalized_slide = _normalize_direction_vector(slide_direction)
+			if normalized_slide == Vector2i.ZERO:
+				continue
+			movement_rules.append({
+				"x": normalized_slide.x,
+				"y": normalized_slide.y,
+				"kind": CUSTOM_MOVE_KIND_SLIDE,
+				"capture_mode": CUSTOM_CAPTURE_MODE_ANY,
+					"initial_only": false,
+					"slide_scope": CUSTOM_SLIDE_SCOPE_INFINITE
+			})
+
+	if not movement_rules.is_empty():
+		jump_offsets = []
+		slide_directions = []
+		var jump_seen = {}
+		var slide_seen = {}
+		for movement_rule in movement_rules:
+			var movement_delta = Vector2i(int(movement_rule.get("x", 0)), int(movement_rule.get("y", 0)))
+			var movement_kind = str(movement_rule.get("kind", CUSTOM_MOVE_KIND_JUMP))
+			var slide_scope = str(movement_rule.get("slide_scope", CUSTOM_SLIDE_SCOPE_INFINITE))
+			if movement_kind == CUSTOM_MOVE_KIND_SLIDE and slide_scope == CUSTOM_SLIDE_SCOPE_INFINITE:
+				var slide_key = "%d:%d" % [movement_delta.x, movement_delta.y]
+				if not slide_seen.has(slide_key):
+					slide_seen[slide_key] = true
+					slide_directions.append(movement_delta)
+			else:
+				var jump_key = "%d:%d" % [movement_delta.x, movement_delta.y]
+				if not jump_seen.has(jump_key):
+					jump_seen[jump_key] = true
+					jump_offsets.append(movement_delta)
+
+	if jump_offsets.is_empty() and slide_directions.is_empty() and movement_rules.is_empty():
 		return {}
 
 	return {
@@ -217,9 +268,86 @@ func _normalize_custom_piece_data(custom_piece_id: String, source_data: Dictiona
 		"move_type": "custom",
 		"strength": piece_strength,
 		"icon_path": icon_path,
+		"movement_rules": movement_rules,
 		"jump_offsets": _serialize_vector2i_array(jump_offsets),
 		"slide_directions": _serialize_vector2i_array(slide_directions)
 	}
+
+func _normalize_custom_movement_rules(source_rules: Variant) -> Array:
+	var normalized_rules: Array = []
+	if not (source_rules is Array):
+		return normalized_rules
+
+	var seen_keys = {}
+	for raw_rule in source_rules:
+		if not (raw_rule is Dictionary):
+			continue
+
+		var delta = _parse_vector2i_data(raw_rule)
+		if delta == Vector2i.ZERO and raw_rule.has("offset"):
+			delta = _parse_vector2i_data(raw_rule.get("offset"))
+		if delta == Vector2i.ZERO:
+			continue
+
+		var move_kind = str(raw_rule.get("kind", CUSTOM_MOVE_KIND_JUMP)).to_lower()
+		if move_kind != CUSTOM_MOVE_KIND_SLIDE:
+			move_kind = CUSTOM_MOVE_KIND_JUMP
+
+		var slide_scope = _normalize_custom_slide_scope(raw_rule.get("slide_scope", CUSTOM_SLIDE_SCOPE_INFINITE))
+		if move_kind != CUSTOM_MOVE_KIND_SLIDE:
+			slide_scope = CUSTOM_SLIDE_SCOPE_INFINITE
+
+		if move_kind == CUSTOM_MOVE_KIND_SLIDE and slide_scope == CUSTOM_SLIDE_SCOPE_INFINITE:
+			delta = _normalize_direction_vector(delta)
+			if delta == Vector2i.ZERO:
+				continue
+
+		var capture_mode = _normalize_custom_capture_mode(raw_rule.get("capture_mode", CUSTOM_CAPTURE_MODE_ANY))
+		var initial_only = bool(raw_rule.get("initial_only", false))
+
+		var rule_key = "%s|%d|%d|%s|%d|%s" % [move_kind, delta.x, delta.y, capture_mode, int(initial_only), slide_scope]
+		if seen_keys.has(rule_key):
+			continue
+		seen_keys[rule_key] = true
+		normalized_rules.append({
+			"x": delta.x,
+			"y": delta.y,
+			"kind": move_kind,
+			"capture_mode": capture_mode,
+			"initial_only": initial_only,
+			"slide_scope": slide_scope
+		})
+
+	return normalized_rules
+
+func _normalize_custom_capture_mode(value: Variant) -> String:
+	var capture_mode = str(value).to_lower().strip_edges()
+	if capture_mode == CUSTOM_CAPTURE_MODE_NON_CAPTURE:
+		return CUSTOM_CAPTURE_MODE_NON_CAPTURE
+	if capture_mode == CUSTOM_CAPTURE_MODE_CAPTURE_ONLY:
+		return CUSTOM_CAPTURE_MODE_CAPTURE_ONLY
+	return CUSTOM_CAPTURE_MODE_ANY
+
+func _normalize_custom_slide_scope(value: Variant) -> String:
+	var slide_scope = str(value).to_lower().strip_edges()
+	if slide_scope == CUSTOM_SLIDE_SCOPE_HALTING:
+		return CUSTOM_SLIDE_SCOPE_HALTING
+	return CUSTOM_SLIDE_SCOPE_INFINITE
+
+func _normalize_direction_vector(delta: Vector2i) -> Vector2i:
+	var gcd_value = _gcd(abs(delta.x), abs(delta.y))
+	if gcd_value <= 0:
+		return Vector2i.ZERO
+	return Vector2i(int(delta.x / gcd_value), int(delta.y / gcd_value))
+
+func _gcd(a: int, b: int) -> int:
+	var x = abs(a)
+	var y = abs(b)
+	while y != 0:
+		var remainder = x % y
+		x = y
+		y = remainder
+	return max(x, 1)
 
 func _parse_vector2i_data(value: Variant) -> Vector2i:
 	if value is Vector2i:

@@ -108,14 +108,43 @@ theme_override_constants/separation = 8
 [node name="MovementLabel" type="Label" parent="Scroll/RootMargin/RootVBox/MainColumns/RightPanel"]
 layout_mode = 2
 autowrap_mode = 3
-text = "Movement Grid (9x9). Center cell X is the piece.\nClick cells: . -> J (jump) -> S (slide) -> B (both)."
+text = "Movement Grid (9x9). Center cell X is the piece.\nUse the brush controls below, then left-click cells to toggle rules."
+
+[node name="BrushControlsRow" type="HBoxContainer" parent="Scroll/RootMargin/RootVBox/MainColumns/RightPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="MoveKindOptionButton" type="OptionButton" parent="Scroll/RootMargin/RootVBox/MainColumns/RightPanel/BrushControlsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+unique_name_in_owner = true
+
+[node name="CaptureModeOptionButton" type="OptionButton" parent="Scroll/RootMargin/RootVBox/MainColumns/RightPanel/BrushControlsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+unique_name_in_owner = true
+
+[node name="SlideModeOptionButton" type="OptionButton" parent="Scroll/RootMargin/RootVBox/MainColumns/RightPanel/BrushControlsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+unique_name_in_owner = true
+
+[node name="InitialOnlyCheckBox" type="CheckBox" parent="Scroll/RootMargin/RootVBox/MainColumns/RightPanel/BrushControlsRow"]
+layout_mode = 2
+text = "Initial only"
+unique_name_in_owner = true
+
+[node name="MovementLegendLabel" type="Label" parent="Scroll/RootMargin/RootVBox/MainColumns/RightPanel"]
+layout_mode = 2
+autowrap_mode = 3
+unique_name_in_owner = true
 
 [node name="MovementGrid" type="GridContainer" parent="Scroll/RootMargin/RootVBox/MainColumns/RightPanel"]
 layout_mode = 2
 size_flags_horizontal = 1
 theme_override_constants/h_separation = 4
 theme_override_constants/v_separation = 4
-columns = 6
+columns = 9
 unique_name_in_owner = true
 
 [node name="ClearGridButton" type="Button" parent="Scroll/RootMargin/RootVBox/MainColumns/RightPanel"]

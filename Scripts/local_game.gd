@@ -18,6 +18,13 @@ const DROP_POOL_PANEL_BORDER = Color(0.9, 0.92, 0.98, 1.0)
 const HUD_PANEL_SPACING = 12.0
 const FILE_NAMES = "abcdefghijklmnopqrstuvwxyz"
 const DEFAULT_PROMOTION_PIECE_IDS = ["queen", "rook", "bishop", "knight"]
+const CUSTOM_MOVE_KIND_JUMP = "jump"
+const CUSTOM_MOVE_KIND_SLIDE = "slide"
+const CUSTOM_CAPTURE_MODE_ANY = "any"
+const CUSTOM_CAPTURE_MODE_NON_CAPTURE = "non_capture"
+const CUSTOM_CAPTURE_MODE_CAPTURE_ONLY = "capture_only"
+const CUSTOM_SLIDE_SCOPE_INFINITE = "infinite"
+const CUSTOM_SLIDE_SCOPE_HALTING = "halting"
 
 var board_height = 8
 var board_width = 8
@@ -1284,7 +1291,8 @@ func _is_base_legal_piece_move(piece_data: Dictionary, from_square: Vector2i, to
 				return true
 			return _is_castling_move_legal(piece_data, from_square, to_square, board_state, move_info)
 		"custom":
-			return _is_custom_move_legal(piece_data, from_square, to_square, board_state)
+			var is_capture = move_info.get("capture_square", INVALID_SQUARE) != INVALID_SQUARE
+			return _is_custom_move_legal(piece_data, from_square, to_square, board_state, is_capture, false)
 		_:
 			return false
 
@@ -1358,28 +1366,174 @@ func _can_piece_attack_square(piece_data: Dictionary, from_square: Vector2i, to_
 		"king_step":
 			return _is_king_move_legal(from_square, to_square)
 		"custom":
-			return _is_custom_move_legal(piece_data, from_square, to_square, board_state)
+			return _is_custom_move_legal(piece_data, from_square, to_square, board_state, true, true)
 		_:
 			return false
 
-func _is_custom_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
+func _is_custom_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, is_capture: bool, allow_virtual_capture_target: bool) -> bool:
 	var piece_id = str(piece_data.get("piece_id", ""))
 	var delta = to_square - from_square
 	if delta == Vector2i.ZERO:
 		return false
+	var initial_move = not bool(piece_data.get("has_moved", false))
 
-	for jump_offset in _get_custom_offsets(piece_id, "jump_offsets"):
-		if jump_offset == delta:
-			return true
+	for movement_rule in _get_custom_movement_rules(piece_id):
+		if not _custom_rule_allows_context(movement_rule, is_capture, initial_move, allow_virtual_capture_target):
+			continue
 
-	for slide_step in _get_custom_offsets(piece_id, "slide_directions"):
-		var steps = _count_slide_steps(delta, slide_step)
+		var rule_kind = str(movement_rule.get("kind", CUSTOM_MOVE_KIND_JUMP))
+		var rule_delta: Vector2i = movement_rule.get("offset", Vector2i.ZERO)
+		if rule_kind == CUSTOM_MOVE_KIND_JUMP:
+			if rule_delta == delta:
+				return true
+			continue
+
+		if str(movement_rule.get("slide_scope", CUSTOM_SLIDE_SCOPE_INFINITE)) == CUSTOM_SLIDE_SCOPE_HALTING:
+			if rule_delta != delta:
+				continue
+			var halt_step = _normalize_direction_vector(rule_delta)
+			if halt_step == Vector2i.ZERO:
+				continue
+			var halt_steps = _count_slide_steps(rule_delta, halt_step)
+			if halt_steps <= 0:
+				continue
+			if _is_custom_slide_path_clear(from_square, halt_step, halt_steps, board_state):
+				return true
+			continue
+
+		var steps = _count_slide_steps(delta, rule_delta)
 		if steps <= 0:
 			continue
-		if _is_custom_slide_path_clear(from_square, slide_step, steps, board_state):
+		if _is_custom_slide_path_clear(from_square, rule_delta, steps, board_state):
 			return true
 
 	return false
+
+func _custom_rule_allows_context(rule: Dictionary, is_capture: bool, initial_move: bool, allow_virtual_capture_target: bool) -> bool:
+	if bool(rule.get("initial_only", false)) and not initial_move:
+		return false
+
+	var capture_mode = _normalize_custom_capture_mode(rule.get("capture_mode", CUSTOM_CAPTURE_MODE_ANY))
+	if capture_mode == CUSTOM_CAPTURE_MODE_CAPTURE_ONLY:
+		return is_capture or allow_virtual_capture_target
+	if capture_mode == CUSTOM_CAPTURE_MODE_NON_CAPTURE:
+		return not is_capture
+	return true
+
+func _normalize_custom_capture_mode(value: Variant) -> String:
+	var capture_mode = str(value).to_lower().strip_edges()
+	if capture_mode == CUSTOM_CAPTURE_MODE_NON_CAPTURE:
+		return CUSTOM_CAPTURE_MODE_NON_CAPTURE
+	if capture_mode == CUSTOM_CAPTURE_MODE_CAPTURE_ONLY:
+		return CUSTOM_CAPTURE_MODE_CAPTURE_ONLY
+	return CUSTOM_CAPTURE_MODE_ANY
+
+func _normalize_custom_slide_scope(value: Variant) -> String:
+	var slide_scope = str(value).to_lower().strip_edges()
+	if slide_scope == CUSTOM_SLIDE_SCOPE_HALTING:
+		return CUSTOM_SLIDE_SCOPE_HALTING
+	return CUSTOM_SLIDE_SCOPE_INFINITE
+
+func _get_custom_movement_rules(piece_id: String) -> Array[Dictionary]:
+	var movement_rules: Array[Dictionary] = []
+	if not $"/root/GameManager".PieceDefinitions.has(piece_id):
+		return movement_rules
+	var piece_definition: Dictionary = $"/root/GameManager".PieceDefinitions[piece_id]
+
+	var seen_keys = {}
+	var raw_rules = piece_definition.get("movement_rules", [])
+	if raw_rules is Array:
+		for raw_rule in raw_rules:
+			if not (raw_rule is Dictionary):
+				continue
+			var move_kind = str(raw_rule.get("kind", CUSTOM_MOVE_KIND_JUMP)).to_lower()
+			if move_kind != CUSTOM_MOVE_KIND_SLIDE:
+				move_kind = CUSTOM_MOVE_KIND_JUMP
+
+			var delta = Vector2i(int(raw_rule.get("x", 0)), int(raw_rule.get("y", 0)))
+			if delta == Vector2i.ZERO and raw_rule.has("offset"):
+				delta = _parse_custom_rule_offset(raw_rule.get("offset"))
+			if delta == Vector2i.ZERO:
+				continue
+
+			var slide_scope = _normalize_custom_slide_scope(raw_rule.get("slide_scope", CUSTOM_SLIDE_SCOPE_INFINITE))
+			if move_kind == CUSTOM_MOVE_KIND_SLIDE and slide_scope == CUSTOM_SLIDE_SCOPE_INFINITE:
+				delta = _normalize_direction_vector(delta)
+				if delta == Vector2i.ZERO:
+					continue
+			if move_kind != CUSTOM_MOVE_KIND_SLIDE:
+				slide_scope = CUSTOM_SLIDE_SCOPE_INFINITE
+
+			var capture_mode = _normalize_custom_capture_mode(raw_rule.get("capture_mode", CUSTOM_CAPTURE_MODE_ANY))
+			var initial_only = bool(raw_rule.get("initial_only", false))
+			var rule_key = "%s|%d|%d|%s|%d|%s" % [move_kind, delta.x, delta.y, capture_mode, int(initial_only), slide_scope]
+			if seen_keys.has(rule_key):
+				continue
+			seen_keys[rule_key] = true
+			movement_rules.append({
+				"kind": move_kind,
+				"offset": delta,
+				"capture_mode": capture_mode,
+				"initial_only": initial_only,
+				"slide_scope": slide_scope
+			})
+
+	if not movement_rules.is_empty():
+		return movement_rules
+
+	for jump_offset in _get_custom_offsets(piece_id, "jump_offsets"):
+		var jump_key = "%s|%d|%d|%s|0" % [CUSTOM_MOVE_KIND_JUMP, jump_offset.x, jump_offset.y, CUSTOM_CAPTURE_MODE_ANY]
+		if seen_keys.has(jump_key):
+			continue
+		seen_keys[jump_key] = true
+		movement_rules.append({
+			"kind": CUSTOM_MOVE_KIND_JUMP,
+			"offset": jump_offset,
+			"capture_mode": CUSTOM_CAPTURE_MODE_ANY,
+			"initial_only": false
+		})
+
+	for slide_step in _get_custom_offsets(piece_id, "slide_directions"):
+		var normalized_slide = _normalize_direction_vector(slide_step)
+		if normalized_slide == Vector2i.ZERO:
+			continue
+		var slide_key = "%s|%d|%d|%s|0" % [CUSTOM_MOVE_KIND_SLIDE, normalized_slide.x, normalized_slide.y, CUSTOM_CAPTURE_MODE_ANY]
+		if seen_keys.has(slide_key):
+			continue
+		seen_keys[slide_key] = true
+		movement_rules.append({
+			"kind": CUSTOM_MOVE_KIND_SLIDE,
+			"offset": normalized_slide,
+			"capture_mode": CUSTOM_CAPTURE_MODE_ANY,
+			"initial_only": false,
+			"slide_scope": CUSTOM_SLIDE_SCOPE_INFINITE
+		})
+
+	return movement_rules
+
+func _parse_custom_rule_offset(value: Variant) -> Vector2i:
+	if value is Vector2i:
+		return value
+	if value is Dictionary:
+		return Vector2i(int(value.get("x", 0)), int(value.get("y", 0)))
+	if value is Array and value.size() >= 2:
+		return Vector2i(int(value[0]), int(value[1]))
+	return Vector2i.ZERO
+
+func _normalize_direction_vector(delta: Vector2i) -> Vector2i:
+	var gcd_value = _gcd(abs(delta.x), abs(delta.y))
+	if gcd_value <= 0:
+		return Vector2i.ZERO
+	return Vector2i(int(delta.x / gcd_value), int(delta.y / gcd_value))
+
+func _gcd(a: int, b: int) -> int:
+	var x = abs(a)
+	var y = abs(b)
+	while y != 0:
+		var remainder = x % y
+		x = y
+		y = remainder
+	return max(x, 1)
 
 func _get_custom_offsets(piece_id: String, property_name: String) -> Array[Vector2i]:
 	var offsets: Array[Vector2i] = []
