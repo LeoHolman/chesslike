@@ -1597,6 +1597,13 @@ func _on_start_game_button_pressed() -> void:
 	$"/root/GameManager".PromotionZones = _build_promotion_zones()
 	$"/root/GameManager".PlayerColors = _serialize_player_colors()
 	$"/root/GameManager".TileColors = _serialize_tile_colors()
+
+	var network_manager = get_node_or_null("/root/NetworkManager")
+	if network_manager != null and network_manager.is_hosting and not network_manager.is_online_active():
+		if not network_manager.start_hosted_match():
+			preview_warning_label.text = "Online start failed. Make sure player 2 is connected."
+			preview_warning_label.visible = true
+			return
 	
 	#var LocalGame = load("res://Scenes/LocalGame.tscn")
 	#get_tree().current_scene.add_child(LocalGame)

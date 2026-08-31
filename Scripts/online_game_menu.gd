@@ -20,6 +20,7 @@ func _ready() -> void:
 	port_spin_box.step = 1
 	port_spin_box.rounded = true
 	port_spin_box.value = float(network_manager.DEFAULT_PORT)
+	start_match_button.visible = false
 	start_match_button.disabled = true
 	status_label.text = "Host a game, or join with your friend's public IP and port."
 
@@ -37,8 +38,12 @@ func _exit_tree() -> void:
 func _on_host_button_pressed() -> void:
 	var port = int(round(port_spin_box.value))
 	var network_manager = $"/root/NetworkManager"
-	if network_manager != null:
-		network_manager.host_game(port)
+	if network_manager == null:
+		return
+	if not network_manager.host_game(port):
+		return
+	status_label.text = "Hosting started. Opening game setup..."
+	get_tree().change_scene_to_file("res://Scenes/LocalGameMenu.tscn")
 
 func _on_join_button_pressed() -> void:
 	var host_address = host_address_input.text.strip_edges()
@@ -48,12 +53,8 @@ func _on_join_button_pressed() -> void:
 		network_manager.join_game(host_address, port)
 
 func _on_start_match_button_pressed() -> void:
-	var network_manager = $"/root/NetworkManager"
-	if network_manager == null:
-		return
-	if not network_manager.start_hosted_match():
-		return
-	get_tree().change_scene_to_file("res://Scenes/LocalGame.tscn")
+	# Host now starts the online match from LocalGameMenu after configuring the board.
+	pass
 
 func _on_cancel_button_pressed() -> void:
 	var network_manager = $"/root/NetworkManager"
