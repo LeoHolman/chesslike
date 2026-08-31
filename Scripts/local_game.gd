@@ -26,6 +26,8 @@ var captured_pieces = {
 	"white": [],
 	"black": []
 }
+var game_over = false
+var status_message = ""
 
 func _ready() -> void:
 	get_viewport().size_changed.connect(_on_viewport_resized)
@@ -50,10 +52,13 @@ func _initialize_board_state() -> void:
 		"white": [],
 		"black": []
 	}
+	game_over = false
+	status_message = ""
 	pieces.clear()
 	if board_width < 1 or board_height < 1:
 		return
 	_load_starting_pieces()
+	_update_game_state(false)
 
 func _add_piece(square: Vector2i, piece_id: String, piece_color: String) -> void:
 	pieces[square] = {
@@ -176,6 +181,15 @@ func _draw_turn_indicator() -> Vector2:
 	turn_label.add_theme_font_size_override("font_size", font_size)
 	turn_label.add_theme_color_override("font_color", Color(0.1, 0.1, 0.1))
 	add_child(turn_label)
+
+	if status_message != "":
+		var status_label = Label.new()
+		status_label.text = status_message
+		status_label.position = indicator_position + Vector2(TURN_INDICATOR_PADDING, indicator_size.y + 2.0)
+		status_label.add_theme_font_size_override("font_size", int(max(tile_size * 0.18, 15.0)))
+		status_label.add_theme_color_override("font_color", Color(0.25, 0.08, 0.08))
+		add_child(status_label)
+		return indicator_position + Vector2(0.0, indicator_size.y + 24.0 + HUD_PANEL_SPACING)
 
 	return indicator_position + Vector2(0.0, indicator_size.y + HUD_PANEL_SPACING)
 
@@ -376,6 +390,9 @@ func _get_piece_symbol(piece_id: String) -> String:
 	return "?"
 
 func _handle_board_click(mouse_position: Vector2) -> void:
+	if game_over:
+		return
+
 	var square = _screen_to_square(mouse_position)
 	if square == INVALID_SQUARE:
 		_clear_selection()
@@ -394,6 +411,7 @@ func _handle_board_click(mouse_position: Vector2) -> void:
 		current_turn = _opponent_color(current_turn)
 		selected_square = INVALID_SQUARE
 		legal_moves.clear()
+		_update_game_state(true)
 		_build_board()
 		return
 
@@ -438,13 +456,8 @@ func _get_legal_moves(from_square: Vector2i) -> Array[Vector2i]:
 	for y in board_height:
 		for x in board_width:
 			var to_square = Vector2i(x, y)
-			if _is_legal_piece_move(moving_piece, from_square, to_square):
-				if not pieces.has(to_square):
-					available_moves.append(to_square)
-				else:
-					var target_piece: Dictionary = pieces[to_square]
-					if target_piece.get("color", "") != moving_piece.get("color", ""):
-						available_moves.append(to_square)
+			if _is_legal_piece_move_on_board(moving_piece, from_square, to_square, pieces):
+				available_moves.append(to_square)
 
 	return available_moves
 
@@ -472,13 +485,11 @@ func _try_move_piece(from_square: Vector2i, to_square: Vector2i) -> bool:
 
 	var moving_piece: Dictionary = pieces[from_square]
 	var captured_piece: Dictionary = {}
-	if not _is_legal_piece_move(moving_piece, from_square, to_square):
+	if not _is_legal_piece_move_on_board(moving_piece, from_square, to_square, pieces):
 		return false
 
 	if pieces.has(to_square):
 		var target_piece: Dictionary = pieces[to_square]
-		if target_piece.get("color", "") == moving_piece.get("color", ""):
-			return false
 		captured_piece = target_piece.duplicate(true)
 
 	pieces.erase(from_square)
@@ -489,27 +500,125 @@ func _try_move_piece(from_square: Vector2i, to_square: Vector2i) -> bool:
 	return true
 
 func _is_legal_piece_move(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i) -> bool:
+	return _is_legal_piece_move_on_board(piece_data, from_square, to_square, pieces)
+
+func _is_legal_piece_move_on_board(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
+	if not _is_base_legal_piece_move(piece_data, from_square, to_square, board_state):
+		return false
+	return not _would_leave_king_in_check(piece_data, from_square, to_square, board_state)
+
+func _is_base_legal_piece_move(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
 	if from_square == to_square:
 		return false
+	if board_state.has(to_square):
+		var target_piece: Dictionary = board_state[to_square]
+		if target_piece.get("color", "") == piece_data.get("color", ""):
+			return false
+		if target_piece.get("piece_id", "") == "king":
+			return false
 
 	var piece_definition = _get_piece_definition(str(piece_data.get("piece_id", "")))
 	match piece_definition.get("move_type", ""):
 		"pawn":
-			return _is_pawn_move_legal(piece_data, from_square, to_square)
+			return _is_pawn_move_legal(piece_data, from_square, to_square, board_state)
 		"knight_jump":
 			return _is_knight_move_legal(from_square, to_square)
 		"diagonal_slide":
-			return _is_bishop_move_legal(from_square, to_square)
+			return _is_bishop_move_legal(from_square, to_square, board_state)
 		"cardinal_slide":
-			return _is_rook_move_legal(from_square, to_square)
+			return _is_rook_move_legal(from_square, to_square, board_state)
 		"omni_slide":
-			return _is_queen_move_legal(from_square, to_square)
+			return _is_queen_move_legal(from_square, to_square, board_state)
 		"king_step":
 			return _is_king_move_legal(from_square, to_square)
 		_:
 			return false
 
-func _is_pawn_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i) -> bool:
+func _would_leave_king_in_check(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
+	var simulated_board = _simulate_move(board_state, from_square, to_square)
+	return _is_king_in_check(str(piece_data.get("color", "white")), simulated_board)
+
+func _simulate_move(board_state: Dictionary, from_square: Vector2i, to_square: Vector2i) -> Dictionary:
+	var simulated_board = board_state.duplicate(true)
+	var moving_piece: Dictionary = simulated_board.get(from_square, {}).duplicate(true)
+	simulated_board.erase(from_square)
+	simulated_board[to_square] = moving_piece
+	return simulated_board
+
+func _is_king_in_check(piece_color: String, board_state: Dictionary) -> bool:
+	var king_square = _find_king_square(piece_color, board_state)
+	if king_square == INVALID_SQUARE:
+		return false
+
+	for from_square in board_state.keys():
+		var piece_data: Dictionary = board_state[from_square]
+		if piece_data.get("color", "") == piece_color:
+			continue
+		if _can_piece_attack_square(piece_data, from_square, king_square, board_state):
+			return true
+
+	return false
+
+func _find_king_square(piece_color: String, board_state: Dictionary) -> Vector2i:
+	for square in board_state.keys():
+		var piece_data: Dictionary = board_state[square]
+		if piece_data.get("color", "") == piece_color and piece_data.get("piece_id", "") == "king":
+			return square
+	return INVALID_SQUARE
+
+func _can_piece_attack_square(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
+	var piece_definition = _get_piece_definition(str(piece_data.get("piece_id", "")))
+	match piece_definition.get("move_type", ""):
+		"pawn":
+			return _is_pawn_attack_legal(piece_data, from_square, to_square)
+		"knight_jump":
+			return _is_knight_move_legal(from_square, to_square)
+		"diagonal_slide":
+			return _is_bishop_move_legal(from_square, to_square, board_state)
+		"cardinal_slide":
+			return _is_rook_move_legal(from_square, to_square, board_state)
+		"omni_slide":
+			return _is_queen_move_legal(from_square, to_square, board_state)
+		"king_step":
+			return _is_king_move_legal(from_square, to_square)
+		_:
+			return false
+
+func _has_any_legal_moves(piece_color: String) -> bool:
+	for from_square in pieces.keys():
+		var piece_data: Dictionary = pieces[from_square]
+		if piece_data.get("color", "") != piece_color:
+			continue
+		for y in board_height:
+			for x in board_width:
+				if _is_legal_piece_move_on_board(piece_data, from_square, Vector2i(x, y), pieces):
+					return true
+	return false
+
+func _update_game_state(record_history: bool) -> void:
+	var in_check = _is_king_in_check(current_turn, pieces)
+	var has_moves = _has_any_legal_moves(current_turn)
+	status_message = ""
+	game_over = false
+
+	if in_check and not has_moves:
+		game_over = true
+		status_message = "Checkmate: %s wins" % _display_color(_opponent_color(current_turn))
+		if record_history:
+			move_history.append("Checkmate. %s wins." % _display_color(_opponent_color(current_turn)))
+		return
+
+	if not in_check and not has_moves:
+		game_over = true
+		status_message = "Stalemate"
+		if record_history:
+			move_history.append("Stalemate.")
+		return
+
+	if in_check:
+		status_message = "%s in check" % _display_color(current_turn)
+
+func _is_pawn_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
 	var direction = 1
 	var start_rank = 1
 	if str(piece_data.get("color", "white")) == "white":
@@ -518,55 +627,61 @@ func _is_pawn_move_legal(piece_data: Dictionary, from_square: Vector2i, to_squar
 
 	var delta_x = to_square.x - from_square.x
 	var delta_y = to_square.y - from_square.y
-	var destination_occupied = pieces.has(to_square)
+	var destination_occupied = board_state.has(to_square)
 
 	if delta_x == 0:
 		if delta_y == direction and not destination_occupied:
 			return true
 		if delta_y == direction * 2 and from_square.y == start_rank and not destination_occupied:
 			var intermediate_square = Vector2i(from_square.x, from_square.y + direction)
-			return not pieces.has(intermediate_square)
+			return not board_state.has(intermediate_square)
 		return false
 
 	if abs(delta_x) == 1 and delta_y == direction and destination_occupied:
-		var target_piece: Dictionary = pieces[to_square]
+		var target_piece: Dictionary = board_state[to_square]
 		return target_piece.get("color", "") != piece_data.get("color", "")
 
 	return false
+
+func _is_pawn_attack_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i) -> bool:
+	var direction = 1
+	if str(piece_data.get("color", "white")) == "white":
+		direction = -1
+	return abs(to_square.x - from_square.x) == 1 and to_square.y - from_square.y == direction
 
 func _is_knight_move_legal(from_square: Vector2i, to_square: Vector2i) -> bool:
 	var delta_x = abs(to_square.x - from_square.x)
 	var delta_y = abs(to_square.y - from_square.y)
 	return (delta_x == 2 and delta_y == 1) or (delta_x == 1 and delta_y == 2)
 
-func _is_bishop_move_legal(from_square: Vector2i, to_square: Vector2i) -> bool:
+func _is_bishop_move_legal(from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
 	var delta_x = to_square.x - from_square.x
 	var delta_y = to_square.y - from_square.y
 	if abs(delta_x) != abs(delta_y):
 		return false
-	return _is_path_clear(from_square, to_square)
+	return _is_path_clear(from_square, to_square, board_state)
 
-func _is_rook_move_legal(from_square: Vector2i, to_square: Vector2i) -> bool:
+func _is_rook_move_legal(from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
 	if from_square.x != to_square.x and from_square.y != to_square.y:
 		return false
-	return _is_path_clear(from_square, to_square)
+	return _is_path_clear(from_square, to_square, board_state)
 
 
-func _is_queen_move_legal(from_square: Vector2i, to_square: Vector2i) -> bool:
-	return _is_rook_move_legal(from_square, to_square) or _is_bishop_move_legal(from_square, to_square)
+func _is_queen_move_legal(from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
+	return _is_rook_move_legal(from_square, to_square, board_state) or _is_bishop_move_legal(from_square, to_square, board_state)
 
 func _is_king_move_legal(from_square: Vector2i, to_square: Vector2i) -> bool:
 	var delta_x = abs(to_square.x - from_square.x)
 	var delta_y = abs(to_square.y - from_square.y)
 	return delta_x <= 1 and delta_y <= 1
 
-func _is_path_clear(from_square: Vector2i, to_square: Vector2i) -> bool:
+func _is_path_clear(from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
 	var step_x = signi(to_square.x - from_square.x)
 	var step_y = signi(to_square.y - from_square.y)
 	var cursor = from_square + Vector2i(step_x, step_y)
 
 	while cursor != to_square:
-		if pieces.has(cursor):
+		if board_state.has(cursor):
 			return false
 		cursor += Vector2i(step_x, step_y)
 

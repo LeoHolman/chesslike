@@ -11,6 +11,22 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_2iipm")
 
+[node name="OptionsScroll" type="ScrollContainer" parent="." unique_id=824782812]
+layout_mode = 1
+anchors_preset = 11
+anchor_left = 0.04
+anchor_top = 0.12
+anchor_right = 0.48
+anchor_bottom = 0.94
+grow_horizontal = 2
+grow_vertical = 2
+horizontal_scroll_mode = 0
+
+[node name="OptionsContent" type="Control" parent="OptionsScroll" unique_id=1806613797]
+custom_minimum_size = Vector2(0, 860)
+layout_mode = 2
+size_flags_horizontal = 3
+
 [node name="PreviewArea" type="Panel" parent="." unique_id=1969587985]
 layout_mode = 1
 anchors_preset = 11
@@ -33,117 +49,142 @@ offset_bottom = -16.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="BoardWidth" type="Label" parent="." unique_id=328760141]
+[node name="LocalGameTitle" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1654476851]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 186.0
-offset_right = 190.0
-offset_bottom = 209.0
-text = "Board Width:"
+offset_top = 32.0
+offset_right = 240.0
+offset_bottom = 55.0
+text = "Create Local game"
 
-[node name="WidthSpinBox" type="SpinBox" parent="." unique_id=375682489]
+[node name="BoardSizeTitle" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1896913808]
 layout_mode = 0
-offset_left = 204.0
-offset_top = 178.0
-offset_right = 320.0
-offset_bottom = 209.0
+offset_left = 80.0
+offset_top = 104.0
+offset_right = 220.0
+offset_bottom = 127.0
+text = "Board Size:"
+
+[node name="BoardWidth" type="Label" parent="OptionsScroll/OptionsContent" unique_id=328760141]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 148.0
+offset_right = 170.0
+offset_bottom = 171.0
+text = "Width"
+
+[node name="WidthSpinBox" type="SpinBox" parent="OptionsScroll/OptionsContent" unique_id=375682489]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 180.0
+offset_right = 180.0
+offset_bottom = 211.0
 min_value = 3.0
 max_value = 15.0
 value = 8.0
 rounded = true
 
-[node name="BoardHeight" type="Label" parent="." unique_id=1042435751]
+[node name="BoardHeight" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1042435751]
 layout_mode = 0
-offset_left = 80.0
-offset_top = 248.0
-offset_right = 190.0
-offset_bottom = 271.0
-text = "Board Height:"
+offset_left = 212.0
+offset_top = 148.0
+offset_right = 302.0
+offset_bottom = 171.0
+text = "Height"
 
-[node name="HeightSpinBox" type="SpinBox" parent="." unique_id=1253021372]
+[node name="HeightSpinBox" type="SpinBox" parent="OptionsScroll/OptionsContent" unique_id=1253021372]
 layout_mode = 0
-offset_left = 204.0
-offset_top = 240.0
-offset_right = 320.0
-offset_bottom = 271.0
+offset_left = 212.0
+offset_top = 180.0
+offset_right = 312.0
+offset_bottom = 211.0
 min_value = 3.0
 max_value = 15.0
 value = 8.0
 rounded = true
 
-[node name="PieceBankTitle" type="Label" parent="." unique_id=1435119969]
+[node name="PieceBankTitle" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1435119969]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 302.0
+offset_top = 252.0
 offset_right = 218.0
-offset_bottom = 325.0
+offset_bottom = 275.0
 text = "Available Pieces:"
 
-[node name="PieceBankList" type="ItemList" parent="." unique_id=528792132]
+[node name="PieceBankList" type="ItemList" parent="OptionsScroll/OptionsContent" unique_id=528792132]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 332.0
+offset_top = 282.0
 offset_right = 320.0
-offset_bottom = 464.0
+offset_bottom = 414.0
 allow_reselect = true
 select_mode = 0
 
-[node name="PieceColorLabel" type="Label" parent="." unique_id=1048543921]
+[node name="PieceColorLabel" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1048543921]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 476.0
+offset_top = 432.0
 offset_right = 160.0
-offset_bottom = 499.0
+offset_bottom = 455.0
 text = "Piece Color:"
 
-[node name="PieceColorOption" type="OptionButton" parent="." unique_id=1416766760]
+[node name="PieceColorOption" type="OptionButton" parent="OptionsScroll/OptionsContent" unique_id=1416766760]
 layout_mode = 0
 offset_left = 204.0
-offset_top = 470.0
+offset_top = 426.0
 offset_right = 320.0
-offset_bottom = 501.0
+offset_bottom = 457.0
 
-[node name="PreviewInstructions" type="Label" parent="." unique_id=1873652165]
+[node name="PresetsTitle" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1682492661]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 516.0
+offset_top = 480.0
+offset_right = 160.0
+offset_bottom = 503.0
+text = "Presets:"
+
+[node name="PresetList" type="ItemList" parent="OptionsScroll/OptionsContent" unique_id=368897934]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 510.0
+offset_right = 320.0
+offset_bottom = 582.0
+allow_reselect = true
+select_mode = 0
+
+[node name="PreviewInstructions" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1873652165]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 606.0
 offset_right = 384.0
-offset_bottom = 562.0
+offset_bottom = 652.0
 text = "Left drag on the preview to place the selected piece.\nRight drag on the preview to remove pieces."
 
-[node name="ClearBoardButton" type="Button" parent="." unique_id=71584107]
+[node name="ClearBoardButton" type="Button" parent="OptionsScroll/OptionsContent" unique_id=71584107]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 576.0
+offset_top = 682.0
 offset_right = 188.0
-offset_bottom = 607.0
+offset_bottom = 713.0
 text = "Clear Board"
 
-[node name="ResetSetupButton" type="Button" parent="." unique_id=208044863]
+[node name="ResetSetupButton" type="Button" parent="OptionsScroll/OptionsContent" unique_id=208044863]
 layout_mode = 0
 offset_left = 204.0
-offset_top = 576.0
+offset_top = 682.0
 offset_right = 320.0
-offset_bottom = 607.0
+offset_bottom = 713.0
 text = "Reset Setup"
 
-[node name="LocalGameTitle" type="Label" parent="." unique_id=1654476851]
-layout_mode = 0
-offset_left = 80.0
-offset_top = 96.0
-offset_right = 220.0
-offset_bottom = 119.0
-text = "Create Local game"
-
-[node name="StartGameButton" type="Button" parent="." unique_id=40242828]
+[node name="StartGameButton" type="Button" parent="OptionsScroll/OptionsContent" unique_id=40242828]
 layout_mode = 0
 offset_left = 204.0
-offset_top = 628.0
+offset_top = 738.0
 offset_right = 320.0
-offset_bottom = 659.0
+offset_bottom = 769.0
 text = "Start Game
 "
 
-[connection signal="pressed" from="ClearBoardButton" to="." method="_on_clear_board_button_pressed"]
-[connection signal="pressed" from="ResetSetupButton" to="." method="_on_reset_setup_button_pressed"]
-[connection signal="pressed" from="StartGameButton" to="." method="_on_start_game_button_pressed"]
+[connection signal="pressed" from="OptionsScroll/OptionsContent/ClearBoardButton" to="." method="_on_clear_board_button_pressed"]
+[connection signal="pressed" from="OptionsScroll/OptionsContent/ResetSetupButton" to="." method="_on_reset_setup_button_pressed"]
+[connection signal="pressed" from="OptionsScroll/OptionsContent/StartGameButton" to="." method="_on_start_game_button_pressed"]

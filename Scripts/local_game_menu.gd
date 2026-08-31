@@ -1,14 +1,18 @@
 extends Control
 
-@onready var width_spin_box: SpinBox = $WidthSpinBox
-@onready var height_spin_box: SpinBox = $HeightSpinBox
+@onready var width_spin_box: SpinBox = $OptionsScroll/OptionsContent/WidthSpinBox
+@onready var height_spin_box: SpinBox = $OptionsScroll/OptionsContent/HeightSpinBox
 @onready var board_preview: Control = $PreviewArea/BoardPreview
-@onready var piece_bank_list: ItemList = $PieceBankList
-@onready var piece_color_option: OptionButton = $PieceColorOption
+@onready var piece_bank_list: ItemList = $OptionsScroll/OptionsContent/PieceBankList
+@onready var piece_color_option: OptionButton = $OptionsScroll/OptionsContent/PieceColorOption
+@onready var preset_list: ItemList = $OptionsScroll/OptionsContent/PresetList
 
 const INVALID_SQUARE = Vector2i(-1, -1)
 const PREVIEW_SELECTION_HIGHLIGHT = Color(0.2, 0.6, 1.0, 0.28)
 const PREVIEW_GHOST_TINT = Color(1.0, 1.0, 1.0, 0.45)
+const PRESETS = {
+	"Standard": "standard"
+}
 
 var selected_piece_id = ""
 var selected_piece_color = "white"
@@ -28,9 +32,11 @@ func _ready() -> void:
 	board_preview.gui_input.connect(_on_board_preview_gui_input)
 	board_preview.resized.connect(_refresh_preview)
 	board_preview.mouse_exited.connect(_on_board_preview_mouse_exited)
+	preset_list.item_selected.connect(_on_preset_item_selected)
 	_populate_piece_bank()
+	_populate_presets()
 	_setup_piece_color_picker()
-	_reset_preview_to_default(false)
+	_reset_preview_to_default(false, false)
 	_refresh_preview(0.0)
 
 func _populate_piece_bank() -> void:
@@ -48,6 +54,11 @@ func _populate_piece_bank() -> void:
 
 	piece_bank_list.item_selected.connect(_on_piece_bank_item_selected)
 
+func _populate_presets() -> void:
+	preset_list.clear()
+	for preset_name in PRESETS.keys():
+		preset_list.add_item(preset_name)
+
 func _setup_piece_color_picker() -> void:
 	piece_color_option.clear()
 	piece_color_option.add_item("White")
@@ -55,10 +66,12 @@ func _setup_piece_color_picker() -> void:
 	piece_color_option.select(0)
 	piece_color_option.item_selected.connect(_on_piece_color_selected)
 
-func _reset_preview_to_default(should_refresh: bool = true) -> void:
+func _reset_preview_to_default(should_refresh: bool = true, use_standard_layout: bool = true) -> void:
 	width_spin_box.value = 8
 	height_spin_box.value = 8
 	preview_pieces.clear()
+	if use_standard_layout:
+		_apply_standard_chess_layout()
 	selected_piece_color = "white"
 	piece_color_option.select(0)
 	if piece_bank_list.item_count > 0:
@@ -67,13 +80,42 @@ func _reset_preview_to_default(should_refresh: bool = true) -> void:
 	else:
 		selected_piece_id = ""
 	last_drag_square = INVALID_SQUARE
+	hover_preview_square = INVALID_SQUARE
+	selected_preview_square = INVALID_SQUARE
+	is_left_dragging = false
+	is_right_dragging = false
+	drag_changed_any = false
 	if should_refresh:
 		_refresh_preview()
+
+func _apply_preset(preset_id: String) -> void:
+	match preset_id:
+		"standard":
+			_reset_preview_to_default(false, false)
+			_apply_standard_chess_layout()
+			_refresh_preview()
+		_:
+			return
+
+func _apply_standard_chess_layout() -> void:
+	var back_rank = ["rook", "knight", "bishop", "queen", "king", "bishop", "knight", "rook"]
+	for x in range(8):
+		preview_pieces[Vector2i(x, 0)] = {"piece_id": back_rank[x], "color": "black"}
+		preview_pieces[Vector2i(x, 1)] = {"piece_id": "pawn", "color": "black"}
+		preview_pieces[Vector2i(x, 6)] = {"piece_id": "pawn", "color": "white"}
+		preview_pieces[Vector2i(x, 7)] = {"piece_id": back_rank[x], "color": "white"}
 
 func _on_piece_bank_item_selected(index: int) -> void:
 	var game_manager = $"/root/GameManager"
 	if index >= 0 and index < game_manager.PieceBank.size():
 		selected_piece_id = str(game_manager.PieceBank[index])
+
+func _on_preset_item_selected(index: int) -> void:
+	if index < 0 or index >= preset_list.item_count:
+		return
+	var preset_name = preset_list.get_item_text(index)
+	if PRESETS.has(preset_name):
+		_apply_preset(str(PRESETS[preset_name]))
 
 func _on_piece_color_selected(index: int) -> void:
 	if index == 1:
@@ -332,11 +374,11 @@ func _on_clear_board_button_pressed() -> void:
 	_refresh_preview()
 
 func _on_reset_setup_button_pressed() -> void:
-	_reset_preview_to_default()
+	_reset_preview_to_default(true, false)
 
 func _on_start_game_button_pressed() -> void:
-	var height = $HeightSpinBox.value
-	var width = $WidthSpinBox.value
+	var height = height_spin_box.value
+	var width = width_spin_box.value
 	
 	$"/root/GameManager".BoardHeight = height
 	$"/root/GameManager".BoardWidth = width
