@@ -89,6 +89,10 @@ var board_tile_colors = {
 	"light": Color(1.0, 1.0, 1.0, 1.0),
 	"dark": Color(0.41, 0.41, 0.41, 1.0)
 }
+var promotion_zone_rows = {
+	"white": 1,
+	"black": 1
+}
 var drop_piece_drag_active = false
 var drop_piece_drag_position = Vector2.ZERO
 var drop_pool_hover_owner = ""
@@ -323,6 +327,7 @@ func _initialize_board_state() -> void:
 	army_strength_cap_black = max(int($"/root/GameManager".ArmyStrengthCapBlack), 2)
 	player_side_colors = _get_player_side_colors($"/root/GameManager".PlayerColors)
 	board_tile_colors = _get_board_tile_colors($"/root/GameManager".TileColors)
+	promotion_zone_rows = _get_promotion_zone_rows($"/root/GameManager".PromotionZones)
 	promotion_piece_options = _get_promotion_piece_pool()
 	en_passant_target_square = INVALID_SQUARE
 	drop_pools = _get_starting_drop_pools()
@@ -1033,6 +1038,26 @@ func _get_board_tile_colors(serialized: Variant) -> Dictionary:
 	parsed["light"] = _color_from_variant(serialized.get("light", {}), parsed["light"])
 	parsed["dark"] = _color_from_variant(serialized.get("dark", {}), parsed["dark"])
 	return parsed
+
+func _get_promotion_zone_rows(serialized: Variant) -> Dictionary:
+	var parsed = {
+		"white": 1,
+		"black": 1
+	}
+	if not (serialized is Dictionary):
+		return parsed
+	parsed["white"] = max(int(serialized.get("white_rows", serialized.get("white", 1))), 1)
+	parsed["black"] = max(int(serialized.get("black_rows", serialized.get("black", 1))), 1)
+	return parsed
+
+func _is_square_in_promotion_zone(piece_color: String, target_square: Vector2i) -> bool:
+	if target_square == INVALID_SQUARE:
+		return false
+	var zone_rows = int(promotion_zone_rows.get(piece_color, 1))
+	zone_rows = clamp(zone_rows, 1, max(board_height, 1))
+	if piece_color == "white":
+		return target_square.y < zone_rows
+	return target_square.y >= board_height - zone_rows
 
 func _color_from_variant(source: Variant, fallback: Color) -> Color:
 	if source is Dictionary:
@@ -2161,11 +2186,10 @@ func _build_total_war_state_key(state: Dictionary) -> String:
 func _is_pawn_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, move_info: Dictionary) -> bool:
 	var direction = 1
 	var start_rank = 1
-	var promotion_rank = board_height - 1
+	var piece_color = str(piece_data.get("color", "white"))
 	if str(piece_data.get("color", "white")) == "white":
 		direction = -1
 		start_rank = board_height - 2
-		promotion_rank = 0
 
 	var delta_x = to_square.x - from_square.x
 	var delta_y = to_square.y - from_square.y
@@ -2173,7 +2197,7 @@ func _is_pawn_move_legal(piece_data: Dictionary, from_square: Vector2i, to_squar
 
 	if delta_x == 0:
 		if delta_y == direction and not destination_occupied:
-			if to_square.y == promotion_rank and promotion_enabled:
+			if promotion_enabled and _is_square_in_promotion_zone(piece_color, to_square):
 				move_info["requires_promotion"] = true
 			return true
 		if delta_y == direction * 2 and from_square.y == start_rank and not destination_occupied:
@@ -2190,7 +2214,7 @@ func _is_pawn_move_legal(piece_data: Dictionary, from_square: Vector2i, to_squar
 			var target_piece: Dictionary = board_state[to_square]
 			if target_piece.get("color", "") == piece_data.get("color", ""):
 				return false
-			if to_square.y == promotion_rank and promotion_enabled:
+			if promotion_enabled and _is_square_in_promotion_zone(piece_color, to_square):
 				move_info["requires_promotion"] = true
 			return true
 
@@ -2201,7 +2225,7 @@ func _is_pawn_move_legal(piece_data: Dictionary, from_square: Vector2i, to_squar
 				if target_pawn.get("piece_id", "") == "pawn" and target_pawn.get("color", "") != piece_data.get("color", ""):
 					move_info["capture_square"] = capture_square
 					move_info["is_en_passant"] = true
-					if to_square.y == promotion_rank and promotion_enabled:
+					if promotion_enabled and _is_square_in_promotion_zone(piece_color, to_square):
 						move_info["requires_promotion"] = true
 					return true
 

@@ -11,6 +11,12 @@ extends Control
 @onready var castling_check_box: CheckBox = $OptionsScroll/OptionsContent/CastlingCheckBox
 @onready var en_passant_check_box: CheckBox = $OptionsScroll/OptionsContent/EnPassantCheckBox
 @onready var promotion_check_box: CheckBox = $OptionsScroll/OptionsContent/PromotionCheckBox
+@onready var promotion_zones_title_background: ColorRect = $OptionsScroll/OptionsContent/PromotionZonesTitleBackground
+@onready var promotion_zones_title: Label = $OptionsScroll/OptionsContent/PromotionZonesTitle
+@onready var player1_promotion_zone_label: Label = $OptionsScroll/OptionsContent/Player1PromotionZoneLabel
+@onready var player1_promotion_zone_spin_box: SpinBox = $OptionsScroll/OptionsContent/Player1PromotionZoneSpinBox
+@onready var player2_promotion_zone_label: Label = $OptionsScroll/OptionsContent/Player2PromotionZoneLabel
+@onready var player2_promotion_zone_spin_box: SpinBox = $OptionsScroll/OptionsContent/Player2PromotionZoneSpinBox
 @onready var piece_dropping_check_box: CheckBox = $OptionsScroll/OptionsContent/PieceDroppingCheckBox
 @onready var capture_to_drop_pool_check_box: CheckBox = $OptionsScroll/OptionsContent/CaptureToDropPoolCheckBox
 @onready var limit_army_strength_check_box: CheckBox = $OptionsScroll/OptionsContent/LimitArmyStrengthCheckBox
@@ -91,8 +97,8 @@ var board_tile_colors = {
 }
 
 func _ready() -> void:
-	width_spin_box.value_changed.connect(_refresh_preview)
-	height_spin_box.value_changed.connect(_refresh_preview)
+	width_spin_box.value_changed.connect(_on_board_dimension_changed)
+	height_spin_box.value_changed.connect(_on_board_dimension_changed)
 	board_preview.gui_input.connect(_on_board_preview_gui_input)
 	piece_bank_list.gui_input.connect(_on_piece_bank_gui_input)
 	board_preview.resized.connect(_refresh_preview)
@@ -107,6 +113,10 @@ func _ready() -> void:
 	_setup_special_rules()
 	_reset_preview_to_default(false, false)
 	_refresh_preview(0.0)
+
+func _on_board_dimension_changed(_value: float) -> void:
+	_update_promotion_zone_limits()
+	_refresh_preview()
 
 func _populate_piece_bank() -> void:
 	piece_bank_list.clear()
@@ -200,6 +210,8 @@ func _setup_special_rules() -> void:
 	army_strength_cap_spin_box.value_changed.connect(_on_army_strength_cap_value_changed)
 	white_army_strength_cap_spin_box.value_changed.connect(_on_unbalanced_army_strength_cap_value_changed)
 	black_army_strength_cap_spin_box.value_changed.connect(_on_unbalanced_army_strength_cap_value_changed)
+	player1_promotion_zone_spin_box.value_changed.connect(_on_promotion_zone_value_changed)
+	player2_promotion_zone_spin_box.value_changed.connect(_on_promotion_zone_value_changed)
 	army_strength_cap_spin_box.min_value = 2.0
 	army_strength_cap_spin_box.step = 1.0
 	army_strength_cap_spin_box.rounded = true
@@ -209,8 +221,16 @@ func _setup_special_rules() -> void:
 	black_army_strength_cap_spin_box.min_value = 2.0
 	black_army_strength_cap_spin_box.step = 1.0
 	black_army_strength_cap_spin_box.rounded = true
+	player1_promotion_zone_spin_box.min_value = 1.0
+	player1_promotion_zone_spin_box.step = 1.0
+	player1_promotion_zone_spin_box.rounded = true
+	player2_promotion_zone_spin_box.min_value = 1.0
+	player2_promotion_zone_spin_box.step = 1.0
+	player2_promotion_zone_spin_box.rounded = true
 	_build_promotion_piece_checkboxes()
 	_apply_special_rules($"/root/GameManager".SpecialRules)
+	_apply_promotion_zones($"/root/GameManager".PromotionZones)
+	_update_promotion_zone_limits()
 	army_strength_cap_spin_box.value = float(max(int($"/root/GameManager".ArmyStrengthCap), 2))
 	white_army_strength_cap_spin_box.value = float(max(int($"/root/GameManager".ArmyStrengthCapWhite), 2))
 	black_army_strength_cap_spin_box.value = float(max(int($"/root/GameManager".ArmyStrengthCapBlack), 2))
@@ -274,9 +294,42 @@ func _apply_promotion_piece_pool(piece_pool: Array) -> void:
 
 func _update_promotion_piece_visibility() -> void:
 	var show_promotion_piece_pool = promotion_check_box.button_pressed
+	promotion_zones_title_background.visible = show_promotion_piece_pool
+	promotion_zones_title.visible = show_promotion_piece_pool
+	player1_promotion_zone_label.visible = show_promotion_piece_pool
+	player1_promotion_zone_spin_box.visible = show_promotion_piece_pool
+	player2_promotion_zone_label.visible = show_promotion_piece_pool
+	player2_promotion_zone_spin_box.visible = show_promotion_piece_pool
 	promotion_pieces_title_background.visible = show_promotion_piece_pool
 	promotion_pieces_title.visible = show_promotion_piece_pool
 	promotion_pieces_list.get_parent().visible = show_promotion_piece_pool
+
+func _build_promotion_zones() -> Dictionary:
+	return {
+		"white_rows": max(int(round(player1_promotion_zone_spin_box.value)), 1),
+		"black_rows": max(int(round(player2_promotion_zone_spin_box.value)), 1)
+	}
+
+func _apply_promotion_zones(source: Variant) -> void:
+	var parsed = {
+		"white_rows": 1,
+		"black_rows": 1
+	}
+	if source is Dictionary:
+		parsed["white_rows"] = max(int(source.get("white_rows", source.get("white", 1))), 1)
+		parsed["black_rows"] = max(int(source.get("black_rows", source.get("black", 1))), 1)
+	player1_promotion_zone_spin_box.value = float(parsed["white_rows"])
+	player2_promotion_zone_spin_box.value = float(parsed["black_rows"])
+
+func _update_promotion_zone_limits() -> void:
+	var board_height = _get_dimension(height_spin_box.value, 8)
+	var max_rows = max(board_height, 1)
+	player1_promotion_zone_spin_box.max_value = float(max_rows)
+	player2_promotion_zone_spin_box.max_value = float(max_rows)
+	if player1_promotion_zone_spin_box.value > float(max_rows):
+		player1_promotion_zone_spin_box.value = float(max_rows)
+	if player2_promotion_zone_spin_box.value > float(max_rows):
+		player2_promotion_zone_spin_box.value = float(max_rows)
 
 func _update_piece_dropping_visibility() -> void:
 	var show_capture_rule = piece_dropping_check_box.button_pressed
@@ -317,6 +370,11 @@ func _on_castling_rule_toggled(is_enabled: bool) -> void:
 
 func _on_promotion_rule_toggled(_is_enabled: bool) -> void:
 	_update_promotion_piece_visibility()
+	_refresh_preview()
+
+func _on_promotion_zone_value_changed(_value: float) -> void:
+	_update_promotion_zone_limits()
+	_refresh_preview()
 
 func _on_piece_dropping_toggled(_is_enabled: bool) -> void:
 	_update_piece_dropping_visibility()
@@ -551,9 +609,11 @@ func _reset_preview_to_default(should_refresh: bool = true, use_standard_layout:
 	_set_unbalanced_army_strength_cap_value("white", 32)
 	_set_unbalanced_army_strength_cap_value("black", 32)
 	_apply_promotion_piece_pool(["queen", "rook", "bishop", "knight"])
+	_apply_promotion_zones({"white_rows": 1, "black_rows": 1})
 	_apply_victory_condition("checkmate")
 	_apply_player_colors_from_serialized({})
 	_apply_tile_colors_from_serialized({})
+	_update_promotion_zone_limits()
 	_update_promotion_piece_visibility()
 	_update_piece_dropping_visibility()
 	selected_piece_color = "white"
@@ -593,6 +653,7 @@ func _apply_preset(preset_id: String) -> void:
 			_set_unbalanced_army_strength_cap_value("white", 32)
 			_set_unbalanced_army_strength_cap_value("black", 32)
 			_apply_promotion_piece_pool(["queen", "rook", "bishop", "knight"])
+			_apply_promotion_zones({"white_rows": 1, "black_rows": 1})
 			_apply_victory_condition("checkmate")
 			_apply_player_colors_from_serialized({})
 			_apply_tile_colors_from_serialized({})
@@ -619,6 +680,7 @@ func _apply_preset(preset_id: String) -> void:
 			_set_unbalanced_army_strength_cap_value("white", 32)
 			_set_unbalanced_army_strength_cap_value("black", 32)
 			_apply_promotion_piece_pool(["rook", "bishop", "silver_general", "gold_general", "lance", "shogi_knight", "shogi_pawn"])
+			_apply_promotion_zones({"white_rows": 3, "black_rows": 3})
 			_apply_victory_condition("checkmate")
 			_apply_player_colors_from_serialized({})
 			_apply_tile_colors_from_serialized({})
@@ -649,6 +711,8 @@ func _apply_saved_preset_config(preset_config: Dictionary) -> void:
 		_set_unbalanced_army_strength_cap_value("white", int(preset_config.get("army_strength_cap", 32)))
 		_set_unbalanced_army_strength_cap_value("black", int(preset_config.get("army_strength_cap", 32)))
 	_apply_promotion_piece_pool(preset_config.get("promotion_pieces", ["queen", "rook", "bishop", "knight"]))
+	_apply_promotion_zones(preset_config.get("promotion_zones", {}))
+	_update_promotion_zone_limits()
 	_apply_player_colors_from_serialized(preset_config.get("player_colors", {}))
 	_apply_tile_colors_from_serialized(preset_config.get("tile_colors", {}))
 	_update_promotion_piece_visibility()
@@ -741,12 +805,58 @@ func _refresh_preview(_value: float = 0.0) -> void:
 		if width % 2 == 0:
 			is_white = !is_white
 
+	_draw_preview_promotion_zone_tints(width, height)
 	_draw_preview_selection()
 	_draw_preview_pieces()
 	_draw_preview_ghost()
 	_draw_piece_bank_drag_preview()
 	_draw_preview_drop_pools(board_pixel_size)
 	_update_castling_rule_availability()
+
+func _draw_preview_promotion_zone_tints(width: int, height: int) -> void:
+	if not promotion_check_box.button_pressed:
+		return
+	if width <= 0 or height <= 0:
+		return
+
+	var zones = _build_promotion_zones()
+	var white_rows = clamp(int(zones.get("white_rows", 1)), 1, height)
+	var black_rows = clamp(int(zones.get("black_rows", 1)), 1, height)
+	var white_tint = _promotion_zone_tint_color("white")
+	var black_tint = _promotion_zone_tint_color("black")
+	var overlap_tint = Color(
+		(white_tint.r + black_tint.r) * 0.5,
+		(white_tint.g + black_tint.g) * 0.5,
+		(white_tint.b + black_tint.b) * 0.5,
+		max(white_tint.a, black_tint.a)
+	)
+
+	for y in range(height):
+		var in_white_zone = y < white_rows
+		var in_black_zone = y >= height - black_rows
+		if not in_white_zone and not in_black_zone:
+			continue
+		var row_tint = overlap_tint
+		if in_white_zone and not in_black_zone:
+			row_tint = white_tint
+		elif in_black_zone and not in_white_zone:
+			row_tint = black_tint
+		for x in range(width):
+			var overlay = ColorRect.new()
+			overlay.position = preview_board_origin + Vector2(x * preview_tile_size, y * preview_tile_size)
+			overlay.size = Vector2(preview_tile_size, preview_tile_size)
+			overlay.color = row_tint
+			overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			board_preview.add_child(overlay)
+
+func _promotion_zone_tint_color(owner: String) -> Color:
+	var base = _get_player_color(owner)
+	return Color(
+		clampf(base.r * 0.35 + 0.10, 0.0, 1.0),
+		clampf(base.g * 0.35 + 0.10, 0.0, 1.0),
+		clampf(base.b * 0.35 + 0.10, 0.0, 1.0),
+		0.42
+	)
 
 func _draw_preview_selection() -> void:
 	if selected_preview_square == INVALID_SQUARE:
@@ -1409,6 +1519,7 @@ func _build_preset_config() -> Dictionary:
 			"black": _get_unbalanced_army_strength_cap_value("black")
 		},
 		"promotion_pieces": _build_promotion_piece_pool(),
+		"promotion_zones": _build_promotion_zones(),
 		"player_colors": _serialize_player_colors(),
 		"tile_colors": _serialize_tile_colors()
 	}
@@ -1474,6 +1585,7 @@ func _on_start_game_button_pressed() -> void:
 	$"/root/GameManager".ArmyStrengthCapWhite = _get_unbalanced_army_strength_cap_value("white")
 	$"/root/GameManager".ArmyStrengthCapBlack = _get_unbalanced_army_strength_cap_value("black")
 	$"/root/GameManager".PromotionPiecePool = _build_promotion_piece_pool()
+	$"/root/GameManager".PromotionZones = _build_promotion_zones()
 	$"/root/GameManager".PlayerColors = _serialize_player_colors()
 	$"/root/GameManager".TileColors = _serialize_tile_colors()
 	

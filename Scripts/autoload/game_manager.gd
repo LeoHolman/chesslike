@@ -24,6 +24,10 @@ var SpecialRules = {
 	"unbalanced_armies": false
 }
 var PromotionPiecePool = ["queen", "rook", "bishop", "knight"]
+var PromotionZones = {
+	"white_rows": 1,
+	"black_rows": 1
+}
 var VictoryCondition = "checkmate"
 var ArmyStrengthCap = 32
 var ArmyStrengthCapWhite = 32

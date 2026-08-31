@@ -441,6 +441,58 @@ min_value = 2.0
 value = 32.0
 rounded = true
 
+[node name="PromotionZonesTitleBackground" type="ColorRect" parent="OptionsScroll/OptionsContent"]
+layout_mode = 0
+offset_left = 76.0
+offset_top = 1148.0
+offset_right = 324.0
+offset_bottom = 1175.0
+color = Color(0.16, 0.16, 0.16, 0.78)
+
+[node name="PromotionZonesTitle" type="Label" parent="OptionsScroll/OptionsContent"]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 1150.0
+offset_right = 260.0
+offset_bottom = 1173.0
+text = "Promotion Zones:"
+
+[node name="Player1PromotionZoneLabel" type="Label" parent="OptionsScroll/OptionsContent"]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 1182.0
+offset_right = 238.0
+offset_bottom = 1205.0
+text = "Player 1 Rows"
+
+[node name="Player1PromotionZoneSpinBox" type="SpinBox" parent="OptionsScroll/OptionsContent"]
+layout_mode = 0
+offset_left = 250.0
+offset_top = 1178.0
+offset_right = 320.0
+offset_bottom = 1209.0
+min_value = 1.0
+value = 1.0
+rounded = true
+
+[node name="Player2PromotionZoneLabel" type="Label" parent="OptionsScroll/OptionsContent"]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 1210.0
+offset_right = 238.0
+offset_bottom = 1233.0
+text = "Player 2 Rows"
+
+[node name="Player2PromotionZoneSpinBox" type="SpinBox" parent="OptionsScroll/OptionsContent"]
+layout_mode = 0
+offset_left = 250.0
+offset_top = 1206.0
+offset_right = 320.0
+offset_bottom = 1237.0
+min_value = 1.0
+value = 1.0
+rounded = true
+
 [node name="VictoryConditionTitleBackground" type="ColorRect" parent="OptionsScroll/OptionsContent" unique_id=414050202]
 layout_mode = 0
 offset_left = 76.0
