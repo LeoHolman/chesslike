@@ -23,7 +23,7 @@ grow_vertical = 2
 horizontal_scroll_mode = 0
 
 [node name="OptionsContent" type="Control" parent="OptionsScroll" unique_id=1806613797]
-custom_minimum_size = Vector2(0, 1240)
+custom_minimum_size = Vector2(0, 1320)
 layout_mode = 2
 size_flags_horizontal = 3
 
@@ -244,7 +244,7 @@ layout_mode = 0
 offset_left = 80.0
 offset_top = 950.0
 offset_right = 320.0
-offset_bottom = 1104.0
+offset_bottom = 1138.0
 theme_override_constants/separation = 4
 
 [node name="PreviewInstructions" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1873652165]
@@ -258,25 +258,25 @@ text = "Left drag on the preview to place the selected piece.\nRight drag on the
 [node name="ClearBoardButton" type="Button" parent="OptionsScroll/OptionsContent" unique_id=71584107]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1120.0
+offset_top = 1210.0
 offset_right = 188.0
-offset_bottom = 1151.0
+offset_bottom = 1241.0
 text = "Clear Board"
 
 [node name="ResetSetupButton" type="Button" parent="OptionsScroll/OptionsContent" unique_id=208044863]
 layout_mode = 0
 offset_left = 204.0
-offset_top = 1120.0
+offset_top = 1210.0
 offset_right = 320.0
-offset_bottom = 1151.0
+offset_bottom = 1241.0
 text = "Reset Setup"
 
 [node name="StartGameButton" type="Button" parent="OptionsScroll/OptionsContent" unique_id=40242828]
 layout_mode = 0
 offset_left = 204.0
-offset_top = 1170.0
+offset_top = 1260.0
 offset_right = 320.0
-offset_bottom = 1201.0
+offset_bottom = 1291.0
 text = "Start Game\n"
 
 [connection signal="pressed" from="OptionsScroll/OptionsContent/SavePresetButton" to="." method="_on_save_preset_button_pressed"]
