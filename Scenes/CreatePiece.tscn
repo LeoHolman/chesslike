@@ -95,7 +95,10 @@ text = "Upload Piece Icon"
 
 [node name="IconPreview" type="TextureRect" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/IconRow"]
 layout_mode = 2
-custom_minimum_size = Vector2(84, 84)
+custom_minimum_size = Vector2(64, 64)
+size_flags_horizontal = 4
+size_flags_vertical = 4
+expand_mode = 1
 stretch_mode = 5
 unique_name_in_owner = true
 

@@ -9,6 +9,7 @@ const CAPTURE_MODE_NON_CAPTURE = "non_capture"
 const CAPTURE_MODE_CAPTURE_ONLY = "capture_only"
 const SLIDE_SCOPE_INFINITE = "infinite"
 const SLIDE_SCOPE_HALTING = "halting"
+const ICON_PREVIEW_MAX_SIZE = 64
 
 @onready var piece_name_input: LineEdit = %PieceNameInput
 @onready var piece_id_input: LineEdit = %PieceIdInput
@@ -154,8 +155,16 @@ func _refresh_movement_grid_buttons() -> void:
 		var button = movement_buttons[index]
 		if row == ORIGIN_CELL.y and col == ORIGIN_CELL.x:
 			button.text = "X"
-			button.disabled = true
-			button.modulate = Color(0.8, 0.7, 0.3, 1.0)
+			button.icon = null
+			if icon_preview.texture != null:
+				button.text = ""
+				button.icon = icon_preview.texture
+				button.expand_icon = true
+				button.disabled = false
+				button.modulate = Color(1.0, 1.0, 1.0, 1.0)
+			else:
+				button.disabled = true
+				button.modulate = Color(0.8, 0.7, 0.3, 1.0)
 			continue
 
 		button.disabled = false
@@ -248,8 +257,25 @@ func _on_image_picker_dialog_file_selected(path: String) -> void:
 	if image.load(path) != OK:
 		message_label.text = "Could not load image file."
 		return
-	icon_preview.texture = ImageTexture.create_from_image(image)
+	icon_preview.texture = _build_preview_texture(image)
+	_refresh_movement_grid_buttons()
 	message_label.text = ""
+
+func _build_preview_texture(source_image: Image) -> Texture2D:
+	if source_image == null or source_image.is_empty():
+		return null
+
+	var thumbnail = source_image.duplicate()
+	var width = max(thumbnail.get_width(), 1)
+	var height = max(thumbnail.get_height(), 1)
+	var largest_edge = max(width, height)
+	if largest_edge > ICON_PREVIEW_MAX_SIZE:
+		var scale = float(ICON_PREVIEW_MAX_SIZE) / float(largest_edge)
+		var resized_width = max(1, int(round(width * scale)))
+		var resized_height = max(1, int(round(height * scale)))
+		thumbnail.resize(resized_width, resized_height, Image.INTERPOLATE_LANCZOS)
+
+	return ImageTexture.create_from_image(thumbnail)
 
 func _on_clear_grid_button_pressed() -> void:
 	movement_rules_by_key.clear()
