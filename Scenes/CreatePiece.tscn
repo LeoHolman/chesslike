@@ -1,0 +1,156 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://Scripts/create_piece.gd" id="1_b9x8y"]
+
+[node name="Control" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_b9x8y")
+
+[node name="Scroll" type="ScrollContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="RootMargin" type="MarginContainer" parent="Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 20
+
+[node name="RootVBox" type="VBoxContainer" parent="Scroll/RootMargin"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 14
+
+[node name="TitleLabel" type="Label" parent="Scroll/RootMargin/RootVBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Create Piece"
+
+[node name="MainColumns" type="HBoxContainer" parent="Scroll/RootMargin/RootVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 18
+
+[node name="LeftPanel" type="VBoxContainer" parent="Scroll/RootMargin/RootVBox/MainColumns"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.9
+theme_override_constants/separation = 8
+
+[node name="PieceNameLabel" type="Label" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel"]
+layout_mode = 2
+text = "Piece Name"
+
+[node name="PieceNameInput" type="LineEdit" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel"]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Example: Falcon"
+unique_name_in_owner = true
+
+[node name="PieceIdLabel" type="Label" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel"]
+layout_mode = 2
+text = "Piece ID (optional)"
+
+[node name="PieceIdInput" type="LineEdit" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel"]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Auto from name"
+unique_name_in_owner = true
+
+[node name="PieceStrengthLabel" type="Label" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel"]
+layout_mode = 2
+text = "Army Strength Value"
+
+[node name="PieceStrengthSpinBox" type="SpinBox" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel"]
+layout_mode = 2
+custom_minimum_size = Vector2(160, 0)
+min_value = 1.0
+value = 3.0
+rounded = true
+unique_name_in_owner = true
+
+[node name="IconRow" type="HBoxContainer" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="PickIconButton" type="Button" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/IconRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Upload Piece Icon"
+
+[node name="IconPreview" type="TextureRect" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/IconRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(84, 84)
+stretch_mode = 5
+unique_name_in_owner = true
+
+[node name="RightPanel" type="VBoxContainer" parent="Scroll/RootMargin/RootVBox/MainColumns"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.4
+theme_override_constants/separation = 8
+
+[node name="MovementLabel" type="Label" parent="Scroll/RootMargin/RootVBox/MainColumns/RightPanel"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Movement Grid (6x6). Center cell X is the piece.\nClick cells: . -> J (jump) -> S (slide) -> B (both)."
+
+[node name="MovementGrid" type="GridContainer" parent="Scroll/RootMargin/RootVBox/MainColumns/RightPanel"]
+layout_mode = 2
+size_flags_horizontal = 1
+theme_override_constants/h_separation = 4
+theme_override_constants/v_separation = 4
+columns = 6
+unique_name_in_owner = true
+
+[node name="ClearGridButton" type="Button" parent="Scroll/RootMargin/RootVBox/MainColumns/RightPanel"]
+layout_mode = 2
+text = "Clear Grid"
+
+[node name="MessageLabel" type="Label" parent="Scroll/RootMargin/RootVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+autowrap_mode = 3
+theme_override_colors/font_color = Color(1, 0.8, 0.8, 1)
+unique_name_in_owner = true
+
+[node name="ActionsRow" type="HBoxContainer" parent="Scroll/RootMargin/RootVBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="SavePieceButton" type="Button" parent="Scroll/RootMargin/RootVBox/ActionsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Save Piece"
+
+[node name="CancelButton" type="Button" parent="Scroll/RootMargin/RootVBox/ActionsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Cancel"
+
+[node name="ImagePickerDialog" type="FileDialog" parent="."]
+title = "Choose Piece Icon"
+file_mode = 0
+access = 2
+filters = PackedStringArray("*.png ; PNG Images", "*.jpg,*.jpeg ; JPEG Images", "*.webp ; WEBP Images")
+
+[connection signal="pressed" from="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/IconRow/PickIconButton" to="." method="_on_pick_icon_button_pressed"]
+[connection signal="pressed" from="Scroll/RootMargin/RootVBox/MainColumns/RightPanel/ClearGridButton" to="." method="_on_clear_grid_button_pressed"]
+[connection signal="pressed" from="Scroll/RootMargin/RootVBox/ActionsRow/SavePieceButton" to="." method="_on_save_piece_button_pressed"]
+[connection signal="pressed" from="Scroll/RootMargin/RootVBox/ActionsRow/CancelButton" to="." method="_on_cancel_button_pressed"]
+[connection signal="file_selected" from="ImagePickerDialog" to="." method="_on_image_picker_dialog_file_selected"]

@@ -27,6 +27,14 @@ offset_right = 562.0
 offset_bottom = 415.0
 text = "Local Game"
 
+[node name="ManagePiecesButton" type="Button" parent="." unique_id=1009312344]
+layout_mode = 0
+offset_left = 452.0
+offset_top = 448.0
+offset_right = 574.0
+offset_bottom = 479.0
+text = "Manage Pieces"
+
 [node name="ExitGameButton" type="Button" parent="." unique_id=1065246606]
 layout_mode = 0
 offset_left = 472.0
@@ -37,4 +45,5 @@ text = "Exit Game
 "
 
 [connection signal="pressed" from="LocalGameButton" to="." method="_on_local_game_button_pressed"]
+[connection signal="pressed" from="ManagePiecesButton" to="." method="_on_manage_pieces_button_pressed"]
 [connection signal="pressed" from="ExitGameButton" to="." method="_on_exit_game_button_pressed"]

@@ -1,0 +1,73 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://Scripts/manage_pieces.gd" id="1_60lb4"]
+
+[node name="Control" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_60lb4")
+
+[node name="RootMargin" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 24
+
+[node name="RootVBox" type="VBoxContainer" parent="RootMargin"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 12
+
+[node name="TitleLabel" type="Label" parent="RootMargin/RootVBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Manage Pieces"
+
+[node name="PiecesList" type="ItemList" parent="RootMargin/RootVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+select_mode = 0
+unique_name_in_owner = true
+
+[node name="MessageLabel" type="Label" parent="RootMargin/RootVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 0.8, 0.8, 1)
+autowrap_mode = 3
+unique_name_in_owner = true
+
+[node name="ActionsRow" type="HBoxContainer" parent="RootMargin/RootVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="CreatePieceButton" type="Button" parent="RootMargin/RootVBox/ActionsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Create Piece"
+
+[node name="DeletePieceButton" type="Button" parent="RootMargin/RootVBox/ActionsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Delete Selected"
+
+[node name="BackButton" type="Button" parent="RootMargin/RootVBox/ActionsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Back"
+
+[connection signal="pressed" from="RootMargin/RootVBox/ActionsRow/CreatePieceButton" to="." method="_on_create_piece_button_pressed"]
+[connection signal="pressed" from="RootMargin/RootVBox/ActionsRow/DeletePieceButton" to="." method="_on_delete_piece_button_pressed"]
+[connection signal="pressed" from="RootMargin/RootVBox/ActionsRow/BackButton" to="." method="_on_back_button_pressed"]

@@ -101,7 +101,11 @@ func _populate_piece_bank() -> void:
 		var piece_data = game_manager.PieceDefinitions.get(piece_id, {})
 		var display_name = piece_data.get("name", str(piece_id))
 		var symbol = piece_data.get("symbol", "?")
-		piece_bank_list.add_item("%s (%s)" % [display_name, symbol])
+		var icon_texture = game_manager.get_piece_icon_texture(str(piece_id))
+		if icon_texture != null:
+			piece_bank_list.add_item("%s (%s)" % [display_name, symbol], icon_texture)
+		else:
+			piece_bank_list.add_item("%s (%s)" % [display_name, symbol])
 
 	if game_manager.PieceBank.size() > 0:
 		selected_piece_id = str(game_manager.PieceBank[0])
@@ -895,12 +899,24 @@ func _create_preview_piece_node(square: Vector2i, piece_data: Dictionary, tint: 
 	piece_root.position = preview_board_origin + Vector2(square.x * preview_tile_size, square.y * preview_tile_size)
 	piece_root.size = Vector2(preview_tile_size, preview_tile_size)
 	piece_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var piece_id = str(piece_data.get("piece_id", ""))
+
+	var icon_texture = $"/root/GameManager".get_piece_icon_texture(piece_id)
+	if icon_texture != null:
+		var icon = TextureRect.new()
+		icon.size = piece_root.size
+		icon.texture = icon_texture
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon.modulate = tint
+		piece_root.add_child(icon)
+		return piece_root
 
 	var label = Label.new()
 	label.size = piece_root.size
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.text = _get_piece_symbol(piece_data.get("piece_id", ""))
+	label.text = _get_piece_symbol(piece_id)
 	label.add_theme_font_size_override("font_size", int(max(preview_tile_size * 0.55, 12.0)))
 	label.add_theme_constant_override("outline_size", max(int(preview_tile_size * 0.06), 2))
 	label.add_theme_color_override("font_color", _piece_fill_color(piece_data.get("color", "white")))

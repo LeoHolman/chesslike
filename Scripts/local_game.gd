@@ -824,13 +824,23 @@ func _draw_drop_piece_drag_preview() -> void:
 
 func _create_piece_node(piece_data: Dictionary) -> Node2D:
 	var piece_root = Node2D.new()
+	var piece_id = str(piece_data.get("piece_id", ""))
+	var icon_texture = $"/root/GameManager".get_piece_icon_texture(piece_id)
+	if icon_texture != null:
+		var icon = TextureRect.new()
+		icon.size = Vector2(tile_size, tile_size)
+		icon.texture = icon_texture
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		piece_root.add_child(icon)
+		return piece_root
 
 	# Label placeholder for now; this wrapper node lets us replace it with an image sprite later.
 	var label = Label.new()
 	label.size = Vector2(tile_size, tile_size)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.text = _get_piece_symbol(piece_data.get("piece_id", ""))
+	label.text = _get_piece_symbol(piece_id)
 	label.add_theme_font_size_override("font_size", int(tile_size * 0.55))
 	label.add_theme_constant_override("outline_size", max(int(tile_size * 0.06), 2))
 	label.add_theme_color_override("font_color", _piece_fill_color(piece_data.get("color", "white")))
@@ -1269,6 +1279,8 @@ func _is_base_legal_piece_move(piece_data: Dictionary, from_square: Vector2i, to
 			if _is_king_move_legal(from_square, to_square):
 				return true
 			return _is_castling_move_legal(piece_data, from_square, to_square, board_state, move_info)
+		"custom":
+			return _is_custom_move_legal(piece_data, from_square, to_square, board_state)
 		_:
 			return false
 
@@ -1341,8 +1353,80 @@ func _can_piece_attack_square(piece_data: Dictionary, from_square: Vector2i, to_
 			return _is_queen_move_legal(from_square, to_square, board_state)
 		"king_step":
 			return _is_king_move_legal(from_square, to_square)
+		"custom":
+			return _is_custom_move_legal(piece_data, from_square, to_square, board_state)
 		_:
 			return false
+
+func _is_custom_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
+	var piece_id = str(piece_data.get("piece_id", ""))
+	var delta = to_square - from_square
+	if delta == Vector2i.ZERO:
+		return false
+
+	for jump_offset in _get_custom_offsets(piece_id, "jump_offsets"):
+		if jump_offset == delta:
+			return true
+
+	for slide_step in _get_custom_offsets(piece_id, "slide_directions"):
+		var steps = _count_slide_steps(delta, slide_step)
+		if steps <= 0:
+			continue
+		if _is_custom_slide_path_clear(from_square, slide_step, steps, board_state):
+			return true
+
+	return false
+
+func _get_custom_offsets(piece_id: String, property_name: String) -> Array[Vector2i]:
+	var offsets: Array[Vector2i] = []
+	if not $"/root/GameManager".PieceDefinitions.has(piece_id):
+		return offsets
+	var piece_definition: Dictionary = $"/root/GameManager".PieceDefinitions[piece_id]
+	var values = piece_definition.get(property_name, [])
+	if not (values is Array):
+		return offsets
+
+	for value in values:
+		if not (value is Dictionary):
+			continue
+		var offset = Vector2i(int(value.get("x", 0)), int(value.get("y", 0)))
+		if offset == Vector2i.ZERO:
+			continue
+		if offsets.has(offset):
+			continue
+		offsets.append(offset)
+	return offsets
+
+func _count_slide_steps(delta: Vector2i, slide_step: Vector2i) -> int:
+	if slide_step == Vector2i.ZERO:
+		return -1
+
+	if slide_step.x == 0:
+		if delta.x != 0 or delta.y % slide_step.y != 0:
+			return -1
+		var k = int(delta.y / slide_step.y)
+		return k if k > 0 else -1
+
+	if slide_step.y == 0:
+		if delta.y != 0 or delta.x % slide_step.x != 0:
+			return -1
+		var k = int(delta.x / slide_step.x)
+		return k if k > 0 else -1
+
+	if delta.x % slide_step.x != 0 or delta.y % slide_step.y != 0:
+		return -1
+	var kx = int(delta.x / slide_step.x)
+	var ky = int(delta.y / slide_step.y)
+	if kx != ky or kx <= 0:
+		return -1
+	return kx
+
+func _is_custom_slide_path_clear(from_square: Vector2i, slide_step: Vector2i, steps: int, board_state: Dictionary) -> bool:
+	for step_index in range(1, steps):
+		var intermediate_square = from_square + Vector2i(slide_step.x * step_index, slide_step.y * step_index)
+		if board_state.has(intermediate_square):
+			return false
+	return true
 
 func _is_square_attacked(square: Vector2i, defended_color: String, board_state: Dictionary) -> bool:
 	for from_square in board_state.keys():
