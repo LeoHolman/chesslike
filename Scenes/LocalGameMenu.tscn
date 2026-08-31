@@ -23,7 +23,7 @@ grow_vertical = 2
 horizontal_scroll_mode = 0
 
 [node name="OptionsContent" type="Control" parent="OptionsScroll" unique_id=1806613797]
-custom_minimum_size = Vector2(0, 1640)
+custom_minimum_size = Vector2(0, 1780)
 layout_mode = 2
 size_flags_horizontal = 3
 
@@ -320,68 +320,117 @@ rounded = true
 visible = false
 layout_mode = 0
 offset_left = 104.0
-offset_top = 1044.0
+offset_top = 1148.0
 offset_right = 360.0
-offset_bottom = 1088.0
+offset_bottom = 1192.0
 autowrap_mode = 3
 theme_override_colors/font_color = Color(1, 0.85, 0.85, 1)
 theme_override_font_sizes/font_size = 14
 text = ""
 
+[node name="UnbalancedArmiesCheckBox" type="CheckBox" parent="OptionsScroll/OptionsContent" unique_id=1361578331]
+visible = false
+layout_mode = 0
+offset_left = 104.0
+offset_top = 1044.0
+offset_right = 320.0
+offset_bottom = 1068.0
+text = "Unbalanced Armies"
+
+[node name="WhiteArmyStrengthCapLabel" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1312455775]
+visible = false
+layout_mode = 0
+offset_left = 128.0
+offset_top = 1078.0
+offset_right = 260.0
+offset_bottom = 1101.0
+text = "White Cap"
+
+[node name="WhiteArmyStrengthCapSpinBox" type="SpinBox" parent="OptionsScroll/OptionsContent" unique_id=1483410332]
+visible = false
+layout_mode = 0
+offset_left = 250.0
+offset_top = 1074.0
+offset_right = 320.0
+offset_bottom = 1105.0
+min_value = 2.0
+value = 32.0
+rounded = true
+
+[node name="BlackArmyStrengthCapLabel" type="Label" parent="OptionsScroll/OptionsContent" unique_id=698839652]
+visible = false
+layout_mode = 0
+offset_left = 128.0
+offset_top = 1112.0
+offset_right = 260.0
+offset_bottom = 1135.0
+text = "Black Cap"
+
+[node name="BlackArmyStrengthCapSpinBox" type="SpinBox" parent="OptionsScroll/OptionsContent" unique_id=799151766]
+visible = false
+layout_mode = 0
+offset_left = 250.0
+offset_top = 1108.0
+offset_right = 320.0
+offset_bottom = 1139.0
+min_value = 2.0
+value = 32.0
+rounded = true
+
 [node name="VictoryConditionTitleBackground" type="ColorRect" parent="OptionsScroll/OptionsContent" unique_id=414050202]
 layout_mode = 0
 offset_left = 76.0
-offset_top = 1438.0
+offset_top = 1558.0
 offset_right = 324.0
-offset_bottom = 1465.0
+offset_bottom = 1585.0
 color = Color(0.16, 0.16, 0.16, 0.78)
 
 [node name="VictoryConditionTitle" type="Label" parent="OptionsScroll/OptionsContent" unique_id=136941371]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1440.0
+offset_top = 1560.0
 offset_right = 260.0
-offset_bottom = 1463.0
+offset_bottom = 1583.0
 text = "Victory Condition:"
 
 [node name="VictoryConditionOption" type="OptionButton" parent="OptionsScroll/OptionsContent" unique_id=132665205]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1476.0
+offset_top = 1596.0
 offset_right = 320.0
-offset_bottom = 1507.0
+offset_bottom = 1627.0
 
 [node name="VictoryConditionDescription" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1271189780]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1516.0
+offset_top = 1636.0
 offset_right = 360.0
-offset_bottom = 1572.0
+offset_bottom = 1692.0
 autowrap_mode = 3
 text = "Checkmate: win by checkmating the king.\nTotal War: win when the opponent has no pieces left; if no legal captures remain, the game is a stalemate."
 
 [node name="PromotionPiecesTitleBackground" type="ColorRect" parent="OptionsScroll/OptionsContent" unique_id=175393625]
 layout_mode = 0
 offset_left = 76.0
-offset_top = 1096.0
+offset_top = 1216.0
 offset_right = 324.0
-offset_bottom = 1123.0
+offset_bottom = 1243.0
 color = Color(0.16, 0.16, 0.16, 0.78)
 
 [node name="PromotionPiecesTitle" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1858177657]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1098.0
+offset_top = 1218.0
 offset_right = 280.0
-offset_bottom = 1121.0
+offset_bottom = 1241.0
 text = "Promotion Pieces:"
 
 [node name="PromotionPiecesScroll" type="ScrollContainer" parent="OptionsScroll/OptionsContent" unique_id=1022091318]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1126.0
+offset_top = 1246.0
 offset_right = 320.0
-offset_bottom = 1388.0
+offset_bottom = 1508.0
 
 [node name="PromotionPiecesList" type="VBoxContainer" parent="OptionsScroll/OptionsContent/PromotionPiecesScroll" unique_id=57243385]
 custom_minimum_size = Vector2(0, 220)

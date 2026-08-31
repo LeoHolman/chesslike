@@ -49,7 +49,10 @@ var victory_condition = "checkmate"
 var piece_dropping_enabled = false
 var capture_to_drop_pool_enabled = false
 var limit_army_strength_enabled = false
+var unbalanced_armies_enabled = false
 var army_strength_cap = 2
+var army_strength_cap_white = 2
+var army_strength_cap_black = 2
 var drop_pools = {
 	"white": [],
 	"black": []
@@ -295,7 +298,10 @@ func _initialize_board_state() -> void:
 	piece_dropping_enabled = bool(special_rules.get("piece_dropping", false))
 	capture_to_drop_pool_enabled = bool(special_rules.get("capture_to_drop_pool", false)) and piece_dropping_enabled
 	limit_army_strength_enabled = bool(special_rules.get("limit_army_strength", false))
+	unbalanced_armies_enabled = bool(special_rules.get("unbalanced_armies", false))
 	army_strength_cap = max(int($"/root/GameManager".ArmyStrengthCap), 2)
+	army_strength_cap_white = max(int($"/root/GameManager".ArmyStrengthCapWhite), 2)
+	army_strength_cap_black = max(int($"/root/GameManager".ArmyStrengthCapBlack), 2)
 	promotion_piece_options = _get_promotion_piece_pool()
 	en_passant_target_square = INVALID_SQUARE
 	drop_pools = _get_starting_drop_pools()
@@ -1564,9 +1570,17 @@ func _state_respects_army_strength(board_state: Dictionary, drop_pool_state: Dic
 	if not limit_army_strength_enabled:
 		return true
 	for owner in ["white", "black"]:
-		if _army_strength_for_owner_on_state(owner, board_state, drop_pool_state) > army_strength_cap:
+		if _army_strength_for_owner_on_state(owner, board_state, drop_pool_state) > _army_strength_cap_for_owner(owner):
 			return false
 	return true
+
+func _army_strength_cap_for_owner(owner: String) -> int:
+	if unbalanced_armies_enabled:
+		if owner == "white":
+			return army_strength_cap_white
+		if owner == "black":
+			return army_strength_cap_black
+	return army_strength_cap
 
 func _is_move_allowed_by_army_strength(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, move_info: Dictionary, drop_pool_state: Dictionary) -> bool:
 	if not limit_army_strength_enabled:

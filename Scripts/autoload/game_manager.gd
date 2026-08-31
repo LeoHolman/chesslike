@@ -11,11 +11,14 @@ var SpecialRules = {
 	"promotion": true,
 	"piece_dropping": false,
 	"capture_to_drop_pool": false,
-	"limit_army_strength": false
+	"limit_army_strength": false,
+	"unbalanced_armies": false
 }
 var PromotionPiecePool = ["queen", "rook", "bishop", "knight"]
 var VictoryCondition = "checkmate"
 var ArmyStrengthCap = 32
+var ArmyStrengthCapWhite = 32
+var ArmyStrengthCapBlack = 32
 var StartingDropPools = {
 	"white": [],
 	"black": []
