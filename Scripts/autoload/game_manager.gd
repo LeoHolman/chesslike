@@ -10,10 +10,12 @@ var SpecialRules = {
 	"en_passant": true,
 	"promotion": true,
 	"piece_dropping": false,
-	"capture_to_drop_pool": false
+	"capture_to_drop_pool": false,
+	"limit_army_strength": false
 }
 var PromotionPiecePool = ["queen", "rook", "bishop", "knight"]
 var VictoryCondition = "checkmate"
+var ArmyStrengthCap = 32
 var StartingDropPools = {
 	"white": [],
 	"black": []
@@ -127,3 +129,18 @@ func _write_saved_presets() -> void:
 	if preset_file == null:
 		return
 	preset_file.store_string(JSON.stringify(SavedPresets))
+
+func get_piece_strength(piece_id: String, include_king: bool = false) -> int:
+	match piece_id:
+		"pawn", "shogi_pawn":
+			return 1
+		"knight", "bishop", "shogi_knight", "silver_general", "gold_general", "lance":
+			return 3
+		"rook":
+			return 5
+		"queen":
+			return 8
+		"king":
+			return 2 if include_king else 0
+		_:
+			return 0

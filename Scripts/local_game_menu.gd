@@ -12,6 +12,10 @@ extends Control
 @onready var promotion_check_box: CheckBox = $OptionsScroll/OptionsContent/PromotionCheckBox
 @onready var piece_dropping_check_box: CheckBox = $OptionsScroll/OptionsContent/PieceDroppingCheckBox
 @onready var capture_to_drop_pool_check_box: CheckBox = $OptionsScroll/OptionsContent/CaptureToDropPoolCheckBox
+@onready var limit_army_strength_check_box: CheckBox = $OptionsScroll/OptionsContent/LimitArmyStrengthCheckBox
+@onready var army_strength_cap_label: Label = $OptionsScroll/OptionsContent/ArmyStrengthCapLabel
+@onready var army_strength_cap_spin_box: SpinBox = $OptionsScroll/OptionsContent/ArmyStrengthCapSpinBox
+@onready var army_strength_warning_label: Label = $OptionsScroll/OptionsContent/ArmyStrengthWarningLabel
 @onready var castling_support_hint_background: ColorRect = $OptionsScroll/OptionsContent/CastlingSupportHintBackground
 @onready var castling_support_hint: Label = $OptionsScroll/OptionsContent/CastlingSupportHint
 @onready var victory_condition_option: OptionButton = $OptionsScroll/OptionsContent/VictoryConditionOption
@@ -62,6 +66,7 @@ var piece_bank_drag_piece_id = ""
 var piece_bank_drag_piece_color = "white"
 var piece_bank_drag_preview_position = Vector2.ZERO
 var preview_drop_pool_hover_owner = ""
+var is_updating_army_strength_cap = false
 
 func _ready() -> void:
 	width_spin_box.value_changed.connect(_refresh_preview)
@@ -144,11 +149,19 @@ func _setup_special_rules() -> void:
 	castling_check_box.toggled.connect(_on_castling_rule_toggled)
 	promotion_check_box.toggled.connect(_on_promotion_rule_toggled)
 	piece_dropping_check_box.toggled.connect(_on_piece_dropping_toggled)
+	limit_army_strength_check_box.toggled.connect(_on_limit_army_strength_toggled)
+	army_strength_cap_spin_box.value_changed.connect(_on_army_strength_cap_value_changed)
+	army_strength_cap_spin_box.min_value = 2.0
+	army_strength_cap_spin_box.step = 1.0
+	army_strength_cap_spin_box.rounded = true
 	_build_promotion_piece_checkboxes()
 	_apply_special_rules($"/root/GameManager".SpecialRules)
+	army_strength_cap_spin_box.value = float(max(int($"/root/GameManager".ArmyStrengthCap), 2))
 	_apply_promotion_piece_pool($"/root/GameManager".PromotionPiecePool)
 	_update_promotion_piece_visibility()
 	_update_piece_dropping_visibility()
+	_update_army_strength_limit_visibility()
+	_ensure_army_strength_cap_meets_current_position()
 	_update_castling_rule_availability()
 
 func _build_special_rules() -> Dictionary:
@@ -157,7 +170,8 @@ func _build_special_rules() -> Dictionary:
 		"en_passant": en_passant_check_box.button_pressed,
 		"promotion": promotion_check_box.button_pressed,
 		"piece_dropping": piece_dropping_check_box.button_pressed,
-		"capture_to_drop_pool": capture_to_drop_pool_check_box.button_pressed
+		"capture_to_drop_pool": capture_to_drop_pool_check_box.button_pressed,
+		"limit_army_strength": limit_army_strength_check_box.button_pressed
 	}
 
 func _build_promotion_piece_pool() -> Array:
@@ -250,6 +264,23 @@ func _on_piece_dropping_toggled(_is_enabled: bool) -> void:
 	_update_piece_dropping_visibility()
 	_refresh_preview()
 
+func _on_limit_army_strength_toggled(is_enabled: bool) -> void:
+	_update_army_strength_limit_visibility()
+	if is_enabled:
+		_ensure_army_strength_cap_meets_current_position()
+		_clear_army_strength_warning()
+	else:
+		_clear_army_strength_warning()
+	_refresh_preview()
+
+func _on_army_strength_cap_value_changed(_value: float) -> void:
+	if is_updating_army_strength_cap:
+		return
+	if not _is_army_strength_rule_enabled():
+		return
+	_ensure_army_strength_cap_meets_current_position()
+	_clear_army_strength_warning()
+
 func _on_promotion_piece_toggled(is_checked: bool, piece_id: String) -> void:
 	if is_checked:
 		return
@@ -268,8 +299,106 @@ func _apply_special_rules(special_rules: Dictionary) -> void:
 	promotion_check_box.button_pressed = bool(special_rules.get("promotion", true))
 	piece_dropping_check_box.button_pressed = bool(special_rules.get("piece_dropping", false))
 	capture_to_drop_pool_check_box.button_pressed = bool(special_rules.get("capture_to_drop_pool", false))
+	limit_army_strength_check_box.button_pressed = bool(special_rules.get("limit_army_strength", false))
 	_update_castling_rule_availability()
 	_update_piece_dropping_visibility()
+	_update_army_strength_limit_visibility()
+
+func _update_army_strength_limit_visibility() -> void:
+	var show_controls = limit_army_strength_check_box.button_pressed
+	army_strength_cap_label.visible = show_controls
+	army_strength_cap_spin_box.visible = show_controls
+	if not show_controls:
+		army_strength_warning_label.visible = false
+
+func _is_army_strength_rule_enabled() -> bool:
+	return limit_army_strength_check_box.button_pressed
+
+func _get_army_strength_cap_value() -> int:
+	return max(int(round(army_strength_cap_spin_box.value)), 2)
+
+func _set_army_strength_cap_value(new_value: int) -> void:
+	is_updating_army_strength_cap = true
+	army_strength_cap_spin_box.value = float(max(new_value, 2))
+	is_updating_army_strength_cap = false
+
+func _get_preview_piece_strength(piece_id: String) -> int:
+	var include_king = _build_victory_condition() == "total_war"
+	return int($"/root/GameManager".get_piece_strength(piece_id, include_king))
+
+func _get_preview_army_strength_for_owner(owner: String, preview_board_state: Dictionary, preview_pool_state: Dictionary) -> int:
+	var total = 0
+	for square in preview_board_state.keys():
+		var piece_data: Dictionary = preview_board_state[square]
+		if str(piece_data.get("color", "")) != owner:
+			continue
+		total += _get_preview_piece_strength(str(piece_data.get("piece_id", "")))
+	var pool_contents: Array = preview_pool_state.get(owner, [])
+	for piece_id in pool_contents:
+		total += _get_preview_piece_strength(str(piece_id))
+	return total
+
+func _format_owner_name(owner: String) -> String:
+	if owner == "white":
+		return "White"
+	if owner == "black":
+		return "Black"
+	return owner.capitalize()
+
+func _set_army_strength_warning(owner: String, total_strength: int, cap: int) -> void:
+	army_strength_warning_label.text = "%s would exceed cap (%d > %d)." % [_format_owner_name(owner), total_strength, cap]
+	army_strength_warning_label.visible = true
+
+func _clear_army_strength_warning() -> void:
+	army_strength_warning_label.text = ""
+	army_strength_warning_label.visible = false
+
+func _preview_respects_army_strength(preview_board_state: Dictionary, preview_pool_state: Dictionary) -> bool:
+	if not _is_army_strength_rule_enabled():
+		return true
+	var cap = _get_army_strength_cap_value()
+	for owner in ["white", "black"]:
+		if _get_preview_army_strength_for_owner(owner, preview_board_state, preview_pool_state) > cap:
+			return false
+	return true
+
+func _ensure_army_strength_cap_meets_current_position() -> void:
+	if not _is_army_strength_rule_enabled():
+		return
+	var white_strength = _get_preview_army_strength_for_owner("white", preview_pieces, preview_drop_pools)
+	var black_strength = _get_preview_army_strength_for_owner("black", preview_pieces, preview_drop_pools)
+	var required_cap = max(2, max(white_strength, black_strength))
+	if _get_army_strength_cap_value() < required_cap:
+		_set_army_strength_cap_value(required_cap)
+
+func _can_place_preview_piece(square: Vector2i, piece_id: String, piece_color: String) -> bool:
+	if not _is_army_strength_rule_enabled():
+		return true
+	var next_board = preview_pieces.duplicate(true)
+	next_board[square] = {
+		"piece_id": piece_id,
+		"color": piece_color
+	}
+	var cap = _get_army_strength_cap_value()
+	var owner_total = _get_preview_army_strength_for_owner(piece_color, next_board, preview_drop_pools)
+	if owner_total > cap:
+		_set_army_strength_warning(piece_color, owner_total, cap)
+		return false
+	return _preview_respects_army_strength(next_board, preview_drop_pools)
+
+func _can_add_to_preview_drop_pool(pool_owner: String, piece_id: String) -> bool:
+	if not _is_army_strength_rule_enabled():
+		return true
+	var next_pools = _serialize_drop_pools()
+	var pool_contents: Array = next_pools.get(pool_owner, [])
+	pool_contents.append(piece_id)
+	next_pools[pool_owner] = pool_contents
+	var cap = _get_army_strength_cap_value()
+	var owner_total = _get_preview_army_strength_for_owner(pool_owner, preview_pieces, next_pools)
+	if owner_total > cap:
+		_set_army_strength_warning(pool_owner, owner_total, cap)
+		return false
+	return _preview_respects_army_strength(preview_pieces, next_pools)
 
 func _reset_preview_to_default(should_refresh: bool = true, use_standard_layout: bool = true) -> void:
 	width_spin_box.value = 8
@@ -286,8 +415,10 @@ func _reset_preview_to_default(should_refresh: bool = true, use_standard_layout:
 		"en_passant": true,
 		"promotion": true,
 		"piece_dropping": false,
-		"capture_to_drop_pool": false
+		"capture_to_drop_pool": false,
+		"limit_army_strength": false
 	})
+	_set_army_strength_cap_value(32)
 	_apply_promotion_piece_pool(["queen", "rook", "bishop", "knight"])
 	_apply_victory_condition("checkmate")
 	_update_promotion_piece_visibility()
@@ -307,6 +438,7 @@ func _reset_preview_to_default(should_refresh: bool = true, use_standard_layout:
 	drag_changed_any = false
 	if should_refresh:
 		_refresh_preview()
+	_clear_army_strength_warning()
 
 func _apply_preset(preset_id: String) -> void:
 	match preset_id:
@@ -320,8 +452,10 @@ func _apply_preset(preset_id: String) -> void:
 				"en_passant": true,
 				"promotion": true,
 				"piece_dropping": false,
-				"capture_to_drop_pool": false
+				"capture_to_drop_pool": false,
+				"limit_army_strength": false
 			})
+			_set_army_strength_cap_value(32)
 			_apply_promotion_piece_pool(["queen", "rook", "bishop", "knight"])
 			_apply_victory_condition("checkmate")
 			preview_drop_pools = {
@@ -339,8 +473,10 @@ func _apply_preset(preset_id: String) -> void:
 				"en_passant": false,
 				"promotion": false,
 				"piece_dropping": true,
-				"capture_to_drop_pool": true
+				"capture_to_drop_pool": true,
+				"limit_army_strength": false
 			})
+			_set_army_strength_cap_value(32)
 			_apply_promotion_piece_pool(["rook", "bishop", "silver_general", "gold_general", "lance", "shogi_knight", "shogi_pawn"])
 			_apply_victory_condition("checkmate")
 			preview_drop_pools = {
@@ -361,9 +497,11 @@ func _apply_saved_preset_config(preset_config: Dictionary) -> void:
 	preview_drop_pools = _deserialize_drop_pools(preset_config.get("drop_pools", {}))
 	_apply_victory_condition(str(preset_config.get("victory_condition", "checkmate")))
 	_apply_special_rules(preset_config.get("special_rules", {}))
+	_set_army_strength_cap_value(int(preset_config.get("army_strength_cap", 32)))
 	_apply_promotion_piece_pool(preset_config.get("promotion_pieces", ["queen", "rook", "bishop", "knight"]))
 	_update_promotion_piece_visibility()
 	_update_piece_dropping_visibility()
+	_ensure_army_strength_cap_meets_current_position()
 	last_drag_square = INVALID_SQUARE
 	hover_preview_square = INVALID_SQUARE
 	selected_preview_square = INVALID_SQUARE
@@ -745,6 +883,7 @@ func _try_remove_preview_drop_pool_piece(position: Vector2) -> bool:
 		return true
 	pool_contents.remove_at(remove_index)
 	preview_drop_pools[pool_owner] = pool_contents
+	_clear_army_strength_warning()
 	_refresh_preview()
 	return true
 
@@ -790,7 +929,7 @@ func _try_commit_piece_bank_drop() -> void:
 	var mouse_position = board_preview.get_local_mouse_position()
 	var target_pool = _preview_drop_pool_side_at_position(mouse_position)
 	if target_pool != "":
-		_add_piece_to_preview_drop_pool(target_pool, piece_bank_drag_piece_id)
+		_add_piece_to_preview_drop_pool(target_pool, piece_bank_drag_piece_id, true)
 	_clear_piece_bank_drag_state()
 	_refresh_preview()
 
@@ -816,7 +955,7 @@ func _try_drop_dragged_piece_to_pool(position: Vector2) -> bool:
 	var piece_data: Dictionary = preview_pieces[drag_piece_origin_square]
 	preview_pieces.erase(drag_piece_origin_square)
 	selected_preview_square = INVALID_SQUARE
-	_add_piece_to_preview_drop_pool(target_pool, str(piece_data.get("piece_id", "")))
+	_add_piece_to_preview_drop_pool(target_pool, str(piece_data.get("piece_id", "")), false)
 	preview_drop_pool_hover_owner = ""
 	_refresh_preview()
 	return true
@@ -828,12 +967,15 @@ func _preview_drop_pool_side_at_position(position: Vector2) -> String:
 		return "black"
 	return ""
 
-func _add_piece_to_preview_drop_pool(pool_owner: String, piece_id: String) -> void:
+func _add_piece_to_preview_drop_pool(pool_owner: String, piece_id: String, enforce_limit: bool) -> void:
 	if piece_id == "":
+		return
+	if enforce_limit and not _can_add_to_preview_drop_pool(pool_owner, piece_id):
 		return
 	var pool_contents: Array = preview_drop_pools.get(pool_owner, [])
 	pool_contents.append(piece_id)
 	preview_drop_pools[pool_owner] = pool_contents
+	_clear_army_strength_warning()
 
 func _on_board_preview_mouse_exited() -> void:
 	hover_preview_square = INVALID_SQUARE
@@ -852,15 +994,19 @@ func _apply_drag_action(position: Vector2, should_place_piece: bool) -> void:
 	if should_place_piece:
 		if selected_piece_id == "":
 			return
+		if not _can_place_preview_piece(square, selected_piece_id, selected_piece_color):
+			return
 		preview_pieces[square] = {
 			"piece_id": selected_piece_id,
 			"color": selected_piece_color
 		}
+		_clear_army_strength_warning()
 		selected_preview_square = square
 	else:
 		preview_pieces.erase(square)
 		if selected_preview_square == square:
 			selected_preview_square = INVALID_SQUARE
+		_clear_army_strength_warning()
 
 	drag_changed_any = true
 	_refresh_preview()
@@ -995,6 +1141,7 @@ func _build_preset_config() -> Dictionary:
 		"drop_pools": _serialize_drop_pools(),
 		"victory_condition": _build_victory_condition(),
 		"special_rules": _build_special_rules(),
+		"army_strength_cap": _get_army_strength_cap_value(),
 		"promotion_pieces": _build_promotion_piece_pool()
 	}
 
@@ -1039,6 +1186,7 @@ func _on_clear_board_button_pressed() -> void:
 	}
 	last_drag_square = INVALID_SQUARE
 	selected_preview_square = INVALID_SQUARE
+	_clear_army_strength_warning()
 	_refresh_preview()
 
 func _on_reset_setup_button_pressed() -> void:
@@ -1054,6 +1202,7 @@ func _on_start_game_button_pressed() -> void:
 	$"/root/GameManager".StartingDropPools = _serialize_drop_pools()
 	$"/root/GameManager".VictoryCondition = _build_victory_condition()
 	$"/root/GameManager".SpecialRules = _build_special_rules()
+	$"/root/GameManager".ArmyStrengthCap = _get_army_strength_cap_value()
 	$"/root/GameManager".PromotionPiecePool = _build_promotion_piece_pool()
 	
 	#var LocalGame = load("res://Scenes/LocalGame.tscn")

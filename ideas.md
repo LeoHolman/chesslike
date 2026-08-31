@@ -13,3 +13,6 @@
 1. Capture list show image tags instead of text description
 1. Clipping victory condition description
 1. Make the Victory text more obvious
+1. custom tile colors
+1. custom player colors
+1. more obvious feedback that placing a piece is blocked by army cap

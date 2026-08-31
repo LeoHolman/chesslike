@@ -48,6 +48,8 @@ var promotion_piece_options: Array[String] = []
 var victory_condition = "checkmate"
 var piece_dropping_enabled = false
 var capture_to_drop_pool_enabled = false
+var limit_army_strength_enabled = false
+var army_strength_cap = 2
 var drop_pools = {
 	"white": [],
 	"black": []
@@ -292,6 +294,8 @@ func _initialize_board_state() -> void:
 	promotion_enabled = bool(special_rules.get("promotion", true))
 	piece_dropping_enabled = bool(special_rules.get("piece_dropping", false))
 	capture_to_drop_pool_enabled = bool(special_rules.get("capture_to_drop_pool", false)) and piece_dropping_enabled
+	limit_army_strength_enabled = bool(special_rules.get("limit_army_strength", false))
+	army_strength_cap = max(int($"/root/GameManager".ArmyStrengthCap), 2)
 	promotion_piece_options = _get_promotion_piece_pool()
 	en_passant_target_square = INVALID_SQUARE
 	drop_pools = _get_starting_drop_pools()
@@ -457,7 +461,7 @@ func _draw_turn_indicator() -> Vector2:
 
 
 func _draw_captured_pieces_panels() -> void:
-	var panel_size = Vector2(max(tile_size * 3.2, 220.0), max(tile_size * 1.7, 92.0))
+	var panel_size = Vector2(max(tile_size * 3.2, 220.0), max(tile_size * 2.2, 116.0))
 	var left_position = Vector2(
 		TURN_INDICATOR_PADDING,
 		get_viewport_rect().size.y - panel_size.y - TURN_INDICATOR_PADDING
@@ -466,8 +470,8 @@ func _draw_captured_pieces_panels() -> void:
 		get_viewport_rect().size.x - panel_size.x - TURN_INDICATOR_PADDING,
 		get_viewport_rect().size.y - panel_size.y - TURN_INDICATOR_PADDING
 	)
-	_draw_hud_panel(left_position, panel_size, "White Captures", [_format_captured_piece_list("white")])
-	_draw_hud_panel(right_position, panel_size, "Black Captures", [_format_captured_piece_list("black")])
+	_draw_hud_panel(left_position, panel_size, "White Captures", [_format_captured_strength_summary("white"), _format_captured_piece_list("white")])
+	_draw_hud_panel(right_position, panel_size, "Black Captures", [_format_captured_strength_summary("black"), _format_captured_piece_list("black")])
 
 func _draw_drop_pool_panels() -> void:
 	var panel_size = Vector2(max(tile_size * 3.2, 220.0), max(tile_size * 2.2, 126.0))
@@ -761,6 +765,22 @@ func _format_captured_piece_list(capturing_color: String) -> String:
 			])
 	return ", ".join(formatted_pieces)
 
+func _captured_piece_strength_total(capturing_color: String) -> int:
+	var include_king = victory_condition == "total_war"
+	var total = 0
+	var piece_list: Array = captured_pieces.get(capturing_color, [])
+	for piece_data in piece_list:
+		if not (piece_data is Dictionary):
+			continue
+		total += int($"/root/GameManager".get_piece_strength(str(piece_data.get("piece_id", "")), include_king))
+	return total
+
+func _format_captured_strength_summary(capturing_color: String) -> String:
+	var own_total = _captured_piece_strength_total(capturing_color)
+	var enemy_total = _captured_piece_strength_total(_opponent_color(capturing_color))
+	var diff = own_total - enemy_total
+	return "%d (%+d)" % [own_total, diff]
+
 func _square_to_notation(square: Vector2i) -> String:
 	var file_name = "?"
 	if square.x >= 0 and square.x < FILE_NAMES.length():
@@ -926,7 +946,9 @@ func _is_legal_drop_piece_from_pool(piece_id: String, owner: String, target_squa
 		"color": owner,
 		"has_moved": false
 	}
-	return not _is_king_in_check(owner, simulated_board)
+	if _is_king_in_check(owner, simulated_board):
+		return false
+	return _is_drop_allowed_by_army_strength(piece_id, owner, target_square, pieces, drop_pools)
 
 func _clear_drop_piece_selection() -> void:
 	selected_drop_piece_id = ""
@@ -1088,7 +1110,7 @@ func _create_move_info() -> Dictionary:
 		"is_castling": false
 	}
 
-func _analyze_move(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, validate_king_safety: bool) -> Dictionary:
+func _analyze_move(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, validate_king_safety: bool, drop_pool_state: Dictionary = {}) -> Dictionary:
 	var move_info = _create_move_info()
 	if not _is_base_legal_piece_move(piece_data, from_square, to_square, board_state, move_info):
 		return move_info
@@ -1097,6 +1119,12 @@ func _analyze_move(piece_data: Dictionary, from_square: Vector2i, to_square: Vec
 		var simulated_board = _simulate_move_with_info(board_state, from_square, to_square, piece_data, move_info)
 		if _is_king_in_check(str(piece_data.get("color", "white")), simulated_board):
 			return move_info
+
+	var effective_drop_pools = drop_pool_state
+	if effective_drop_pools.is_empty():
+		effective_drop_pools = drop_pools
+	if not _is_move_allowed_by_army_strength(piece_data, from_square, to_square, board_state, move_info, effective_drop_pools):
+		return move_info
 
 	move_info["is_legal"] = true
 	return move_info
@@ -1229,7 +1257,7 @@ func _has_any_legal_moves(piece_color: String) -> bool:
 			continue
 		for y in board_height:
 			for x in board_width:
-				var move_info = _analyze_move(piece_data, from_square, Vector2i(x, y), pieces, true)
+				var move_info = _analyze_move(piece_data, from_square, Vector2i(x, y), pieces, true, drop_pools)
 				if bool(move_info.get("is_legal", false)):
 					return true
 
@@ -1244,6 +1272,13 @@ func _has_any_legal_moves(piece_color: String) -> bool:
 	return false
 
 func _update_game_state(record_history: bool) -> void:
+	if limit_army_strength_enabled and not _state_respects_army_strength(pieces, drop_pools):
+		game_over = true
+		status_message = "Army strength limit exceeded"
+		if record_history:
+			move_history.append("Army strength limit exceeded.")
+		return
+
 	if victory_condition == "total_war":
 		var white_piece_count = _count_pieces_on_board("white")
 		var black_piece_count = _count_pieces_on_board("black")
@@ -1378,7 +1413,7 @@ func _can_reach_future_capture(state: Dictionary, memo: Dictionary, active: Dict
 	var drop_pool_state: Dictionary = state.get("drop_pools", {})
 	var en_passant_target: Vector2i = state.get("en_passant_target", INVALID_SQUARE)
 
-	if _has_any_legal_captures_on_state(turn_color, board_state, en_passant_target):
+	if _has_any_legal_captures_on_state(turn_color, board_state, en_passant_target, drop_pool_state):
 		active.erase(state_key)
 		memo[state_key] = true
 		return true
@@ -1407,7 +1442,7 @@ func _generate_non_capturing_total_war_successors(state: Dictionary) -> Array[Di
 		for y in board_height:
 			for x in board_width:
 				var to_square = Vector2i(x, y)
-				var move_info = _analyze_move_on_state(piece_data, from_square, to_square, board_state, true, en_passant_target)
+				var move_info = _analyze_move_on_state(piece_data, from_square, to_square, board_state, true, en_passant_target, drop_pool_state)
 				if not bool(move_info.get("is_legal", false)):
 					continue
 				if move_info.get("capture_square", INVALID_SQUARE) != INVALID_SQUARE:
@@ -1434,7 +1469,7 @@ func _generate_non_capturing_total_war_successors(state: Dictionary) -> Array[Di
 			for y in board_height:
 				for x in board_width:
 					var target_square = Vector2i(x, y)
-					if not _is_legal_drop_piece_on_state(piece_key, turn_color, target_square, board_state):
+					if not _is_legal_drop_piece_on_state(piece_key, turn_color, target_square, board_state, drop_pool_state):
 						continue
 					var next_board = board_state.duplicate(true)
 					next_board[target_square] = {
@@ -1457,7 +1492,7 @@ func _generate_non_capturing_total_war_successors(state: Dictionary) -> Array[Di
 
 	return successors
 
-func _has_any_legal_captures_on_state(piece_color: String, board_state: Dictionary, en_passant_target: Vector2i) -> bool:
+func _has_any_legal_captures_on_state(piece_color: String, board_state: Dictionary, en_passant_target: Vector2i, drop_pool_state: Dictionary) -> bool:
 	for from_square in board_state.keys():
 		var piece_data: Dictionary = board_state[from_square]
 		if piece_data.get("color", "") != piece_color:
@@ -1466,19 +1501,19 @@ func _has_any_legal_captures_on_state(piece_color: String, board_state: Dictiona
 			var target_piece: Dictionary = board_state[to_square]
 			if target_piece.get("color", "") == piece_color:
 				continue
-			var move_info = _analyze_move_on_state(piece_data, from_square, to_square, board_state, true, en_passant_target)
+			var move_info = _analyze_move_on_state(piece_data, from_square, to_square, board_state, true, en_passant_target, drop_pool_state)
 			if bool(move_info.get("is_legal", false)) and move_info.get("capture_square", INVALID_SQUARE) != INVALID_SQUARE:
 				return true
 	return false
 
-func _analyze_move_on_state(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, validate_king_safety: bool, en_passant_target: Vector2i) -> Dictionary:
+func _analyze_move_on_state(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, validate_king_safety: bool, en_passant_target: Vector2i, drop_pool_state: Dictionary) -> Dictionary:
 	var previous_en_passant_target = en_passant_target_square
 	en_passant_target_square = en_passant_target
-	var move_info = _analyze_move(piece_data, from_square, to_square, board_state, validate_king_safety)
+	var move_info = _analyze_move(piece_data, from_square, to_square, board_state, validate_king_safety, drop_pool_state)
 	en_passant_target_square = previous_en_passant_target
 	return move_info
 
-func _is_legal_drop_piece_on_state(piece_id: String, owner: String, target_square: Vector2i, board_state: Dictionary) -> bool:
+func _is_legal_drop_piece_on_state(piece_id: String, owner: String, target_square: Vector2i, board_state: Dictionary, drop_pool_state: Dictionary) -> bool:
 	if target_square == INVALID_SQUARE:
 		return false
 	if board_state.has(target_square):
@@ -1491,7 +1526,9 @@ func _is_legal_drop_piece_on_state(piece_id: String, owner: String, target_squar
 		"color": owner,
 		"has_moved": false
 	}
-	return not _is_king_in_check(owner, simulated_board)
+	if _is_king_in_check(owner, simulated_board):
+		return false
+	return _is_drop_allowed_by_army_strength(piece_id, owner, target_square, board_state, drop_pool_state)
 
 func _get_promotion_results_for_state(move_info: Dictionary) -> Array[String]:
 	if not bool(move_info.get("requires_promotion", false)) or not promotion_enabled:
@@ -1506,6 +1543,62 @@ func _duplicate_drop_pools(source_drop_pools: Dictionary) -> Dictionary:
 		"white": (source_drop_pools.get("white", []) as Array).duplicate(true),
 		"black": (source_drop_pools.get("black", []) as Array).duplicate(true)
 	}
+
+func _piece_strength(piece_id: String) -> int:
+	var include_king = victory_condition == "total_war"
+	return int($"/root/GameManager".get_piece_strength(piece_id, include_king))
+
+func _army_strength_for_owner_on_state(owner: String, board_state: Dictionary, drop_pool_state: Dictionary) -> int:
+	var total = 0
+	for square in board_state.keys():
+		var piece_data: Dictionary = board_state[square]
+		if str(piece_data.get("color", "")) != owner:
+			continue
+		total += _piece_strength(str(piece_data.get("piece_id", "")))
+	var pool_contents: Array = drop_pool_state.get(owner, [])
+	for piece_id in pool_contents:
+		total += _piece_strength(str(piece_id))
+	return total
+
+func _state_respects_army_strength(board_state: Dictionary, drop_pool_state: Dictionary) -> bool:
+	if not limit_army_strength_enabled:
+		return true
+	for owner in ["white", "black"]:
+		if _army_strength_for_owner_on_state(owner, board_state, drop_pool_state) > army_strength_cap:
+			return false
+	return true
+
+func _is_move_allowed_by_army_strength(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, move_info: Dictionary, drop_pool_state: Dictionary) -> bool:
+	if not limit_army_strength_enabled:
+		return true
+	var moving_color = str(piece_data.get("color", "white"))
+	var next_board = _simulate_move_with_info(board_state, from_square, to_square, piece_data, move_info)
+	var next_drop_pools = _duplicate_drop_pools(drop_pool_state)
+	if capture_to_drop_pool_enabled:
+		var capture_square = move_info.get("capture_square", INVALID_SQUARE)
+		if capture_square != INVALID_SQUARE and board_state.has(capture_square):
+			var captured_piece: Dictionary = board_state[capture_square]
+			var pool_contents: Array = next_drop_pools.get(moving_color, [])
+			pool_contents.append(str(captured_piece.get("piece_id", "")))
+			next_drop_pools[moving_color] = pool_contents
+	return _state_respects_army_strength(next_board, next_drop_pools)
+
+func _is_drop_allowed_by_army_strength(piece_id: String, owner: String, target_square: Vector2i, board_state: Dictionary, drop_pool_state: Dictionary) -> bool:
+	if not limit_army_strength_enabled:
+		return true
+	var next_board = board_state.duplicate(true)
+	next_board[target_square] = {
+		"piece_id": piece_id,
+		"color": owner,
+		"has_moved": false
+	}
+	var next_drop_pools = _duplicate_drop_pools(drop_pool_state)
+	var pool_contents: Array = next_drop_pools.get(owner, [])
+	var remove_index = pool_contents.find(piece_id)
+	if remove_index != -1:
+		pool_contents.remove_at(remove_index)
+		next_drop_pools[owner] = pool_contents
+	return _state_respects_army_strength(next_board, next_drop_pools)
 
 func _build_total_war_state_key(state: Dictionary) -> String:
 	var board_state: Dictionary = state.get("board", {})

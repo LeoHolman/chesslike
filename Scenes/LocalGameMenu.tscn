@@ -23,7 +23,7 @@ grow_vertical = 2
 horizontal_scroll_mode = 0
 
 [node name="OptionsContent" type="Control" parent="OptionsScroll" unique_id=1806613797]
-custom_minimum_size = Vector2(0, 1360)
+custom_minimum_size = Vector2(0, 1640)
 layout_mode = 2
 size_flags_horizontal = 3
 
@@ -288,60 +288,100 @@ offset_right = 332.0
 offset_bottom = 970.0
 text = "Capture to Drop Pool"
 
+[node name="LimitArmyStrengthCheckBox" type="CheckBox" parent="OptionsScroll/OptionsContent" unique_id=715094631]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 978.0
+offset_right = 320.0
+offset_bottom = 1002.0
+text = "Limit Army Strength"
+
+[node name="ArmyStrengthCapLabel" type="Label" parent="OptionsScroll/OptionsContent" unique_id=60631354]
+visible = false
+layout_mode = 0
+offset_left = 104.0
+offset_top = 1012.0
+offset_right = 240.0
+offset_bottom = 1035.0
+text = "Army Strength Cap"
+
+[node name="ArmyStrengthCapSpinBox" type="SpinBox" parent="OptionsScroll/OptionsContent" unique_id=61484562]
+visible = false
+layout_mode = 0
+offset_left = 250.0
+offset_top = 1008.0
+offset_right = 320.0
+offset_bottom = 1039.0
+min_value = 2.0
+value = 32.0
+rounded = true
+
+[node name="ArmyStrengthWarningLabel" type="Label" parent="OptionsScroll/OptionsContent" unique_id=497516620]
+visible = false
+layout_mode = 0
+offset_left = 104.0
+offset_top = 1044.0
+offset_right = 360.0
+offset_bottom = 1088.0
+autowrap_mode = 3
+theme_override_colors/font_color = Color(1, 0.85, 0.85, 1)
+theme_override_font_sizes/font_size = 14
+text = ""
+
 [node name="VictoryConditionTitleBackground" type="ColorRect" parent="OptionsScroll/OptionsContent" unique_id=414050202]
 layout_mode = 0
 offset_left = 76.0
-offset_top = 986.0
+offset_top = 1438.0
 offset_right = 324.0
-offset_bottom = 1013.0
+offset_bottom = 1465.0
 color = Color(0.16, 0.16, 0.16, 0.78)
 
 [node name="VictoryConditionTitle" type="Label" parent="OptionsScroll/OptionsContent" unique_id=136941371]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 988.0
+offset_top = 1440.0
 offset_right = 260.0
-offset_bottom = 1011.0
+offset_bottom = 1463.0
 text = "Victory Condition:"
 
 [node name="VictoryConditionOption" type="OptionButton" parent="OptionsScroll/OptionsContent" unique_id=132665205]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1024.0
+offset_top = 1476.0
 offset_right = 320.0
-offset_bottom = 1055.0
+offset_bottom = 1507.0
 
 [node name="VictoryConditionDescription" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1271189780]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1064.0
+offset_top = 1516.0
 offset_right = 360.0
-offset_bottom = 1120.0
+offset_bottom = 1572.0
 autowrap_mode = 3
 text = "Checkmate: win by checkmating the king.\nTotal War: win when the opponent has no pieces left; if no legal captures remain, the game is a stalemate."
 
 [node name="PromotionPiecesTitleBackground" type="ColorRect" parent="OptionsScroll/OptionsContent" unique_id=175393625]
 layout_mode = 0
 offset_left = 76.0
-offset_top = 1148.0
+offset_top = 1096.0
 offset_right = 324.0
-offset_bottom = 1175.0
+offset_bottom = 1123.0
 color = Color(0.16, 0.16, 0.16, 0.78)
 
 [node name="PromotionPiecesTitle" type="Label" parent="OptionsScroll/OptionsContent" unique_id=1858177657]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1150.0
+offset_top = 1098.0
 offset_right = 280.0
-offset_bottom = 1173.0
+offset_bottom = 1121.0
 text = "Promotion Pieces:"
 
 [node name="PromotionPiecesScroll" type="ScrollContainer" parent="OptionsScroll/OptionsContent" unique_id=1022091318]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 1178.0
+offset_top = 1126.0
 offset_right = 320.0
-offset_bottom = 1306.0
+offset_bottom = 1388.0
 
 [node name="PromotionPiecesList" type="VBoxContainer" parent="OptionsScroll/OptionsContent/PromotionPiecesScroll" unique_id=57243385]
 custom_minimum_size = Vector2(0, 220)
