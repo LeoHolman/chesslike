@@ -2,6 +2,7 @@ extends Control
 
 @onready var width_spin_box: SpinBox = $OptionsScroll/OptionsContent/WidthSpinBox
 @onready var height_spin_box: SpinBox = $OptionsScroll/OptionsContent/HeightSpinBox
+@onready var local_game_title: Label = $OptionsScroll/OptionsContent/LocalGameTitle
 @onready var board_preview: Control = $PreviewArea/BoardPreview
 @onready var preview_warning_label: Label = $PreviewWarningLabel
 @onready var piece_bank_list: ItemList = $OptionsScroll/OptionsContent/PieceBankList
@@ -98,6 +99,7 @@ var board_tile_colors = {
 }
 
 func _ready() -> void:
+	_update_menu_title_for_mode()
 	width_spin_box.value_changed.connect(_on_board_dimension_changed)
 	height_spin_box.value_changed.connect(_on_board_dimension_changed)
 	board_preview.gui_input.connect(_on_board_preview_gui_input)
@@ -114,6 +116,13 @@ func _ready() -> void:
 	_setup_special_rules()
 	_reset_preview_to_default(false, false)
 	_refresh_preview(0.0)
+
+func _update_menu_title_for_mode() -> void:
+	var title_text = "Create Local game"
+	var network_manager = get_node_or_null("/root/NetworkManager")
+	if network_manager != null and network_manager.is_hosting and not network_manager.is_online_active():
+		title_text = "Create Online Game"
+	local_game_title.text = title_text
 
 func _on_board_dimension_changed(_value: float) -> void:
 	_update_promotion_zone_limits()
