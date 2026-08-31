@@ -45,6 +45,7 @@ var TileColors = {
 	"light": {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0},
 	"dark": {"r": 0.41, "g": 0.41, "b": 0.41, "a": 1.0}
 }
+var PendingPresetName = ""
 var SavedPresets = {}
 var PieceBank = [
 	"pawn",
@@ -138,6 +139,32 @@ func delete_preset(preset_name: String) -> bool:
 	SavedPresets.erase(preset_name)
 	_write_saved_presets()
 	return true
+
+func rename_saved_preset(source_name: String, target_name: String) -> Dictionary:
+	var old_name = source_name.strip_edges()
+	var new_name = target_name.strip_edges()
+	if old_name == "":
+		return {"ok": false, "error": "Source preset name is empty."}
+	if new_name == "":
+		return {"ok": false, "error": "New preset name is empty."}
+	if old_name == new_name:
+		return {"ok": false, "error": "New name must be different."}
+	if not SavedPresets.has(old_name):
+		return {"ok": false, "error": "Selected preset no longer exists."}
+	if SavedPresets.has(new_name):
+		return {"ok": false, "error": "A preset with that name already exists."}
+	SavedPresets[new_name] = SavedPresets[old_name].duplicate(true)
+	SavedPresets.erase(old_name)
+	_write_saved_presets()
+	return {"ok": true}
+
+func queue_preset_for_edit(preset_name: String) -> void:
+	PendingPresetName = preset_name.strip_edges()
+
+func consume_pending_preset_for_edit() -> String:
+	var pending = PendingPresetName
+	PendingPresetName = ""
+	return pending
 
 func _load_saved_presets() -> void:
 	SavedPresets.clear()

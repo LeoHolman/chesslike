@@ -3,6 +3,8 @@ extends Control
 @onready var width_spin_box: SpinBox = $OptionsScroll/OptionsContent/WidthSpinBox
 @onready var height_spin_box: SpinBox = $OptionsScroll/OptionsContent/HeightSpinBox
 @onready var local_game_title: Label = $OptionsScroll/OptionsContent/LocalGameTitle
+@onready var back_to_main_menu_button: Button = $BackToMainMenuButton
+@onready var start_game_button: Button = $StartGameButton
 @onready var board_preview: Control = $PreviewArea/BoardPreview
 @onready var preview_warning_label: Label = $PreviewWarningLabel
 @onready var piece_bank_list: ItemList = $OptionsScroll/OptionsContent/PieceBankList
@@ -89,6 +91,8 @@ var preview_drop_pool_hover_owner = ""
 var is_updating_army_strength_cap = false
 var is_updating_unbalanced_army_strength_caps = false
 var preview_warning_message_serial = 0
+var is_editing_preset_mode = false
+var editing_preset_name = ""
 var player_side_colors = {
 	"white": Color(1.0, 1.0, 1.0, 1.0),
 	"black": Color(0.08, 0.08, 0.08, 1.0)
@@ -99,7 +103,6 @@ var board_tile_colors = {
 }
 
 func _ready() -> void:
-	_update_menu_title_for_mode()
 	width_spin_box.value_changed.connect(_on_board_dimension_changed)
 	height_spin_box.value_changed.connect(_on_board_dimension_changed)
 	board_preview.gui_input.connect(_on_board_preview_gui_input)
@@ -115,14 +118,28 @@ func _ready() -> void:
 	_setup_victory_condition_picker()
 	_setup_special_rules()
 	_reset_preview_to_default(false, false)
+	_apply_pending_preset_selection()
+	_update_menu_title_for_mode()
+	_update_primary_action_for_mode()
 	_refresh_preview(0.0)
 
 func _update_menu_title_for_mode() -> void:
+	if is_editing_preset_mode:
+		local_game_title.text = "Edit preset %s" % editing_preset_name
+		return
 	var title_text = "Create Local game"
 	var network_manager = get_node_or_null("/root/NetworkManager")
 	if network_manager != null and network_manager.is_hosting and not network_manager.is_online_active():
 		title_text = "Create Online Game"
 	local_game_title.text = title_text
+
+func _update_primary_action_for_mode() -> void:
+	if is_editing_preset_mode:
+		start_game_button.text = "Save Preset"
+		back_to_main_menu_button.visible = false
+		return
+	start_game_button.text = "Start Game"
+	back_to_main_menu_button.visible = true
 
 func _on_board_dimension_changed(_value: float) -> void:
 	_update_promotion_zone_limits()
@@ -774,6 +791,21 @@ func _on_preset_item_selected(index: int) -> void:
 		_apply_preset(str(PRESETS[preset_name]))
 		return
 	_apply_preset(preset_name)
+
+func _apply_pending_preset_selection() -> void:
+	is_editing_preset_mode = false
+	editing_preset_name = ""
+	var pending_preset_name = str($"/root/GameManager".consume_pending_preset_for_edit())
+	if pending_preset_name == "":
+		return
+	for index in range(preset_list.item_count):
+		if preset_list.get_item_text(index) != pending_preset_name:
+			continue
+		preset_list.select(index)
+		_on_preset_item_selected(index)
+		is_editing_preset_mode = true
+		editing_preset_name = pending_preset_name
+		return
 
 func _on_piece_color_selected(index: int) -> void:
 	if index == 1:
@@ -1590,6 +1622,15 @@ func _on_back_to_main_menu_button_pressed() -> void:
 	get_tree().change_scene_to_file("res://Scenes/MainMenu.tscn")
 
 func _on_start_game_button_pressed() -> void:
+	if is_editing_preset_mode:
+		if PRESETS.has(editing_preset_name):
+			preview_warning_label.text = "Built-in presets cannot be overwritten. Rename and save as a custom preset."
+			preview_warning_label.visible = true
+			return
+		$"/root/GameManager".save_preset(editing_preset_name, _build_preset_config())
+		get_tree().change_scene_to_file("res://Scenes/ManagePresets.tscn")
+		return
+
 	var height = height_spin_box.value
 	var width = width_spin_box.value
 	

@@ -15,3 +15,6 @@ func _on_online_game_button_pressed() -> void:
 
 func _on_manage_pieces_button_pressed() -> void:
 	get_tree().change_scene_to_file("res://Scenes/ManagePieces.tscn")
+
+func _on_manage_presets_button_pressed() -> void:
+	get_tree().change_scene_to_file("res://Scenes/ManagePresets.tscn")

@@ -1,0 +1,118 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://Scripts/manage_presets.gd" id="1_manage_presets"]
+
+[node name="Control" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_manage_presets")
+
+[node name="Title" type="Label" parent="."]
+layout_mode = 0
+offset_left = 78.0
+offset_top = 42.0
+offset_right = 292.0
+offset_bottom = 75.0
+text = "Manage Presets"
+
+[node name="PresetList" type="ItemList" parent="."]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 88.0
+offset_right = 452.0
+offset_bottom = 540.0
+select_mode = 0
+
+[node name="RenameInput" type="LineEdit" parent="."]
+layout_mode = 0
+offset_left = 486.0
+offset_top = 112.0
+offset_right = 850.0
+offset_bottom = 143.0
+placeholder_text = "Rename preset"
+
+[node name="RenameButton" type="Button" parent="."]
+layout_mode = 0
+offset_left = 486.0
+offset_top = 158.0
+offset_right = 640.0
+offset_bottom = 189.0
+text = "Rename"
+
+[node name="EditButton" type="Button" parent="."]
+layout_mode = 0
+offset_left = 486.0
+offset_top = 206.0
+offset_right = 640.0
+offset_bottom = 237.0
+text = "Edit"
+
+[node name="DeleteButton" type="Button" parent="."]
+layout_mode = 0
+offset_left = 486.0
+offset_top = 254.0
+offset_right = 640.0
+offset_bottom = 285.0
+text = "Delete"
+
+[node name="ExportButton" type="Button" parent="."]
+layout_mode = 0
+offset_left = 486.0
+offset_top = 302.0
+offset_right = 640.0
+offset_bottom = 333.0
+text = "Export"
+
+[node name="ImportPresetButton" type="Button" parent="."]
+layout_mode = 0
+offset_left = 486.0
+offset_top = 350.0
+offset_right = 700.0
+offset_bottom = 381.0
+text = "Import Preset"
+
+[node name="BackButton" type="Button" parent="."]
+layout_mode = 0
+offset_left = 486.0
+offset_top = 398.0
+offset_right = 700.0
+offset_bottom = 429.0
+text = "Back to Main Menu"
+
+[node name="MessageLabel" type="Label" parent="."]
+layout_mode = 0
+offset_left = 486.0
+offset_top = 460.0
+offset_right = 960.0
+offset_bottom = 540.0
+autowrap_mode = 3
+text = ""
+
+[node name="ExportDialog" type="FileDialog" parent="."]
+file_mode = 4
+access = 2
+filters = PackedStringArray("*.json ; JSON Files")
+title = "Export Preset"
+
+[node name="ImportDialog" type="FileDialog" parent="."]
+file_mode = 0
+access = 2
+filters = PackedStringArray("*.json ; JSON Files")
+title = "Import Preset"
+
+[node name="DeleteConfirmDialog" type="ConfirmationDialog" parent="."]
+title = "Confirm Delete"
+ok_button_text = "Delete"
+cancel_button_text = "Cancel"
+dialog_text = "Delete this preset?"
+
+[connection signal="pressed" from="RenameButton" to="." method="_on_rename_button_pressed"]
+[connection signal="pressed" from="EditButton" to="." method="_on_edit_button_pressed"]
+[connection signal="pressed" from="DeleteButton" to="." method="_on_delete_button_pressed"]
+[connection signal="pressed" from="ExportButton" to="." method="_on_export_button_pressed"]
+[connection signal="pressed" from="ImportPresetButton" to="." method="_on_import_preset_button_pressed"]
+[connection signal="pressed" from="BackButton" to="." method="_on_back_button_pressed"]

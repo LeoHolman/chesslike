@@ -1,8 +1,5 @@
 # Ideas
-1. network connection to play with another player online
 1. Add special rule for spell cards
-1. export presets for sharing with other people
-    1. make sure special rules are saved in presets
 1. export move history
 1. piece stacking like Gungi
     1. pieces can stack upon one another

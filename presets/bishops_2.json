@@ -1,0 +1,115 @@
+{
+	"name": "Bishops 2",
+	"preset_config": {
+		"army_strength_cap": 32,
+		"army_strength_caps": {
+			"black": 32,
+			"white": 32
+		},
+		"drop_pools": {
+			"black": [],
+			"white": []
+		},
+		"height": 8,
+		"pieces": [
+			{
+				"color": "white",
+				"piece_id": "bishop",
+				"x": 2,
+				"y": 5
+			},
+			{
+				"color": "white",
+				"piece_id": "bishop",
+				"x": 5,
+				"y": 5
+			},
+			{
+				"color": "black",
+				"piece_id": "bishop",
+				"x": 2,
+				"y": 2
+			},
+			{
+				"color": "black",
+				"piece_id": "bishop",
+				"x": 5,
+				"y": 2
+			},
+			{
+				"color": "white",
+				"piece_id": "pawn",
+				"x": 3,
+				"y": 4
+			},
+			{
+				"color": "white",
+				"piece_id": "pawn",
+				"x": 4,
+				"y": 4
+			},
+			{
+				"color": "black",
+				"piece_id": "pawn",
+				"x": 3,
+				"y": 3
+			},
+			{
+				"color": "black",
+				"piece_id": "pawn",
+				"x": 4,
+				"y": 3
+			}
+		],
+		"player_colors": {
+			"black": {
+				"a": 1.0,
+				"b": 0.0799999982118607,
+				"g": 0.0799999982118607,
+				"r": 0.0799999982118607
+			},
+			"white": {
+				"a": 1.0,
+				"b": 1.0,
+				"g": 1.0,
+				"r": 1.0
+			}
+		},
+		"promotion_pieces": [
+			"bishop",
+			"knight",
+			"queen",
+			"rook"
+		],
+		"promotion_zones": {
+			"black_rows": 1,
+			"white_rows": 1
+		},
+		"special_rules": {
+			"allow_undo": false,
+			"capture_to_drop_pool": false,
+			"castling": false,
+			"en_passant": true,
+			"limit_army_strength": false,
+			"piece_dropping": true,
+			"promotion": true,
+			"unbalanced_armies": false
+		},
+		"tile_colors": {
+			"dark": {
+				"a": 1.0,
+				"b": 0.409999996423721,
+				"g": 0.409999996423721,
+				"r": 0.409999996423721
+			},
+			"light": {
+				"a": 1.0,
+				"b": 1.0,
+				"g": 1.0,
+				"r": 1.0
+			}
+		},
+		"victory_condition": "checkmate",
+		"width": 8
+	}
+}
