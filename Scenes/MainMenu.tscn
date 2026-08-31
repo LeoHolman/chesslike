@@ -27,23 +27,32 @@ offset_right = 562.0
 offset_bottom = 415.0
 text = "Local Game"
 
+[node name="OnlineGameButton" type="Button" parent="."]
+layout_mode = 0
+offset_left = 459.0
+offset_top = 432.0
+offset_right = 567.0
+offset_bottom = 463.0
+text = "Online Game"
+
 [node name="ManagePiecesButton" type="Button" parent="." unique_id=1009312344]
 layout_mode = 0
 offset_left = 452.0
-offset_top = 448.0
+offset_top = 480.0
 offset_right = 574.0
-offset_bottom = 479.0
+offset_bottom = 511.0
 text = "Manage Pieces"
 
 [node name="ExitGameButton" type="Button" parent="." unique_id=1065246606]
 layout_mode = 0
 offset_left = 472.0
-offset_top = 544.0
+offset_top = 560.0
 offset_right = 559.0
-offset_bottom = 575.0
+offset_bottom = 591.0
 text = "Exit Game
 "
 
 [connection signal="pressed" from="LocalGameButton" to="." method="_on_local_game_button_pressed"]
+[connection signal="pressed" from="OnlineGameButton" to="." method="_on_online_game_button_pressed"]
 [connection signal="pressed" from="ManagePiecesButton" to="." method="_on_manage_pieces_button_pressed"]
 [connection signal="pressed" from="ExitGameButton" to="." method="_on_exit_game_button_pressed"]

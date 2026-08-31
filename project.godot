@@ -18,6 +18,7 @@ config/icon="res://icon.svg"
 [autoload]
 
 GameManager="*uid://cg0ad1bteotwu"
+NetworkManager="*res://Scripts/autoload/network_manager.gd"
 
 [physics]
 
@@ -28,3 +29,4 @@ GameManager="*uid://cg0ad1bteotwu"
 rendering_device/driver.windows="d3d12"
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true
