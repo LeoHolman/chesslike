@@ -1,6 +1,11 @@
 extends Control
 
 
+func _ready() -> void:
+	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_BORDERLESS, false)
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED)
+
+
 
 func _on_exit_game_button_pressed() -> void:
 	get_tree().quit()
