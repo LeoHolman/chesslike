@@ -83,6 +83,14 @@ var drop_pool_entry_rects = {
 	"white": [],
 	"black": []
 }
+var drop_pool_scroll_offsets = {
+	"white": 0,
+	"black": 0
+}
+var drop_pool_viewport_rects = {
+	"white": Rect2(),
+	"black": Rect2()
+}
 var player_side_colors = {
 	"white": DEFAULT_PLAYER1_COLOR,
 	"black": DEFAULT_PLAYER2_COLOR
@@ -135,6 +143,18 @@ var spell_panel_entry_rects = {
 	"white": [],
 	"black": []
 }
+var spell_panel_scroll_offsets = {
+	"white": 0,
+	"black": 0
+}
+var spell_panel_viewport_rects = {
+	"white": Rect2(),
+	"black": Rect2()
+}
+var hud_scroll_drag_active = false
+var hud_scroll_drag_kind = ""
+var hud_scroll_drag_owner = ""
+var hud_scroll_drag_last_mouse_position = Vector2.ZERO
 var last_piece_move_should_end_turn = true
 var online_mode = false
 var local_player_side = "white"
@@ -176,6 +196,14 @@ func _setup_online_match_state() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if promotion_pending:
 		return
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP and _update_hud_panel_scroll(event.position, -1):
+			return
+		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN and _update_hud_panel_scroll(event.position, 1):
+			return
+	if event is InputEventMouseMotion and hud_scroll_drag_active:
+		_update_hud_scroll_drag(event.position)
+		return
 	if event is InputEventMouseMotion and drop_piece_drag_active:
 		drop_piece_drag_position = event.position
 		drop_pool_hover_owner = _drop_pool_side_at_position(event.position)
@@ -183,8 +211,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
+			if _begin_hud_scroll_drag(event.position):
+				return
 			_handle_pointer_press(event.position)
 		else:
+			if hud_scroll_drag_active:
+				_end_hud_scroll_drag()
+				return
 			_handle_pointer_release(event.position)
 
 func _handle_pointer_press(mouse_position: Vector2) -> void:
@@ -1085,6 +1118,8 @@ func _draw_drop_pool_panels() -> void:
 	)
 	white_drop_pool_panel_rect = Rect2(left_position, panel_size)
 	black_drop_pool_panel_rect = Rect2(right_position, panel_size)
+	drop_pool_viewport_rects["white"] = Rect2()
+	drop_pool_viewport_rects["black"] = Rect2()
 
 	_draw_drop_pool_panel(left_position, panel_size, "Player 1 Drop Pool", "white")
 	_draw_drop_pool_panel(right_position, panel_size, "Player 2 Drop Pool", "black")
@@ -1094,6 +1129,8 @@ func _draw_spell_card_panels() -> void:
 	black_spell_panel_rect = Rect2()
 	spell_panel_entry_rects["white"] = []
 	spell_panel_entry_rects["black"] = []
+	spell_panel_viewport_rects["white"] = Rect2()
+	spell_panel_viewport_rects["black"] = Rect2()
 	if not spell_cards_enabled:
 		return
 
@@ -1129,12 +1166,15 @@ func _draw_single_spell_card_panel(panel_position: Vector2, panel_size: Vector2,
 	var content_x = panel_position.x + TURN_INDICATOR_PADDING
 	var content_width = panel_size.x - TURN_INDICATOR_PADDING * 2.0
 	var current_y = panel_position.y + TURN_INDICATOR_PADDING + 20.0
+	var body_height = max(panel_size.y - (TURN_INDICATOR_PADDING + 24.0), row_height)
 	var entries: Array = spell_card_hands.get(owner, [])
+	spell_panel_viewport_rects[owner] = Rect2(content_x, current_y, content_width, body_height)
 
 	if entries.is_empty():
+		spell_panel_scroll_offsets[owner] = 0
 		var empty_label = Label.new()
 		empty_label.position = Vector2(content_x, current_y)
-		empty_label.size = Vector2(content_width, row_height * 2.0)
+		empty_label.size = Vector2(content_width, body_height)
 		empty_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		empty_label.text = "(empty)"
 		empty_label.add_theme_font_size_override("font_size", _hud_font_size(0.12, 10, 12))
@@ -1144,33 +1184,46 @@ func _draw_single_spell_card_panel(panel_position: Vector2, panel_size: Vector2,
 		spell_panel_entry_rects[owner] = entry_rects
 		return
 
+	var scroll = ScrollContainer.new()
+	scroll.position = Vector2(content_x, current_y)
+	scroll.size = Vector2(content_width, body_height)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(scroll)
+
+	var rows = VBoxContainer.new()
+	rows.custom_minimum_size = Vector2(content_width, 0.0)
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rows.add_theme_constant_override("separation", 3)
+	scroll.add_child(rows)
+
+	var total_rows_height = entries.size() * row_height + max(entries.size() - 1, 0) * 3
+	rows.custom_minimum_size = Vector2(content_width, max(body_height, total_rows_height))
+
+	var y_offset = 0.0
 	for index in range(entries.size()):
 		var card_id = str(entries[index])
-		var row_rect = Rect2(Vector2(content_x, current_y), Vector2(content_width, row_height))
+		var row_rect = Rect2(Vector2(0.0, y_offset), Vector2(content_width, row_height))
 		var selected = owner == selected_spell_card_owner and card_id == selected_spell_card_id
-		if selected:
-			var row_background = ColorRect.new()
-			row_background.position = row_rect.position
-			row_background.size = row_rect.size
-			row_background.color = Color(0.30, 0.44, 0.62, 0.75)
-			row_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			add_child(row_background)
 
 		var row_label = Label.new()
-		row_label.position = row_rect.position + Vector2(3.0, 0.0)
-		row_label.size = row_rect.size - Vector2(3.0, 0.0)
+		row_label.custom_minimum_size = Vector2(content_width, row_height)
 		row_label.clip_text = true
-		row_label.text = "%s [%s]" % [_spell_card_name(card_id), "P" if _spell_card_type(card_id) == "power" else "R"]
+		row_label.text = "%s%s [%s]" % ["> " if selected else "", _spell_card_name(card_id), "P" if _spell_card_type(card_id) == "power" else "R"]
 		row_label.tooltip_text = _spell_card_description(card_id)
 		row_label.add_theme_font_size_override("font_size", _hud_font_size(0.12, 10, 12))
-		row_label.add_theme_color_override("font_color", Color(0.94, 0.96, 1.0, 1.0))
+		row_label.add_theme_color_override("font_color", Color(0.99, 0.99, 1.0, 1.0) if selected else Color(0.94, 0.96, 1.0, 1.0))
 		row_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		add_child(row_label)
+		rows.add_child(row_label)
 
 		entry_rects.append({"card_id": card_id, "rect": row_rect})
-		current_y += row_height + 3.0
-		if current_y > panel_position.y + panel_size.y - row_height:
-			break
+		y_offset += row_height + 3.0
+
+	var saved_scroll = int(spell_panel_scroll_offsets.get(owner, 0))
+	var max_scroll = max(int(ceil(total_rows_height - body_height)), 0)
+	scroll.scroll_vertical = clamp(saved_scroll, 0, max_scroll)
+	spell_panel_scroll_offsets[owner] = scroll.scroll_vertical
 
 	spell_panel_entry_rects[owner] = entry_rects
 
@@ -1240,11 +1293,115 @@ func _spell_panel_side_at_position(mouse_position: Vector2) -> String:
 	return ""
 
 func _get_spell_panel_entry_at_position(owner: String, mouse_position: Vector2) -> Dictionary:
+	var viewport_rect: Rect2 = spell_panel_viewport_rects.get(owner, Rect2())
+	if not viewport_rect.has_point(mouse_position):
+		return {}
+	var local_position = Vector2(
+		mouse_position.x - viewport_rect.position.x,
+		mouse_position.y - viewport_rect.position.y + int(spell_panel_scroll_offsets.get(owner, 0))
+	)
 	var entries: Array = spell_panel_entry_rects.get(owner, [])
 	for entry in entries:
-		if entry is Dictionary and Rect2(entry.get("rect", Rect2())).has_point(mouse_position):
+		if entry is Dictionary and Rect2(entry.get("rect", Rect2())).has_point(local_position):
 			return entry
 	return {}
+
+func _begin_hud_scroll_drag(mouse_position: Vector2) -> bool:
+	if drop_piece_drag_active:
+		return false
+	for owner in ["white", "black"]:
+		var spell_view: Rect2 = spell_panel_viewport_rects.get(owner, Rect2())
+		if spell_view.has_point(mouse_position):
+			if not _get_spell_panel_entry_at_position(owner, mouse_position).is_empty():
+				return false
+			hud_scroll_drag_active = true
+			hud_scroll_drag_kind = "spell"
+			hud_scroll_drag_owner = owner
+			hud_scroll_drag_last_mouse_position = mouse_position
+			return true
+
+	if not piece_dropping_enabled:
+		return false
+	for owner in ["white", "black"]:
+		var pool_view: Rect2 = drop_pool_viewport_rects.get(owner, Rect2())
+		if pool_view.has_point(mouse_position):
+			if not _get_drop_pool_entry_at_position(owner, mouse_position).is_empty():
+				return false
+			hud_scroll_drag_active = true
+			hud_scroll_drag_kind = "drop_pool"
+			hud_scroll_drag_owner = owner
+			hud_scroll_drag_last_mouse_position = mouse_position
+			return true
+
+	return false
+
+func _update_hud_scroll_drag(mouse_position: Vector2) -> void:
+	if not hud_scroll_drag_active:
+		return
+	var delta_y = mouse_position.y - hud_scroll_drag_last_mouse_position.y
+	hud_scroll_drag_last_mouse_position = mouse_position
+	if is_zero_approx(delta_y):
+		return
+
+	var owner = hud_scroll_drag_owner
+	if hud_scroll_drag_kind == "spell":
+		var view_rect: Rect2 = spell_panel_viewport_rects.get(owner, Rect2())
+		var max_scroll = _hud_list_max_scroll(spell_panel_entry_rects.get(owner, []), view_rect.size.y)
+		var next_scroll = clamp(int(spell_panel_scroll_offsets.get(owner, 0)) - int(round(delta_y)), 0, max_scroll)
+		if next_scroll == int(spell_panel_scroll_offsets.get(owner, 0)):
+			return
+		spell_panel_scroll_offsets[owner] = next_scroll
+		_build_board()
+		return
+
+	if hud_scroll_drag_kind == "drop_pool":
+		var pool_view: Rect2 = drop_pool_viewport_rects.get(owner, Rect2())
+		var pool_max_scroll = _hud_list_max_scroll(drop_pool_entry_rects.get(owner, []), pool_view.size.y)
+		var next_pool_scroll = clamp(int(drop_pool_scroll_offsets.get(owner, 0)) - int(round(delta_y)), 0, pool_max_scroll)
+		if next_pool_scroll == int(drop_pool_scroll_offsets.get(owner, 0)):
+			return
+		drop_pool_scroll_offsets[owner] = next_pool_scroll
+		_build_board()
+
+func _end_hud_scroll_drag() -> void:
+	hud_scroll_drag_active = false
+	hud_scroll_drag_kind = ""
+	hud_scroll_drag_owner = ""
+
+func _update_hud_panel_scroll(mouse_position: Vector2, direction: int) -> bool:
+	if direction == 0:
+		return false
+
+	for owner in ["white", "black"]:
+		var spell_view: Rect2 = spell_panel_viewport_rects.get(owner, Rect2())
+		if spell_view.has_point(mouse_position):
+			var max_scroll = _hud_list_max_scroll(spell_panel_entry_rects.get(owner, []), spell_view.size.y)
+			var next_scroll = clamp(int(spell_panel_scroll_offsets.get(owner, 0)) + direction * 24, 0, max_scroll)
+			if next_scroll == int(spell_panel_scroll_offsets.get(owner, 0)):
+				return true
+			spell_panel_scroll_offsets[owner] = next_scroll
+			_build_board()
+			return true
+
+	if piece_dropping_enabled:
+		for owner in ["white", "black"]:
+			var pool_view: Rect2 = drop_pool_viewport_rects.get(owner, Rect2())
+			if pool_view.has_point(mouse_position):
+				var max_scroll = _hud_list_max_scroll(drop_pool_entry_rects.get(owner, []), pool_view.size.y)
+				var next_scroll = clamp(int(drop_pool_scroll_offsets.get(owner, 0)) + direction * 24, 0, max_scroll)
+				if next_scroll == int(drop_pool_scroll_offsets.get(owner, 0)):
+					return true
+				drop_pool_scroll_offsets[owner] = next_scroll
+				_build_board()
+				return true
+
+	return false
+
+func _hud_list_max_scroll(entries: Array, viewport_height: float) -> int:
+	var total_height = 0.0
+	for entry in entries:
+		total_height = max(total_height, Rect2(entry.get("rect", Rect2())).end.y)
+	return max(int(ceil(total_height - viewport_height)), 0)
 
 func _try_cast_pending_spell_at_square(target_square: Vector2i) -> bool:
 	if pending_spell_card_id == "" or pending_spell_card_owner != current_turn:
@@ -1486,12 +1643,16 @@ func _draw_drop_pool_panel(panel_position: Vector2, panel_size: Vector2, title: 
 	var content_x = panel_position.x + TURN_INDICATOR_PADDING
 	var content_width = panel_size.x - TURN_INDICATOR_PADDING * 2.0
 	var current_y = panel_position.y + TURN_INDICATOR_PADDING + 22.0
+	var helper_height = row_height if owner == current_turn else 0.0
+	var body_height = max(panel_size.y - (TURN_INDICATOR_PADDING + 28.0 + helper_height), row_height)
 	var entries = _get_drop_pool_display_entries(owner)
+	drop_pool_viewport_rects[owner] = Rect2(content_x, current_y, content_width, body_height)
 
 	if entries.is_empty():
+		drop_pool_scroll_offsets[owner] = 0
 		var empty_label = Label.new()
 		empty_label.position = Vector2(content_x, current_y)
-		empty_label.size = Vector2(content_width, row_height * 2.0)
+		empty_label.size = Vector2(content_width, body_height)
 		empty_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		empty_label.text = "(empty)"
 		if owner == current_turn:
@@ -1503,38 +1664,52 @@ func _draw_drop_pool_panel(panel_position: Vector2, panel_size: Vector2, title: 
 		drop_pool_entry_rects[owner] = entry_rects
 		return
 
+	var scroll = ScrollContainer.new()
+	scroll.position = Vector2(content_x, current_y)
+	scroll.size = Vector2(content_width, body_height)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(scroll)
+
+	var rows = VBoxContainer.new()
+	rows.custom_minimum_size = Vector2(content_width, 0.0)
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rows.add_theme_constant_override("separation", 4)
+	scroll.add_child(rows)
+
+	var total_rows_height = entries.size() * row_height + max(entries.size() - 1, 0) * 4
+	rows.custom_minimum_size = Vector2(content_width, max(body_height, total_rows_height))
+
+	var y_offset = 0.0
 	for entry in entries:
 		var piece_id = str(entry.get("piece_id", ""))
 		var count = int(entry.get("count", 0))
-		var row_rect = Rect2(Vector2(content_x, current_y), Vector2(content_width, row_height))
+		var row_rect = Rect2(Vector2(0.0, y_offset), Vector2(content_width, row_height))
 		var selected = owner == selected_drop_piece_owner and piece_id == selected_drop_piece_id
 
-		if selected:
-			var row_background = ColorRect.new()
-			row_background.position = row_rect.position
-			row_background.size = row_rect.size
-			row_background.color = Color(0.32, 0.42, 0.56, 0.72)
-			row_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			add_child(row_background)
-
 		var row_label = Label.new()
-		row_label.position = row_rect.position + Vector2(4.0, 1.0)
-		row_label.size = row_rect.size - Vector2(4.0, 0.0)
-		row_label.text = "%s x%d" % [_get_piece_symbol(piece_id), count]
+		row_label.custom_minimum_size = Vector2(content_width, row_height)
+		row_label.text = "%s%s x%d" % ["> " if selected else "", _get_piece_symbol(piece_id), count]
 		row_label.add_theme_font_size_override("font_size", _hud_font_size(0.15, 11, 14))
-		row_label.add_theme_color_override("font_color", Color(0.94, 0.96, 1.0, 1.0))
+		row_label.add_theme_color_override("font_color", Color(0.99, 0.99, 1.0, 1.0) if selected else Color(0.94, 0.96, 1.0, 1.0))
 		row_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		add_child(row_label)
+		rows.add_child(row_label)
 
 		entry_rects.append({
 			"piece_id": piece_id,
 			"rect": row_rect
 		})
-		current_y += row_height + 4.0
+		y_offset += row_height + 4.0
+
+	var saved_scroll = int(drop_pool_scroll_offsets.get(owner, 0))
+	var max_scroll = max(int(ceil(total_rows_height - body_height)), 0)
+	scroll.scroll_vertical = clamp(saved_scroll, 0, max_scroll)
+	drop_pool_scroll_offsets[owner] = scroll.scroll_vertical
 
 	if owner == current_turn:
 		var helper_label = Label.new()
-		helper_label.position = Vector2(content_x, min(current_y + 2.0, panel_position.y + panel_size.y - row_height))
+		helper_label.position = Vector2(content_x, panel_position.y + panel_size.y - row_height - 2.0)
 		helper_label.size = Vector2(content_width, row_height)
 		helper_label.text = "Drag from pool to board"
 		helper_label.add_theme_font_size_override("font_size", _hud_font_size(0.12, 10, 12))
@@ -2375,9 +2550,16 @@ func _drop_pool_side_at_position(mouse_position: Vector2) -> String:
 	return ""
 
 func _get_drop_pool_entry_at_position(owner: String, mouse_position: Vector2) -> Dictionary:
+	var viewport_rect: Rect2 = drop_pool_viewport_rects.get(owner, Rect2())
+	if not viewport_rect.has_point(mouse_position):
+		return {}
+	var local_position = Vector2(
+		mouse_position.x - viewport_rect.position.x,
+		mouse_position.y - viewport_rect.position.y + int(drop_pool_scroll_offsets.get(owner, 0))
+	)
 	var entries: Array = drop_pool_entry_rects.get(owner, [])
 	for entry in entries:
-		if entry is Dictionary and Rect2(entry.get("rect", Rect2())).has_point(mouse_position):
+		if entry is Dictionary and Rect2(entry.get("rect", Rect2())).has_point(local_position):
 			return entry
 	return {}
 

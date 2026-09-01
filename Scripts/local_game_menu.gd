@@ -110,6 +110,14 @@ var preview_spell_hand_entry_rects = {
 	"white": [],
 	"black": []
 }
+var preview_spell_hand_scroll_offsets = {
+	"white": 0,
+	"black": 0
+}
+var preview_spell_hand_viewport_rects = {
+	"white": Rect2(),
+	"black": Rect2()
+}
 var dragging_preview_piece = false
 var drag_piece_origin_square = INVALID_SQUARE
 var dragging_piece_bank_piece = false
@@ -117,6 +125,14 @@ var piece_bank_drag_piece_id = ""
 var piece_bank_drag_piece_color = "white"
 var piece_bank_drag_preview_position = Vector2.ZERO
 var preview_drop_pool_hover_owner = ""
+var preview_drop_pool_scroll_offsets = {
+	"white": 0,
+	"black": 0
+}
+var preview_drop_pool_viewport_rects = {
+	"white": Rect2(),
+	"black": Rect2()
+}
 var is_updating_army_strength_cap = false
 var is_updating_unbalanced_army_strength_caps = false
 var is_updating_spell_hand_sizes = false
@@ -1161,14 +1177,18 @@ func _refresh_preview(_value: float = 0.0) -> void:
 	var width = _get_dimension(width_spin_box.value, 8)
 	var height = _get_dimension(height_spin_box.value, 8)
 	_prune_preview_pieces(width, height)
-	var pool_width_estimate = 0.0
+	var side_panel_width_estimate = 0.0
 	if piece_dropping_check_box.button_pressed:
-		pool_width_estimate = clampf(board_preview.size.x * 0.18, 92.0, 150.0) + 16.0
-	var usable_width = max(board_preview.size.x - pool_width_estimate * 2.0, 80.0)
+		side_panel_width_estimate = _preview_side_panel_width() + 16.0
+	var top_bottom_spell_reserve = 0.0
+	if _shows_preview_spell_hands():
+		top_bottom_spell_reserve = _preview_spell_hand_panel_height_estimate() * 2.0 + 24.0
+	var usable_width = max(board_preview.size.x - side_panel_width_estimate * 2.0, 80.0)
+	var usable_height = max(board_preview.size.y - top_bottom_spell_reserve, 80.0)
 
 	preview_tile_size = min(
 		floor(usable_width / max(width, 1)),
-		floor(board_preview.size.y / max(height, 1))
+		floor(usable_height / max(height, 1))
 	)
 	if preview_tile_size < 1:
 		preview_tile_size = 1
@@ -1203,19 +1223,28 @@ func _refresh_preview(_value: float = 0.0) -> void:
 	_draw_preview_spell_hands(board_pixel_size)
 	_update_castling_rule_availability()
 
+func _preview_side_panel_width() -> float:
+	return clampf(board_preview.size.x * 0.18, 92.0, 150.0)
+
+func _shows_preview_spell_hands() -> bool:
+	return _is_spell_cards_enabled() and not _is_random_spell_cards_enabled()
+
+func _preview_spell_hand_panel_height_estimate() -> float:
+	return clampf(board_preview.size.y * 0.16, 80.0, 132.0)
+
 func _draw_preview_spell_hands(board_pixel_size: Vector2) -> void:
 	preview_white_spell_hand_rect = Rect2()
 	preview_black_spell_hand_rect = Rect2()
 	preview_spell_hand_entry_rects["white"] = []
 	preview_spell_hand_entry_rects["black"] = []
-	if not _is_spell_cards_enabled() or _is_random_spell_cards_enabled():
+	if not _shows_preview_spell_hands():
 		return
 
-	var hand_height = clampf(board_preview.size.y * 0.16, 76.0, 116.0)
+	var hand_height = _preview_spell_hand_panel_height_estimate()
+	var hand_width = max(board_pixel_size.x, 120.0)
 	var hand_x = preview_board_origin.x
-	var hand_width = board_pixel_size.x
-	var top_y = max(8.0, preview_board_origin.y - hand_height - 10.0)
-	var bottom_y = min(board_preview.size.y - hand_height - 8.0, preview_board_origin.y + board_pixel_size.y + 10.0)
+	var top_y = max(8.0, preview_board_origin.y - hand_height - 8.0)
+	var bottom_y = min(board_preview.size.y - hand_height - 8.0, preview_board_origin.y + board_pixel_size.y + 8.0)
 
 	preview_white_spell_hand_rect = Rect2(hand_x, top_y, hand_width, hand_height)
 	preview_black_spell_hand_rect = Rect2(hand_x, bottom_y, hand_width, hand_height)
@@ -1255,17 +1284,19 @@ func _draw_single_preview_spell_hand(hand_rect: Rect2, title: String, owner: Str
 
 	var entries: Array = preview_spell_hands.get(owner, [])
 	var row_height = max(preview_tile_size * 0.34, 16.0)
-	var row_spacing = 2.0
+	var row_spacing = 2
 	var content_x = hand_rect.position.x + 8.0
 	var content_y = hand_rect.position.y + 24.0
 	var content_width = max(hand_rect.size.x - 16.0, 24.0)
-	var max_rows = max(int(floor((hand_rect.size.y - 30.0) / (row_height + row_spacing))), 1)
+	var body_height = max(hand_rect.size.y - 30.0, row_height)
+	preview_spell_hand_viewport_rects[owner] = Rect2(content_x, content_y, content_width, body_height)
 	var entry_rects: Array = []
 
 	if entries.is_empty():
+		preview_spell_hand_scroll_offsets[owner] = 0
 		var empty_label = Label.new()
 		empty_label.position = Vector2(content_x, content_y)
-		empty_label.size = Vector2(content_width, hand_rect.size.y - 28.0)
+		empty_label.size = Vector2(content_width, body_height)
 		empty_label.text = "(click to add selected card)"
 		empty_label.add_theme_font_size_override("font_size", 12)
 		empty_label.add_theme_color_override("font_color", _preview_drop_pool_text_color(owner))
@@ -1274,22 +1305,42 @@ func _draw_single_preview_spell_hand(hand_rect: Rect2, title: String, owner: Str
 		preview_spell_hand_entry_rects[owner] = entry_rects
 		return
 
-	var rows_to_draw = min(entries.size(), max_rows)
-	for index in range(rows_to_draw):
+	var scroll = ScrollContainer.new()
+	scroll.position = Vector2(content_x, content_y)
+	scroll.size = Vector2(content_width, body_height)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.mouse_filter = Control.MOUSE_FILTER_STOP
+	board_preview.add_child(scroll)
+
+	var rows = VBoxContainer.new()
+	rows.custom_minimum_size = Vector2(content_width, 0.0)
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rows.add_theme_constant_override("separation", row_spacing)
+	scroll.add_child(rows)
+
+	var total_rows_height = entries.size() * row_height + max(entries.size() - 1, 0) * row_spacing
+	rows.custom_minimum_size = Vector2(content_width, max(body_height, total_rows_height))
+
+	var y_offset = 0.0
+	for index in range(entries.size()):
 		var card_id = str(entries[index])
-		var row_rect = Rect2(Vector2(content_x, content_y), Vector2(content_width, row_height))
+		var row_rect = Rect2(Vector2(0.0, y_offset), Vector2(content_width, row_height))
 		var row_label = Label.new()
-		row_label.position = row_rect.position
-		row_label.size = row_rect.size
+		row_label.custom_minimum_size = Vector2(content_width, row_height)
 		row_label.clip_text = true
 		row_label.text = _spell_card_name(card_id)
 		row_label.tooltip_text = _spell_card_name(card_id)
 		row_label.add_theme_font_size_override("font_size", 12)
 		row_label.add_theme_color_override("font_color", _preview_drop_pool_text_color(owner))
 		row_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		board_preview.add_child(row_label)
+		rows.add_child(row_label)
 		entry_rects.append({"card_id": card_id, "rect": row_rect})
-		content_y += row_height + row_spacing
+		y_offset += row_height + row_spacing
+
+	var saved_scroll = int(preview_spell_hand_scroll_offsets.get(owner, 0))
+	scroll.scroll_vertical = saved_scroll
+	preview_spell_hand_scroll_offsets[owner] = scroll.scroll_vertical
 
 	preview_spell_hand_entry_rects[owner] = entry_rects
 
@@ -1391,7 +1442,7 @@ func _draw_preview_drop_pools(board_pixel_size: Vector2) -> void:
 	if not piece_dropping_check_box.button_pressed:
 		return
 
-	var pool_width = clampf(board_preview.size.x * 0.18, 92.0, 150.0)
+	var pool_width = _preview_side_panel_width()
 	var pool_height = clampf(board_pixel_size.y * 0.68, 120.0, board_preview.size.y - 24.0)
 	var pool_y = clampf(preview_board_origin.y + (board_pixel_size.y - pool_height) * 0.5, 8.0, board_preview.size.y - pool_height - 8.0)
 
@@ -1442,12 +1493,13 @@ func _draw_single_preview_drop_pool(pool_rect: Rect2, title: String, pool_owner:
 	var content_x = pool_rect.position.x + 8.0
 	var current_y = pool_rect.position.y + 48.0
 	var row_height = max(preview_tile_size * 0.42, 18.0)
-	var row_spacing = 2.0
+	var row_spacing = 2
 	var content_width = max(pool_rect.size.x - 16.0, 24.0)
 	var body_height = max(pool_rect.size.y - 58.0, row_height)
-	var max_rows = max(int(floor((body_height + row_spacing) / (row_height + row_spacing))), 1)
+	preview_drop_pool_viewport_rects[pool_owner] = Rect2(content_x, current_y, content_width, body_height)
 	var row_font_size = int(clampf(preview_tile_size * 0.34, 10.0, 13.0))
 	if entries.is_empty():
+		preview_drop_pool_scroll_offsets[pool_owner] = 0
 		var empty_label = Label.new()
 		empty_label.position = Vector2(content_x, current_y)
 		empty_label.size = Vector2(content_width, body_height)
@@ -1461,39 +1513,43 @@ func _draw_single_preview_drop_pool(pool_rect: Rect2, title: String, pool_owner:
 		preview_drop_pool_entry_rects[pool_owner] = entry_rects
 		return
 
-	var rows_to_draw = min(entries.size(), max_rows)
-	var hidden_entries = max(entries.size() - rows_to_draw, 0)
-	if hidden_entries > 0 and rows_to_draw > 1:
-		rows_to_draw -= 1
+	var scroll = ScrollContainer.new()
+	scroll.position = Vector2(content_x, current_y)
+	scroll.size = Vector2(content_width, body_height)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.mouse_filter = Control.MOUSE_FILTER_STOP
+	board_preview.add_child(scroll)
 
-	for index in range(rows_to_draw):
+	var rows = VBoxContainer.new()
+	rows.custom_minimum_size = Vector2(content_width, 0.0)
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rows.add_theme_constant_override("separation", row_spacing)
+	scroll.add_child(rows)
+
+	var total_rows_height = entries.size() * row_height + max(entries.size() - 1, 0) * row_spacing
+	rows.custom_minimum_size = Vector2(content_width, max(body_height, total_rows_height))
+
+	var y_offset = 0.0
+	for index in range(entries.size()):
 		var entry = entries[index]
 		var piece_id = str(entry.get("piece_id", ""))
 		var count = int(entry.get("count", 0))
-		var row_rect = Rect2(Vector2(content_x, current_y), Vector2(content_width, row_height))
+		var row_rect = Rect2(Vector2(0.0, y_offset), Vector2(content_width, row_height))
 		var row_label = Label.new()
-		row_label.position = row_rect.position
-		row_label.size = row_rect.size
+		row_label.custom_minimum_size = Vector2(content_width, row_height)
 		row_label.clip_text = true
 		row_label.text = "%s x%d" % [_get_piece_symbol(piece_id), count]
 		row_label.add_theme_font_size_override("font_size", row_font_size)
 		row_label.add_theme_color_override("font_color", _preview_drop_pool_text_color(pool_owner))
 		row_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		board_preview.add_child(row_label)
+		rows.add_child(row_label)
 		entry_rects.append({"piece_id": piece_id, "rect": row_rect})
-		current_y += row_height + row_spacing
+		y_offset += row_height + row_spacing
 
-	if hidden_entries > 0:
-		var overflow_rect = Rect2(Vector2(content_x, current_y), Vector2(content_width, row_height))
-		var overflow_label = Label.new()
-		overflow_label.position = overflow_rect.position
-		overflow_label.size = overflow_rect.size
-		overflow_label.clip_text = true
-		overflow_label.text = "+%d more" % hidden_entries
-		overflow_label.add_theme_font_size_override("font_size", row_font_size)
-		overflow_label.add_theme_color_override("font_color", Color(0.82, 0.88, 0.98, 1.0))
-		overflow_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		board_preview.add_child(overflow_label)
+	var saved_scroll = int(preview_drop_pool_scroll_offsets.get(pool_owner, 0))
+	scroll.scroll_vertical = saved_scroll
+	preview_drop_pool_scroll_offsets[pool_owner] = scroll.scroll_vertical
 
 	preview_drop_pool_entry_rects[pool_owner] = entry_rects
 
@@ -1704,6 +1760,14 @@ func _on_board_preview_gui_input(event: InputEvent) -> void:
 			_refresh_preview()
 		return
 
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			if _update_preview_panel_scroll(event.position, -1):
+				return
+		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			if _update_preview_panel_scroll(event.position, 1):
+				return
+
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
@@ -1816,9 +1880,16 @@ func _preview_spell_hand_side_at_position(position: Vector2) -> String:
 	return ""
 
 func _get_preview_spell_hand_entry_at_position(owner: String, position: Vector2) -> Dictionary:
+	var viewport_rect: Rect2 = preview_spell_hand_viewport_rects.get(owner, Rect2())
+	if not viewport_rect.has_point(position):
+		return {}
+	var local_position = Vector2(
+		position.x - viewport_rect.position.x,
+		position.y - viewport_rect.position.y + int(preview_spell_hand_scroll_offsets.get(owner, 0))
+	)
 	var entries: Array = preview_spell_hand_entry_rects.get(owner, [])
 	for entry in entries:
-		if entry is Dictionary and Rect2(entry.get("rect", Rect2())).has_point(position):
+		if entry is Dictionary and Rect2(entry.get("rect", Rect2())).has_point(local_position):
 			return entry
 	return {}
 
@@ -1841,11 +1912,47 @@ func _try_remove_preview_drop_pool_piece(position: Vector2) -> bool:
 	return true
 
 func _get_preview_drop_pool_entry_at_position(pool_owner: String, position: Vector2) -> Dictionary:
+	var viewport_rect: Rect2 = preview_drop_pool_viewport_rects.get(pool_owner, Rect2())
+	if not viewport_rect.has_point(position):
+		return {}
+	var local_position = Vector2(
+		position.x - viewport_rect.position.x,
+		position.y - viewport_rect.position.y + int(preview_drop_pool_scroll_offsets.get(pool_owner, 0))
+	)
 	var entries: Array = preview_drop_pool_entry_rects.get(pool_owner, [])
 	for entry in entries:
-		if entry is Dictionary and Rect2(entry.get("rect", Rect2())).has_point(position):
+		if entry is Dictionary and Rect2(entry.get("rect", Rect2())).has_point(local_position):
 			return entry
 	return {}
+
+func _update_preview_panel_scroll(position: Vector2, direction: int) -> bool:
+	if direction == 0:
+		return false
+	for owner in ["white", "black"]:
+		var hand_view: Rect2 = preview_spell_hand_viewport_rects.get(owner, Rect2())
+		if hand_view.has_point(position):
+			var total_height = 0.0
+			for entry in preview_spell_hand_entry_rects.get(owner, []):
+				total_height = max(total_height, Rect2(entry.get("rect", Rect2())).end.y)
+			var max_scroll = max(int(ceil(total_height - hand_view.size.y)), 0)
+			var next_scroll = clamp(int(preview_spell_hand_scroll_offsets.get(owner, 0)) + direction * 24, 0, max_scroll)
+			preview_spell_hand_scroll_offsets[owner] = next_scroll
+			_refresh_preview()
+			return true
+
+	for owner in ["white", "black"]:
+		var pool_view: Rect2 = preview_drop_pool_viewport_rects.get(owner, Rect2())
+		if pool_view.has_point(position):
+			var total_height = 0.0
+			for entry in preview_drop_pool_entry_rects.get(owner, []):
+				total_height = max(total_height, Rect2(entry.get("rect", Rect2())).end.y)
+			var max_scroll = max(int(ceil(total_height - pool_view.size.y)), 0)
+			var next_scroll = clamp(int(preview_drop_pool_scroll_offsets.get(owner, 0)) + direction * 24, 0, max_scroll)
+			preview_drop_pool_scroll_offsets[owner] = next_scroll
+			_refresh_preview()
+			return true
+
+	return false
 
 func _on_piece_bank_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
