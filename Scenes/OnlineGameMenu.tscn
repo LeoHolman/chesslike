@@ -11,6 +11,40 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_online")
 
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.05, 0.06, 0.08, 1)
+
+[node name="GlowTop" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_left = 0.18
+anchor_top = 0.08
+anchor_right = 0.82
+anchor_bottom = 0.24
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.16, 0.24, 0.34, 0.22)
+
+[node name="GlowBottom" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_left = 0.24
+anchor_top = 0.72
+anchor_right = 0.76
+anchor_bottom = 0.88
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.27, 0.18, 0.14, 0.18)
+
 [node name="CenterContainer" type="CenterContainer" parent="."]
 layout_mode = 1
 anchors_preset = 15
@@ -22,16 +56,18 @@ grow_vertical = 2
 [node name="MenuContent" type="VBoxContainer" parent="CenterContainer"]
 custom_minimum_size = Vector2(420, 0)
 layout_mode = 2
-theme_override_constants/separation = 14
+theme_override_constants/separation = 16
 
 [node name="Title" type="Label" parent="CenterContainer/MenuContent"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(1, 0.95, 0.84, 1)
 horizontal_alignment = 1
 text = "Online Game"
 
 [node name="Subtitle" type="Label" parent="CenterContainer/MenuContent"]
 layout_mode = 2
+theme_override_colors/font_color = Color(0.84, 0.88, 0.94, 1)
 horizontal_alignment = 1
 autowrap_mode = 3
 text = "Host a lobby or join an existing one with an IP address and port."
@@ -52,6 +88,7 @@ theme_override_constants/separation = 10
 
 [node name="HostAddressLabel" type="Label" parent="CenterContainer/MenuContent/ConnectionPanel/ConnectionMargin/ConnectionContent"]
 layout_mode = 2
+theme_override_colors/font_color = Color(0.94, 0.95, 0.98, 1)
 text = "Host Address"
 
 [node name="HostAddressInput" type="LineEdit" parent="CenterContainer/MenuContent/ConnectionPanel/ConnectionMargin/ConnectionContent"]
@@ -61,6 +98,7 @@ placeholder_text = "Public IP or domain"
 
 [node name="PortLabel" type="Label" parent="CenterContainer/MenuContent/ConnectionPanel/ConnectionMargin/ConnectionContent"]
 layout_mode = 2
+theme_override_colors/font_color = Color(0.94, 0.95, 0.98, 1)
 text = "Port"
 
 [node name="PortSpinBox" type="SpinBox" parent="CenterContainer/MenuContent/ConnectionPanel/ConnectionMargin/ConnectionContent"]
@@ -103,6 +141,7 @@ theme_override_constants/margin_bottom = 12
 custom_minimum_size = Vector2(420, 60)
 layout_mode = 2
 autowrap_mode = 3
+theme_override_colors/font_color = Color(0.90, 0.93, 0.98, 1)
 text = ""
 
 [node name="CancelButton" type="Button" parent="CenterContainer/MenuContent"]

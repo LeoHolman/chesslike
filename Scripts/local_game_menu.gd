@@ -1,5 +1,7 @@
 extends Control
 
+const UITheme = preload("res://Scripts/ui_theme.gd")
+
 @onready var width_spin_box: SpinBox = $OptionsScroll/OptionsContent/WidthSpinBox
 @onready var height_spin_box: SpinBox = $OptionsScroll/OptionsContent/HeightSpinBox
 @onready var options_scroll: ScrollContainer = $OptionsScroll
@@ -413,8 +415,7 @@ func _ensure_navigation_helper_label() -> void:
 	helper_label.offset_right = 412.0
 	helper_label.offset_bottom = 118.0
 	helper_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	helper_label.add_theme_font_size_override("font_size", 14)
-	helper_label.add_theme_color_override("font_color", Color(0.86, 0.9, 0.96, 1.0))
+	UITheme.apply_body_text(helper_label, 14)
 	options_content.add_child(helper_label)
 	navigation_helper_label = helper_label
 
@@ -433,17 +434,7 @@ func _ensure_section_content_panel() -> void:
 	section_content_panel.offset_top = 240.0
 	section_content_panel.offset_right = 412.0
 	section_content_panel.offset_bottom = 2100.0
-	var panel_style = StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.07, 0.08, 0.1, 0.94)
-	panel_style.border_width_left = 2
-	panel_style.border_width_top = 2
-	panel_style.border_width_right = 2
-	panel_style.border_width_bottom = 2
-	panel_style.border_color = Color(0.27, 0.31, 0.37, 1.0)
-	panel_style.corner_radius_top_left = 12
-	panel_style.corner_radius_top_right = 12
-	panel_style.corner_radius_bottom_right = 12
-	panel_style.corner_radius_bottom_left = 12
+	var panel_style = UITheme.panel_style(Color(0.07, 0.08, 0.1, 0.94), UITheme.PANEL_BORDER, 12, 2)
 	section_content_panel.add_theme_stylebox_override("panel", panel_style)
 	options_content.add_child(section_content_panel)
 
@@ -533,8 +524,7 @@ func _make_section_page(section_id: String, title: String) -> VBoxContainer:
 	page.add_theme_constant_override("separation", 10)
 	var title_label = Label.new()
 	title_label.text = _icon_text(str(SECTION_ICONS.get(section_id, "")), title)
-	title_label.add_theme_font_size_override("font_size", 18)
-	title_label.add_theme_color_override("font_color", Color(1.0, 0.95, 0.84, 1.0))
+	UITheme.apply_section_text(title_label, 18)
 	page.add_child(title_label)
 	section_pages[section_id] = page
 	return page
@@ -549,17 +539,7 @@ func _build_board_section_page() -> VBoxContainer:
 func _build_zone_legend_panel() -> PanelContainer:
 	var panel = PanelContainer.new()
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var style = StyleBoxFlat.new()
-	style.bg_color = Color(0.11, 0.12, 0.15, 0.96)
-	style.border_width_left = 1
-	style.border_width_top = 1
-	style.border_width_right = 1
-	style.border_width_bottom = 1
-	style.border_color = Color(0.27, 0.31, 0.38, 1.0)
-	style.corner_radius_top_left = 10
-	style.corner_radius_top_right = 10
-	style.corner_radius_bottom_right = 10
-	style.corner_radius_bottom_left = 10
+	var style = UITheme.panel_style(Color(0.11, 0.12, 0.15, 0.96), UITheme.PANEL_BORDER, 10, 1)
 	panel.add_theme_stylebox_override("panel", style)
 
 	var margin = MarginContainer.new()
@@ -576,8 +556,7 @@ func _build_zone_legend_panel() -> PanelContainer:
 
 	var title = Label.new()
 	title.text = _icon_text("◎", "Zone Ring Legend")
-	title.add_theme_font_size_override("font_size", 14)
-	title.add_theme_color_override("font_color", Color(0.94, 0.95, 0.98, 1.0))
+	UITheme.apply_body_text(title, 14)
 	content.add_child(title)
 	content.add_child(_build_zone_legend_row(PREVIEW_ZONE_PROMOTION_RING, "Promotion zone"))
 	content.add_child(_build_zone_legend_row(PREVIEW_ZONE_MUSTER_RING, "Muster zone"))
@@ -591,8 +570,7 @@ func _build_zone_legend_row(color_value: Color, text: String) -> HBoxContainer:
 	row.add_child(_create_zone_legend_swatch(color_value))
 	var label = Label.new()
 	label.text = text
-	label.add_theme_font_size_override("font_size", 13)
-	label.add_theme_color_override("font_color", Color(0.85, 0.88, 0.93, 1.0))
+	UITheme.apply_muted_text(label, 13)
 	row.add_child(label)
 	return row
 
@@ -601,8 +579,7 @@ func _build_zone_territory_legend_row() -> VBoxContainer:
 	box.add_theme_constant_override("separation", 6)
 	var title = Label.new()
 	title.text = "Territory rings use player colors"
-	title.add_theme_font_size_override("font_size", 13)
-	title.add_theme_color_override("font_color", Color(0.85, 0.88, 0.93, 1.0))
+	UITheme.apply_muted_text(title, 13)
 	box.add_child(title)
 	var row = HBoxContainer.new()
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -620,8 +597,7 @@ func _wrap_zone_legend_swatch(swatch: ColorRect, text: String) -> HBoxContainer:
 	row.add_child(swatch)
 	var label = Label.new()
 	label.text = text
-	label.add_theme_font_size_override("font_size", 12)
-	label.add_theme_color_override("font_color", Color(0.80, 0.84, 0.90, 1.0))
+	UITheme.apply_subtle_text(label, 12)
 	row.add_child(label)
 	return row
 
@@ -660,29 +636,17 @@ func _build_special_rules_section_page() -> VBoxContainer:
 	var page = _make_section_page("special_rules", "Special Rules")
 	page.add_child(_layout_existing_control(special_rule_button_box, true))
 	var detail_title = Label.new()
-	detail_title.add_theme_font_size_override("font_size", 16)
-	detail_title.add_theme_color_override("font_color", Color(0.96, 0.9, 0.74, 1.0))
+	UITheme.apply_section_text(detail_title, 16)
 	page.add_child(detail_title)
 	special_rule_detail_title_label = detail_title
 	var helper = Label.new()
 	helper.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	helper.add_theme_font_size_override("font_size", 13)
-	helper.add_theme_color_override("font_color", Color(0.82, 0.86, 0.92, 1.0))
+	UITheme.apply_muted_text(helper, 13)
 	page.add_child(helper)
 	special_rule_helper_label = helper
 	var detail_panel = PanelContainer.new()
 	detail_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var detail_style = StyleBoxFlat.new()
-	detail_style.bg_color = Color(0.11, 0.12, 0.15, 0.96)
-	detail_style.border_width_left = 1
-	detail_style.border_width_top = 1
-	detail_style.border_width_right = 1
-	detail_style.border_width_bottom = 1
-	detail_style.border_color = Color(0.27, 0.31, 0.38, 1.0)
-	detail_style.corner_radius_top_left = 10
-	detail_style.corner_radius_top_right = 10
-	detail_style.corner_radius_bottom_right = 10
-	detail_style.corner_radius_bottom_left = 10
+	var detail_style = UITheme.panel_style(Color(0.11, 0.12, 0.15, 0.96), UITheme.PANEL_BORDER, 10, 1)
 	detail_panel.add_theme_stylebox_override("panel", detail_style)
 	page.add_child(detail_panel)
 	var detail_margin = MarginContainer.new()
@@ -793,16 +757,14 @@ func _register_special_rule_page(rule_id: String, page: VBoxContainer) -> void:
 func _make_inline_heading(text: String) -> Label:
 	var label = Label.new()
 	label.text = _icon_text("•", text)
-	label.add_theme_font_size_override("font_size", 14)
-	label.add_theme_color_override("font_color", Color(0.94, 0.95, 0.98, 1.0))
+	UITheme.apply_body_text(label, 14)
 	return label
 
 func _make_rule_note(text: String) -> Label:
 	var label = Label.new()
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	label.text = text
-	label.add_theme_font_size_override("font_size", 12)
-	label.add_theme_color_override("font_color", Color(0.78, 0.82, 0.88, 1.0))
+	UITheme.apply_subtle_text(label, 12)
 	return label
 
 func _icon_text(icon: String, text: String) -> String:
@@ -929,22 +891,7 @@ func _style_section_button(button: Button, is_active: bool) -> void:
 	button.add_theme_stylebox_override("focus", _make_tab_stylebox(NAV_BUTTON_ACTIVE_COLOR, RULE_BUTTON_SELECTED_OUTLINE, 12.0))
 
 func _make_tab_stylebox(fill: Color, border: Color, radius: float) -> StyleBoxFlat:
-	var style = StyleBoxFlat.new()
-	style.bg_color = fill
-	style.border_color = border
-	style.border_width_left = 2
-	style.border_width_top = 2
-	style.border_width_right = 2
-	style.border_width_bottom = 2
-	style.corner_radius_top_left = int(radius)
-	style.corner_radius_top_right = int(radius)
-	style.corner_radius_bottom_right = int(radius)
-	style.corner_radius_bottom_left = int(radius)
-	style.content_margin_left = 10.0
-	style.content_margin_right = 10.0
-	style.content_margin_top = 6.0
-	style.content_margin_bottom = 6.0
-	return style
+	return UITheme.button_style(fill, border, int(radius), 2, 10.0, 10.0, 6.0, 6.0)
 
 func _set_nodes_visible_by_name(node_names: Array, is_visible: bool) -> void:
 	for node_name in node_names:
@@ -1321,22 +1268,7 @@ func _update_color_button_visual(button: Button, color_value: Color) -> void:
 	button.add_theme_stylebox_override("focus", _make_color_button_style(color_value, color_value.darkened(0.45)))
 
 func _make_color_button_style(fill: Color, border: Color) -> StyleBoxFlat:
-	var style = StyleBoxFlat.new()
-	style.bg_color = fill
-	style.border_color = border
-	style.border_width_left = 2
-	style.border_width_top = 2
-	style.border_width_right = 2
-	style.border_width_bottom = 2
-	style.corner_radius_top_left = 8
-	style.corner_radius_top_right = 8
-	style.corner_radius_bottom_right = 8
-	style.corner_radius_bottom_left = 8
-	style.content_margin_left = 8.0
-	style.content_margin_right = 8.0
-	style.content_margin_top = 6.0
-	style.content_margin_bottom = 6.0
-	return style
+	return UITheme.button_style(fill, border, 8, 2, 8.0, 8.0, 6.0, 6.0)
 
 func _format_color_button_text(color_value: Color) -> String:
 	return "#%02X%02X%02X" % [int(round(color_value.r * 255.0)), int(round(color_value.g * 255.0)), int(round(color_value.b * 255.0))]

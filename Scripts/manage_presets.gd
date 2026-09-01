@@ -1,5 +1,7 @@
 extends Control
 
+const UITheme = preload("res://Scripts/ui_theme.gd")
+
 const BUILTIN_PRESETS = {
 	"Standard Chess": "standard_chess",
 	"Standard Shogi": "standard_shogi",
@@ -38,7 +40,8 @@ func _ready() -> void:
 
 func _setup_polished_layout() -> void:
 	title_label.text = _icon_text("▤", "Manage Presets")
-	title_label.add_theme_font_size_override("font_size", 26)
+	UITheme.apply_title_text(title_label, 26)
+	UITheme.ensure_atmospheric_background(self)
 	_ensure_helper_label()
 	_ensure_layout_panel()
 	_style_action_buttons()
@@ -56,8 +59,7 @@ func _ensure_helper_label() -> void:
 	helper_label.offset_bottom = 122.0
 	helper_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	helper_label.text = "Browse built-in or custom presets, then rename, export, import, or jump into editing."
-	helper_label.add_theme_font_size_override("font_size", 14)
-	helper_label.add_theme_color_override("font_color", Color(0.84, 0.88, 0.94, 1.0))
+	UITheme.apply_body_text(helper_label, 14)
 	add_child(helper_label)
 
 func _ensure_layout_panel() -> void:
@@ -70,17 +72,7 @@ func _ensure_layout_panel() -> void:
 	layout_panel.offset_top = 132.0
 	layout_panel.offset_right = 940.0
 	layout_panel.offset_bottom = 588.0
-	var panel_style = StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.08, 0.09, 0.11, 0.96)
-	panel_style.border_width_left = 2
-	panel_style.border_width_top = 2
-	panel_style.border_width_right = 2
-	panel_style.border_width_bottom = 2
-	panel_style.border_color = Color(0.27, 0.31, 0.37, 1.0)
-	panel_style.corner_radius_top_left = 14
-	panel_style.corner_radius_top_right = 14
-	panel_style.corner_radius_bottom_right = 14
-	panel_style.corner_radius_bottom_left = 14
+	var panel_style = UITheme.panel_style(Color(0.08, 0.09, 0.11, 0.96))
 	layout_panel.add_theme_stylebox_override("panel", panel_style)
 	add_child(layout_panel)
 
@@ -158,25 +150,14 @@ func _build_actions_column() -> VBoxContainer:
 func _panel_heading(icon: String, text: String) -> Label:
 	var label = Label.new()
 	label.text = _icon_text(icon, text)
-	label.add_theme_font_size_override("font_size", 18)
-	label.add_theme_color_override("font_color", Color(0.98, 0.94, 0.83, 1.0))
+	UITheme.apply_section_text(label, 18)
 	return label
 
 func _make_inner_panel() -> PanelContainer:
 	var panel = PanelContainer.new()
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	var style = StyleBoxFlat.new()
-	style.bg_color = Color(0.12, 0.13, 0.16, 1.0)
-	style.border_width_left = 1
-	style.border_width_top = 1
-	style.border_width_right = 1
-	style.border_width_bottom = 1
-	style.border_color = Color(0.25, 0.28, 0.34, 1.0)
-	style.corner_radius_top_left = 10
-	style.corner_radius_top_right = 10
-	style.corner_radius_bottom_right = 10
-	style.corner_radius_bottom_left = 10
+	var style = UITheme.panel_style(Color(0.12, 0.13, 0.16, 1.0), Color(0.25, 0.28, 0.34, 1.0), 10, 1)
 	panel.add_theme_stylebox_override("panel", style)
 	return panel
 
@@ -208,31 +189,9 @@ func _style_action_buttons() -> void:
 	export_button.text = _icon_text("⇪", "Export")
 	import_preset_button.text = _icon_text("⇩", "Import Preset")
 	back_button.text = _icon_text("←", "Back to Main Menu")
+	UITheme.apply_field_theme(rename_input)
 	for button in [rename_button, edit_button, delete_button, export_button, import_preset_button, back_button]:
-		button.custom_minimum_size = Vector2(0.0, 38.0)
-		button.add_theme_color_override("font_color", Color(0.95, 0.97, 1.0, 1.0))
-		button.add_theme_stylebox_override("normal", _button_style(ACTION_BUTTON_FILL, ACTION_BUTTON_BORDER))
-		button.add_theme_stylebox_override("hover", _button_style(ACTION_BUTTON_FILL.lightened(0.08), ACTION_BUTTON_HIGHLIGHT))
-		button.add_theme_stylebox_override("pressed", _button_style(ACTION_BUTTON_FILL, ACTION_BUTTON_HIGHLIGHT))
-		button.add_theme_stylebox_override("focus", _button_style(ACTION_BUTTON_FILL, ACTION_BUTTON_HIGHLIGHT))
-
-func _button_style(fill: Color, border: Color) -> StyleBoxFlat:
-	var style = StyleBoxFlat.new()
-	style.bg_color = fill
-	style.border_color = border
-	style.border_width_left = 2
-	style.border_width_top = 2
-	style.border_width_right = 2
-	style.border_width_bottom = 2
-	style.corner_radius_top_left = 10
-	style.corner_radius_top_right = 10
-	style.corner_radius_bottom_right = 10
-	style.corner_radius_bottom_left = 10
-	style.content_margin_left = 10.0
-	style.content_margin_right = 10.0
-	style.content_margin_top = 6.0
-	style.content_margin_bottom = 6.0
-	return style
+		UITheme.apply_button_theme(button, ACTION_BUTTON_FILL, 38.0, 14, ACTION_BUTTON_BORDER, ACTION_BUTTON_HIGHLIGHT, Color(0.95, 0.97, 1.0, 1.0))
 
 func _animate_layout_entry() -> void:
 	if helper_label != null:

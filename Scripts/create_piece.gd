@@ -1,5 +1,7 @@
 extends Control
 
+const UITheme = preload("res://Scripts/ui_theme.gd")
+
 const GRID_SIZE = 9
 const ORIGIN_CELL = Vector2i(4, 4)
 const MOVE_KIND_JUMP = "jump"
@@ -19,6 +21,20 @@ const SVG_CURVE_SEGMENTS = 16
 @onready var piece_path_canvas = %PiecePathCanvas
 @onready var title_label: Label = $Scroll/RootMargin/RootVBox/TitleLabel
 @onready var save_piece_button: Button = $Scroll/RootMargin/RootVBox/ActionsRow/SavePieceButton
+@onready var cancel_button: Button = $Scroll/RootMargin/RootVBox/ActionsRow/CancelButton
+@onready var root_margin: MarginContainer = $Scroll/RootMargin
+@onready var root_vbox: VBoxContainer = $Scroll/RootMargin/RootVBox
+@onready var main_columns: HBoxContainer = $Scroll/RootMargin/RootVBox/MainColumns
+@onready var left_panel: VBoxContainer = $Scroll/RootMargin/RootVBox/MainColumns/LeftPanel
+@onready var right_panel: VBoxContainer = $Scroll/RootMargin/RootVBox/MainColumns/RightPanel
+@onready var actions_row: HBoxContainer = $Scroll/RootMargin/RootVBox/ActionsRow
+@onready var path_buttons: HBoxContainer = $Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/PathButtons
+@onready var svg_buttons: HBoxContainer = $Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/SvgButtons
+@onready var undo_path_button: Button = $Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/PathButtons/UndoPathButton
+@onready var clear_path_button: Button = $Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/PathButtons/ClearPathButton
+@onready var export_svg_button: Button = $Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/SvgButtons/ExportSvgButton
+@onready var import_svg_button: Button = $Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/SvgButtons/ImportSvgButton
+@onready var clear_grid_button: Button = $Scroll/RootMargin/RootVBox/MainColumns/RightPanel/ClearGridButton
 @onready var movement_grid: GridContainer = %MovementGrid
 @onready var move_kind_option_button: OptionButton = %MoveKindOptionButton
 @onready var capture_mode_option_button: OptionButton = %CaptureModeOptionButton
@@ -38,8 +54,10 @@ var selected_initial_only = false
 var selected_slide_scope = SLIDE_SCOPE_INFINITE
 var is_editing_piece_mode = false
 var editing_piece_id = ""
+var helper_label: Label
 
 func _ready() -> void:
+	_apply_visual_style()
 	piece_strength_spin_box.min_value = 1.0
 	piece_strength_spin_box.step = 1.0
 	piece_strength_spin_box.rounded = true
@@ -53,6 +71,90 @@ func _ready() -> void:
 		piece_path_canvas.strokes_changed.connect(_on_piece_path_canvas_strokes_changed)
 	_apply_pending_piece_edit_if_any()
 	_refresh_movement_grid_buttons()
+
+func _apply_visual_style() -> void:
+	title_label.text = "✦ Create Piece"
+	UITheme.apply_title_text(title_label, 27)
+	UITheme.apply_body_text(message_label, 14)
+	movement_legend_label.add_theme_color_override("font_color", Color(0.82, 0.88, 0.95, 1.0))
+	UITheme.ensure_atmospheric_background(
+		self,
+		Vector4(0.12, 0.06, 0.88, 0.20),
+		Vector4(0.18, 0.75, 0.82, 0.90),
+		Color(0.05, 0.06, 0.08, 1.0),
+		Color(0.18, 0.25, 0.36, 0.23),
+		Color(0.28, 0.19, 0.14, 0.20)
+	)
+	_ensure_helper_label()
+	_wrap_panelized_column(left_panel, Color(0.10, 0.12, 0.15, 0.96))
+	_wrap_panelized_column(right_panel, Color(0.11, 0.13, 0.17, 0.96))
+	_style_inputs()
+	_style_button_groups()
+	_style_canvas_frame()
+
+func _ensure_helper_label() -> void:
+	if helper_label != null:
+		return
+	helper_label = Label.new()
+	helper_label.name = "HelperLabel"
+	helper_label.layout_mode = 2
+	helper_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	helper_label.text = "Define your custom piece profile, paint movement rules, and save it for preset use."
+	UITheme.apply_body_text(helper_label, 14)
+	root_vbox.add_child(helper_label)
+	root_vbox.move_child(helper_label, 1)
+
+func _wrap_panelized_column(column: VBoxContainer, fill: Color) -> void:
+	if column == null:
+		return
+	if column.get_parent() is MarginContainer:
+		return
+	var parent = column.get_parent()
+	if parent == null:
+		return
+	var index = column.get_index()
+	parent.remove_child(column)
+
+	var panel = PanelContainer.new()
+	panel.layout_mode = 2
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	panel.size_flags_stretch_ratio = column.size_flags_stretch_ratio
+	panel.add_theme_stylebox_override("panel", UITheme.panel_style(fill))
+	parent.add_child(panel)
+	parent.move_child(panel, index)
+
+	var margin = MarginContainer.new()
+	margin.layout_mode = 2
+	margin.add_theme_constant_override("margin_left", 14)
+	margin.add_theme_constant_override("margin_top", 14)
+	margin.add_theme_constant_override("margin_right", 14)
+	margin.add_theme_constant_override("margin_bottom", 14)
+	panel.add_child(margin)
+	margin.add_child(column)
+
+func _style_inputs() -> void:
+	UITheme.apply_field_theme(piece_name_input)
+	UITheme.apply_field_theme(piece_id_input)
+	UITheme.apply_field_theme(piece_strength_spin_box)
+	UITheme.apply_field_theme(move_kind_option_button)
+	UITheme.apply_field_theme(capture_mode_option_button)
+	UITheme.apply_field_theme(slide_mode_option_button)
+
+func _style_button_groups() -> void:
+	_style_action_button(undo_path_button, Color(0.16, 0.22, 0.34, 1.0))
+	_style_action_button(clear_path_button, Color(0.30, 0.20, 0.22, 1.0))
+	_style_action_button(export_svg_button, Color(0.17, 0.31, 0.27, 1.0))
+	_style_action_button(import_svg_button, Color(0.19, 0.26, 0.37, 1.0))
+	_style_action_button(clear_grid_button, Color(0.22, 0.20, 0.34, 1.0))
+	_style_action_button(save_piece_button, Color(0.16, 0.35, 0.28, 1.0))
+	_style_action_button(cancel_button, Color(0.14, 0.15, 0.19, 1.0))
+
+func _style_canvas_frame() -> void:
+	piece_path_canvas.add_theme_stylebox_override("panel", UITheme.panel_style(Color(0.12, 0.13, 0.16, 0.98)))
+
+func _style_action_button(button: Button, fill: Color) -> void:
+	UITheme.apply_button_theme(button, fill, 40.0, 14)
 
 func _apply_pending_piece_edit_if_any() -> void:
 	var game_manager = $"/root/GameManager"
@@ -117,6 +219,9 @@ func _build_movement_grid() -> void:
 			var button = Button.new()
 			button.custom_minimum_size = Vector2(56.0, 56.0)
 			button.focus_mode = Control.FOCUS_NONE
+			button.add_theme_stylebox_override("normal", UITheme.button_style(Color(0.11, 0.13, 0.16, 1.0), Color(0.28, 0.32, 0.39, 1.0)))
+			button.add_theme_stylebox_override("hover", UITheme.button_style(Color(0.16, 0.19, 0.24, 1.0), UITheme.BUTTON_HIGHLIGHT))
+			button.add_theme_stylebox_override("pressed", UITheme.button_style(Color(0.09, 0.11, 0.14, 1.0), UITheme.BUTTON_HIGHLIGHT))
 			var index = row * GRID_SIZE + col
 			button.gui_input.connect(_on_movement_cell_gui_input.bind(index))
 			movement_grid.add_child(button)
