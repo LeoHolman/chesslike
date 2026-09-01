@@ -1,9 +1,9 @@
 extends Control
 
-@onready var status_label: Label = $StatusLabel
-@onready var host_address_input: LineEdit = $HostAddressInput
-@onready var port_spin_box: SpinBox = $PortSpinBox
-@onready var start_match_button: Button = $StartMatchButton
+@onready var status_label: Label = $CenterContainer/MenuContent/StatusPanel/StatusMargin/StatusLabel
+@onready var host_address_input: LineEdit = $CenterContainer/MenuContent/ConnectionPanel/ConnectionMargin/ConnectionContent/HostAddressInput
+@onready var port_spin_box: SpinBox = $CenterContainer/MenuContent/ConnectionPanel/ConnectionMargin/ConnectionContent/PortSpinBox
+@onready var start_match_button: Button = $CenterContainer/MenuContent/ActionRow/StartMatchButton
 
 func _ready() -> void:
 	var network_manager = $"/root/NetworkManager"

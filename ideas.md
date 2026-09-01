@@ -2,6 +2,7 @@
 1. Hovering over an opponents piece shows that piece's available moves
 1. Add "Options" to main menu
     1. Add option to change screen resolution
+1. Enforce screen min width to prevent clipping
 
 # Bugs
 1. Click and drag from available piece onto preview works for drop pool but does not show a semi-transparent icon of the piece being drug
@@ -10,5 +11,5 @@
 1. 
 
 # Visual bugs
-1. Container for board setup clips off the screen
-1. Main menu is not centered when launching full screen
+1. Container for board setup clips into scroll bar
+1. 

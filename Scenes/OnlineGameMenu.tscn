@@ -11,87 +11,106 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_online")
 
-[node name="Title" type="Label" parent="."]
-layout_mode = 0
-offset_left = 450.0
-offset_top = 92.0
-offset_right = 646.0
-offset_bottom = 127.0
+[node name="CenterContainer" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MenuContent" type="VBoxContainer" parent="CenterContainer"]
+custom_minimum_size = Vector2(420, 0)
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="CenterContainer/MenuContent"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+horizontal_alignment = 1
 text = "Online Game"
 
-[node name="HostAddressLabel" type="Label" parent="."]
-layout_mode = 0
-offset_left = 360.0
-offset_top = 192.0
-offset_right = 470.0
-offset_bottom = 215.0
+[node name="Subtitle" type="Label" parent="CenterContainer/MenuContent"]
+layout_mode = 2
+horizontal_alignment = 1
+autowrap_mode = 3
+text = "Host a lobby or join an existing one with an IP address and port."
+
+[node name="ConnectionPanel" type="PanelContainer" parent="CenterContainer/MenuContent"]
+layout_mode = 2
+
+[node name="ConnectionMargin" type="MarginContainer" parent="CenterContainer/MenuContent/ConnectionPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="ConnectionContent" type="VBoxContainer" parent="CenterContainer/MenuContent/ConnectionPanel/ConnectionMargin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="HostAddressLabel" type="Label" parent="CenterContainer/MenuContent/ConnectionPanel/ConnectionMargin/ConnectionContent"]
+layout_mode = 2
 text = "Host Address"
 
-[node name="HostAddressInput" type="LineEdit" parent="."]
-layout_mode = 0
-offset_left = 360.0
-offset_top = 222.0
-offset_right = 690.0
-offset_bottom = 253.0
+[node name="HostAddressInput" type="LineEdit" parent="CenterContainer/MenuContent/ConnectionPanel/ConnectionMargin/ConnectionContent"]
+custom_minimum_size = Vector2(420, 0)
+layout_mode = 2
 placeholder_text = "Public IP or domain"
 
-[node name="PortLabel" type="Label" parent="."]
-layout_mode = 0
-offset_left = 360.0
-offset_top = 272.0
-offset_right = 420.0
-offset_bottom = 295.0
+[node name="PortLabel" type="Label" parent="CenterContainer/MenuContent/ConnectionPanel/ConnectionMargin/ConnectionContent"]
+layout_mode = 2
 text = "Port"
 
-[node name="PortSpinBox" type="SpinBox" parent="."]
-layout_mode = 0
-offset_left = 360.0
-offset_top = 302.0
-offset_right = 520.0
-offset_bottom = 333.0
+[node name="PortSpinBox" type="SpinBox" parent="CenterContainer/MenuContent/ConnectionPanel/ConnectionMargin/ConnectionContent"]
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
 
-[node name="HostButton" type="Button" parent="."]
-layout_mode = 0
-offset_left = 360.0
-offset_top = 360.0
-offset_right = 466.0
-offset_bottom = 391.0
+[node name="ActionRow" type="HBoxContainer" parent="CenterContainer/MenuContent"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="HostButton" type="Button" parent="CenterContainer/MenuContent/ActionRow"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+size_flags_horizontal = 3
 text = "Host"
 
-[node name="JoinButton" type="Button" parent="."]
-layout_mode = 0
-offset_left = 482.0
-offset_top = 360.0
-offset_right = 588.0
-offset_bottom = 391.0
+[node name="JoinButton" type="Button" parent="CenterContainer/MenuContent/ActionRow"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+size_flags_horizontal = 3
 text = "Join"
 
-[node name="StartMatchButton" type="Button" parent="."]
-layout_mode = 0
-offset_left = 604.0
-offset_top = 360.0
-offset_right = 754.0
-offset_bottom = 391.0
+[node name="StartMatchButton" type="Button" parent="CenterContainer/MenuContent/ActionRow"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+size_flags_horizontal = 3
 text = "Start Match"
 
-[node name="StatusLabel" type="Label" parent="."]
-layout_mode = 0
-offset_left = 360.0
-offset_top = 424.0
-offset_right = 760.0
-offset_bottom = 480.0
+[node name="StatusPanel" type="PanelContainer" parent="CenterContainer/MenuContent"]
+layout_mode = 2
+
+[node name="StatusMargin" type="MarginContainer" parent="CenterContainer/MenuContent/StatusPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 12
+
+[node name="StatusLabel" type="Label" parent="CenterContainer/MenuContent/StatusPanel/StatusMargin"]
+custom_minimum_size = Vector2(420, 60)
+layout_mode = 2
 autowrap_mode = 3
 text = ""
 
-[node name="CancelButton" type="Button" parent="."]
-layout_mode = 0
-offset_left = 360.0
-offset_top = 512.0
-offset_right = 520.0
-offset_bottom = 543.0
+[node name="CancelButton" type="Button" parent="CenterContainer/MenuContent"]
+custom_minimum_size = Vector2(220, 40)
+layout_mode = 2
 text = "Back to Main Menu"
 
-[connection signal="pressed" from="HostButton" to="." method="_on_host_button_pressed"]
-[connection signal="pressed" from="JoinButton" to="." method="_on_join_button_pressed"]
-[connection signal="pressed" from="StartMatchButton" to="." method="_on_start_match_button_pressed"]
-[connection signal="pressed" from="CancelButton" to="." method="_on_cancel_button_pressed"]
+[connection signal="pressed" from="CenterContainer/MenuContent/ActionRow/HostButton" to="." method="_on_host_button_pressed"]
+[connection signal="pressed" from="CenterContainer/MenuContent/ActionRow/JoinButton" to="." method="_on_join_button_pressed"]
+[connection signal="pressed" from="CenterContainer/MenuContent/ActionRow/StartMatchButton" to="." method="_on_start_match_button_pressed"]
+[connection signal="pressed" from="CenterContainer/MenuContent/CancelButton" to="." method="_on_cancel_button_pressed"]

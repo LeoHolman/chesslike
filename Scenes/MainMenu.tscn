@@ -11,57 +11,56 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_tt5f1")
 
-[node name="MainMenuTitle" type="Label" parent="." unique_id=1380973623]
-layout_mode = 0
-offset_left = 472.0
-offset_top = 128.0
-offset_right = 545.0
-offset_bottom = 151.0
+[node name="CenterContainer" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MenuContent" type="VBoxContainer" parent="CenterContainer"]
+custom_minimum_size = Vector2(240, 0)
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="MainMenuTitle" type="Label" parent="CenterContainer/MenuContent" unique_id=1380973623]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+horizontal_alignment = 1
 text = "Chesslike"
 
-[node name="LocalGameButton" type="Button" parent="." unique_id=1497418027]
-layout_mode = 0
-offset_left = 464.0
-offset_top = 384.0
-offset_right = 562.0
-offset_bottom = 415.0
+[node name="TitleSpacer" type="Control" parent="CenterContainer/MenuContent"]
+custom_minimum_size = Vector2(0, 28)
+layout_mode = 2
+
+[node name="LocalGameButton" type="Button" parent="CenterContainer/MenuContent" unique_id=1497418027]
+custom_minimum_size = Vector2(240, 40)
+layout_mode = 2
 text = "Local Game"
 
-[node name="OnlineGameButton" type="Button" parent="."]
-layout_mode = 0
-offset_left = 459.0
-offset_top = 432.0
-offset_right = 567.0
-offset_bottom = 463.0
+[node name="OnlineGameButton" type="Button" parent="CenterContainer/MenuContent"]
+custom_minimum_size = Vector2(240, 40)
+layout_mode = 2
 text = "Online Game"
 
-[node name="ManagePiecesButton" type="Button" parent="." unique_id=1009312344]
-layout_mode = 0
-offset_left = 452.0
-offset_top = 480.0
-offset_right = 574.0
-offset_bottom = 511.0
+[node name="ManagePiecesButton" type="Button" parent="CenterContainer/MenuContent" unique_id=1009312344]
+custom_minimum_size = Vector2(240, 40)
+layout_mode = 2
 text = "Manage Pieces"
 
-[node name="ManagePresetsButton" type="Button" parent="."]
-layout_mode = 0
-offset_left = 450.0
-offset_top = 528.0
-offset_right = 577.0
-offset_bottom = 559.0
+[node name="ManagePresetsButton" type="Button" parent="CenterContainer/MenuContent"]
+custom_minimum_size = Vector2(240, 40)
+layout_mode = 2
 text = "Manage Presets"
 
-[node name="ExitGameButton" type="Button" parent="." unique_id=1065246606]
-layout_mode = 0
-offset_left = 472.0
-offset_top = 576.0
-offset_right = 559.0
-offset_bottom = 607.0
-text = "Exit Game
-"
+[node name="ExitGameButton" type="Button" parent="CenterContainer/MenuContent" unique_id=1065246606]
+custom_minimum_size = Vector2(240, 40)
+layout_mode = 2
+text = "Exit Game"
 
-[connection signal="pressed" from="LocalGameButton" to="." method="_on_local_game_button_pressed"]
-[connection signal="pressed" from="OnlineGameButton" to="." method="_on_online_game_button_pressed"]
-[connection signal="pressed" from="ManagePiecesButton" to="." method="_on_manage_pieces_button_pressed"]
-[connection signal="pressed" from="ManagePresetsButton" to="." method="_on_manage_presets_button_pressed"]
-[connection signal="pressed" from="ExitGameButton" to="." method="_on_exit_game_button_pressed"]
+[connection signal="pressed" from="CenterContainer/MenuContent/LocalGameButton" to="." method="_on_local_game_button_pressed"]
+[connection signal="pressed" from="CenterContainer/MenuContent/OnlineGameButton" to="." method="_on_online_game_button_pressed"]
+[connection signal="pressed" from="CenterContainer/MenuContent/ManagePiecesButton" to="." method="_on_manage_pieces_button_pressed"]
+[connection signal="pressed" from="CenterContainer/MenuContent/ManagePresetsButton" to="." method="_on_manage_presets_button_pressed"]
+[connection signal="pressed" from="CenterContainer/MenuContent/ExitGameButton" to="." method="_on_exit_game_button_pressed"]
