@@ -23,7 +23,7 @@ grow_vertical = 2
 horizontal_scroll_mode = 0
 
 [node name="OptionsContent" type="Control" parent="OptionsScroll" unique_id=1806613797]
-custom_minimum_size = Vector2(0, 2520)
+custom_minimum_size = Vector2(0, 2592)
 layout_mode = 2
 size_flags_horizontal = 3
 
@@ -736,30 +736,49 @@ offset_bottom = 2122.0
 text = "Random Cards"
 button_pressed = true
 
+[node name="SpellAllowDuplicatesCheckBox" type="CheckBox" parent="OptionsScroll/OptionsContent"]
+visible = false
+layout_mode = 0
+offset_left = 128.0
+offset_top = 2130.0
+offset_right = 320.0
+offset_bottom = 2154.0
+text = "Allow Duplicate Cards"
+button_pressed = true
+
+[node name="SpellDrawReplacementAfterCastCheckBox" type="CheckBox" parent="OptionsScroll/OptionsContent"]
+visible = false
+layout_mode = 0
+offset_left = 128.0
+offset_top = 2162.0
+offset_right = 380.0
+offset_bottom = 2186.0
+text = "Draw Replacement After Cast"
+
 [node name="SpellAssignCardLabel" type="Label" parent="OptionsScroll/OptionsContent"]
 visible = false
 layout_mode = 0
 offset_left = 104.0
-offset_top = 2130.0
+offset_top = 2194.0
 offset_right = 220.0
-offset_bottom = 2153.0
+offset_bottom = 2217.0
 text = "Assign Card"
 
 [node name="SpellAssignCardOption" type="OptionButton" parent="OptionsScroll/OptionsContent"]
 visible = false
 layout_mode = 0
 offset_left = 104.0
-offset_top = 2158.0
+offset_top = 2222.0
 offset_right = 320.0
-offset_bottom = 2189.0
+offset_bottom = 2253.0
 
 [node name="SpellCardsHintLabel" type="Label" parent="OptionsScroll/OptionsContent"]
 visible = false
 layout_mode = 0
 offset_left = 104.0
-offset_top = 2194.0
+offset_top = 2258.0
 offset_right = 392.0
-offset_bottom = 2236.0
+offset_bottom = 2300.0
 autowrap_mode = 3
 theme_override_colors/font_color = Color(0.86, 0.9, 1, 1)
 theme_override_font_sizes/font_size = 13
@@ -769,27 +788,27 @@ text = "When Random Cards is disabled, click a Player Hand zone in preview to ad
 visible = false
 layout_mode = 0
 offset_left = 76.0
-offset_top = 2244.0
+offset_top = 2308.0
 offset_right = 324.0
-offset_bottom = 2271.0
+offset_bottom = 2335.0
 color = Color(0.16, 0.16, 0.16, 0.78)
 
 [node name="AvailableSpellCardsTitle" type="Label" parent="OptionsScroll/OptionsContent"]
 visible = false
 layout_mode = 0
 offset_left = 80.0
-offset_top = 2246.0
+offset_top = 2310.0
 offset_right = 250.0
-offset_bottom = 2269.0
+offset_bottom = 2333.0
 text = "Available Cards:"
 
 [node name="AvailableSpellCardsScroll" type="ScrollContainer" parent="OptionsScroll/OptionsContent"]
 visible = false
 layout_mode = 0
 offset_left = 80.0
-offset_top = 2276.0
+offset_top = 2340.0
 offset_right = 320.0
-offset_bottom = 2498.0
+offset_bottom = 2562.0
 
 [node name="AvailableSpellCardsList" type="VBoxContainer" parent="OptionsScroll/OptionsContent/AvailableSpellCardsScroll"]
 custom_minimum_size = Vector2(0, 214)

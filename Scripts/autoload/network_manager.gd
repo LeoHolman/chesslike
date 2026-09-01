@@ -168,6 +168,8 @@ func _build_match_config_from_game_manager() -> Dictionary:
 		"spell_card_hand_size_white": int(game_manager.SpellCardHandSizeWhite),
 		"spell_card_hand_size_black": int(game_manager.SpellCardHandSizeBlack),
 		"spell_cards_random": bool(game_manager.SpellCardsRandom),
+		"spell_card_allow_duplicates": bool(game_manager.SpellCardAllowDuplicates),
+		"spell_draw_replacement_after_cast": bool(game_manager.SpellCardDrawReplacementAfterCast),
 		"spell_card_available_ids": game_manager.SpellCardAvailableIds.duplicate(true),
 		"starting_spell_hands": game_manager.StartingSpellHands.duplicate(true),
 		"promotion_piece_pool": game_manager.PromotionPiecePool.duplicate(true),
@@ -193,6 +195,8 @@ func _apply_match_config_to_game_manager(config: Dictionary) -> void:
 	game_manager.SpellCardHandSizeWhite = int(config.get("spell_card_hand_size_white", game_manager.SpellCardHandSizeWhite))
 	game_manager.SpellCardHandSizeBlack = int(config.get("spell_card_hand_size_black", game_manager.SpellCardHandSizeBlack))
 	game_manager.SpellCardsRandom = bool(config.get("spell_cards_random", game_manager.SpellCardsRandom))
+	game_manager.SpellCardAllowDuplicates = bool(config.get("spell_card_allow_duplicates", game_manager.SpellCardAllowDuplicates))
+	game_manager.SpellCardDrawReplacementAfterCast = bool(config.get("spell_draw_replacement_after_cast", game_manager.SpellCardDrawReplacementAfterCast))
 	game_manager.SpellCardAvailableIds = game_manager.normalize_spell_card_ids(config.get("spell_card_available_ids", game_manager.SpellCardAvailableIds))
 	game_manager.StartingSpellHands = game_manager.normalize_spell_card_hands(config.get("starting_spell_hands", game_manager.StartingSpellHands))
 	game_manager.PromotionPiecePool = config.get("promotion_piece_pool", game_manager.PromotionPiecePool).duplicate(true)

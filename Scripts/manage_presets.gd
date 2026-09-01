@@ -201,6 +201,8 @@ func _builtin_preset_config(preset_id: String) -> Dictionary:
 				"hand_size_white": 3,
 				"hand_size_black": 3,
 				"random_cards": true,
+				"allow_duplicates": true,
+				"draw_replacement_after_cast": false,
 				"available_cards": ["haste", "assassinate", "fortify", "teleport", "barrier"],
 				"starting_hands": {"white": [], "black": []}
 			},
@@ -234,6 +236,8 @@ func _builtin_preset_config(preset_id: String) -> Dictionary:
 			"hand_size_white": 3,
 			"hand_size_black": 3,
 			"random_cards": true,
+			"allow_duplicates": true,
+			"draw_replacement_after_cast": false,
 			"available_cards": ["haste", "assassinate", "fortify", "teleport", "barrier"],
 			"starting_hands": {"white": [], "black": []}
 		},

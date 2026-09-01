@@ -57,6 +57,8 @@ var SpellCardHandSize = 3
 var SpellCardHandSizeWhite = 3
 var SpellCardHandSizeBlack = 3
 var SpellCardsRandom = true
+var SpellCardAllowDuplicates = true
+var SpellCardDrawReplacementAfterCast = false
 var SpellCardAvailableIds = ["haste", "assassinate", "fortify", "teleport", "barrier"]
 var StartingSpellHands = {
 	"white": [],

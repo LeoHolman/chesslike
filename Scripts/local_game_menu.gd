@@ -52,6 +52,8 @@ extends Control
 @onready var spell_hand_size_black_label: Label = $OptionsScroll/OptionsContent/SpellHandSizeBlackLabel
 @onready var spell_hand_size_black_spin_box: SpinBox = $OptionsScroll/OptionsContent/SpellHandSizeBlackSpinBox
 @onready var random_spell_cards_check_box: CheckBox = $OptionsScroll/OptionsContent/RandomSpellCardsCheckBox
+@onready var spell_allow_duplicates_check_box: CheckBox = $OptionsScroll/OptionsContent/SpellAllowDuplicatesCheckBox
+@onready var spell_draw_replacement_after_cast_check_box: CheckBox = $OptionsScroll/OptionsContent/SpellDrawReplacementAfterCastCheckBox
 @onready var spell_assign_card_label: Label = $OptionsScroll/OptionsContent/SpellAssignCardLabel
 @onready var spell_assign_card_option: OptionButton = $OptionsScroll/OptionsContent/SpellAssignCardOption
 @onready var spell_cards_hint_label: Label = $OptionsScroll/OptionsContent/SpellCardsHintLabel
@@ -268,6 +270,7 @@ func _setup_special_rules() -> void:
 	unbalanced_armies_check_box.toggled.connect(_on_unbalanced_armies_toggled)
 	spell_unbalanced_hand_sizes_check_box.toggled.connect(_on_spell_unbalanced_hand_sizes_toggled)
 	random_spell_cards_check_box.toggled.connect(_on_random_spell_cards_toggled)
+	spell_allow_duplicates_check_box.toggled.connect(_on_spell_allow_duplicates_toggled)
 	spell_hand_size_spin_box.value_changed.connect(_on_spell_hand_size_value_changed)
 	spell_hand_size_white_spin_box.value_changed.connect(_on_spell_hand_size_value_changed)
 	spell_hand_size_black_spin_box.value_changed.connect(_on_spell_hand_size_value_changed)
@@ -424,6 +427,8 @@ func _apply_spell_card_config(game_manager: Node) -> void:
 	spell_hand_size_white_spin_box.value = float(max(int(game_manager.SpellCardHandSizeWhite), 0))
 	spell_hand_size_black_spin_box.value = float(max(int(game_manager.SpellCardHandSizeBlack), 0))
 	random_spell_cards_check_box.button_pressed = bool(game_manager.SpellCardsRandom)
+	spell_allow_duplicates_check_box.button_pressed = bool(game_manager.SpellCardAllowDuplicates)
+	spell_draw_replacement_after_cast_check_box.button_pressed = bool(game_manager.SpellCardDrawReplacementAfterCast)
 	spell_unbalanced_hand_sizes_check_box.button_pressed = int(game_manager.SpellCardHandSizeWhite) != int(game_manager.SpellCardHandSizeBlack)
 	is_updating_spell_hand_sizes = false
 	_apply_available_spell_card_ids(game_manager.SpellCardAvailableIds)
@@ -438,6 +443,8 @@ func _build_spell_card_config() -> Dictionary:
 		"hand_size_white": _get_spell_hand_size_for_owner("white"),
 		"hand_size_black": _get_spell_hand_size_for_owner("black"),
 		"random_cards": random_spell_cards_check_box.button_pressed,
+		"allow_duplicates": _is_spell_card_duplicates_allowed(),
+		"draw_replacement_after_cast": _is_draw_replacement_after_cast_enabled(),
 		"available_cards": _build_enabled_spell_card_ids(),
 		"starting_hands": _build_spell_card_hands()
 	}
@@ -450,6 +457,8 @@ func _apply_spell_card_config_from_preset(spell_config: Variant) -> void:
 			"hand_size_white": 3,
 			"hand_size_black": 3,
 			"random_cards": true,
+			"allow_duplicates": true,
+			"draw_replacement_after_cast": false,
 			"available_cards": $"/root/GameManager".normalize_spell_card_ids([]),
 			"starting_hands": {"white": [], "black": []}
 		}
@@ -459,6 +468,8 @@ func _apply_spell_card_config_from_preset(spell_config: Variant) -> void:
 	spell_hand_size_white_spin_box.value = float(max(int(spell_config.get("hand_size_white", spell_config.get("hand_size", 3))), 0))
 	spell_hand_size_black_spin_box.value = float(max(int(spell_config.get("hand_size_black", spell_config.get("hand_size", 3))), 0))
 	random_spell_cards_check_box.button_pressed = bool(spell_config.get("random_cards", true))
+	spell_allow_duplicates_check_box.button_pressed = bool(spell_config.get("allow_duplicates", true))
+	spell_draw_replacement_after_cast_check_box.button_pressed = bool(spell_config.get("draw_replacement_after_cast", false))
 	is_updating_spell_hand_sizes = false
 	_apply_available_spell_card_ids(spell_config.get("available_cards", []))
 	preview_spell_hands = _deserialize_spell_card_hands(spell_config.get("starting_hands", {}))
@@ -506,17 +517,27 @@ func _is_spell_cards_enabled() -> bool:
 func _is_random_spell_cards_enabled() -> bool:
 	return random_spell_cards_check_box.button_pressed
 
+func _is_spell_card_duplicates_allowed() -> bool:
+	return spell_allow_duplicates_check_box.button_pressed
+
+func _is_draw_replacement_after_cast_enabled() -> bool:
+	return random_spell_cards_check_box.button_pressed and spell_draw_replacement_after_cast_check_box.button_pressed
+
 func _clamp_preview_spell_hands_to_rules() -> void:
 	for owner in ["white", "black"]:
 		var clamped: Array = []
+		var seen = {}
 		var cap = _get_spell_hand_size_for_owner(owner)
 		var current_hand: Array = preview_spell_hands.get(owner, [])
 		for card_id in current_hand:
 			var key = str(card_id)
 			if not _is_spell_card_enabled_in_list(key):
 				continue
+			if not _is_spell_card_duplicates_allowed() and seen.has(key):
+				continue
 			if clamped.size() >= cap:
 				break
+			seen[key] = true
 			clamped.append(key)
 		preview_spell_hands[owner] = clamped
 
@@ -558,7 +579,13 @@ func _on_spell_unbalanced_hand_sizes_toggled(_is_enabled: bool) -> void:
 	_refresh_preview()
 
 func _on_random_spell_cards_toggled(_is_enabled: bool) -> void:
+	if not _is_random_spell_cards_enabled():
+		spell_draw_replacement_after_cast_check_box.button_pressed = false
 	_update_spell_card_visibility()
+	_refresh_preview()
+
+func _on_spell_allow_duplicates_toggled(_is_enabled: bool) -> void:
+	_clamp_preview_spell_hands_to_rules()
 	_refresh_preview()
 
 func _on_spell_hand_size_value_changed(_value: float) -> void:
@@ -618,6 +645,8 @@ func _update_spell_card_visibility() -> void:
 	spell_hand_size_spin_box.visible = enabled
 	spell_unbalanced_hand_sizes_check_box.visible = enabled
 	random_spell_cards_check_box.visible = enabled
+	spell_allow_duplicates_check_box.visible = enabled
+	spell_draw_replacement_after_cast_check_box.visible = enabled and _is_random_spell_cards_enabled()
 	available_spell_cards_title_background.visible = enabled
 	available_spell_cards_title.visible = enabled
 	available_spell_cards_scroll.visible = enabled
@@ -916,6 +945,8 @@ func _reset_preview_to_default(should_refresh: bool = true, use_standard_layout:
 		"hand_size_white": 3,
 		"hand_size_black": 3,
 		"random_cards": true,
+		"allow_duplicates": true,
+		"draw_replacement_after_cast": false,
 		"available_cards": $"/root/GameManager".normalize_spell_card_ids([]),
 		"starting_hands": {"white": [], "black": []}
 	})
@@ -971,6 +1002,8 @@ func _apply_preset(preset_id: String) -> void:
 				"hand_size_white": 3,
 				"hand_size_black": 3,
 				"random_cards": true,
+				"allow_duplicates": true,
+				"draw_replacement_after_cast": false,
 				"available_cards": $"/root/GameManager".normalize_spell_card_ids([]),
 				"starting_hands": {"white": [], "black": []}
 			})
@@ -1009,6 +1042,8 @@ func _apply_preset(preset_id: String) -> void:
 				"hand_size_white": 3,
 				"hand_size_black": 3,
 				"random_cards": true,
+				"allow_duplicates": true,
+				"draw_replacement_after_cast": false,
 				"available_cards": $"/root/GameManager".normalize_spell_card_ids([]),
 				"starting_hands": {"white": [], "black": []}
 			})
@@ -1747,6 +1782,9 @@ func _try_add_preview_spell_hand_card(position: Vector2) -> bool:
 	if hand.size() >= _get_spell_hand_size_for_owner(owner):
 		_show_preview_warning("%s hand is full (%d)." % [_format_owner_name(owner), _get_spell_hand_size_for_owner(owner)])
 		return true
+	if not _is_spell_card_duplicates_allowed() and hand.has(selected_spell_card_id):
+		_show_preview_warning("%s hand cannot contain duplicate cards." % _format_owner_name(owner))
+		return true
 	hand.append(selected_spell_card_id)
 	preview_spell_hands[owner] = hand
 	_refresh_preview()
@@ -2145,6 +2183,8 @@ func _on_start_game_button_pressed() -> void:
 	$"/root/GameManager".SpellCardHandSizeWhite = _get_spell_hand_size_for_owner("white")
 	$"/root/GameManager".SpellCardHandSizeBlack = _get_spell_hand_size_for_owner("black")
 	$"/root/GameManager".SpellCardsRandom = _is_random_spell_cards_enabled()
+	$"/root/GameManager".SpellCardAllowDuplicates = _is_spell_card_duplicates_allowed()
+	$"/root/GameManager".SpellCardDrawReplacementAfterCast = _is_draw_replacement_after_cast_enabled()
 	$"/root/GameManager".SpellCardAvailableIds = _build_enabled_spell_card_ids()
 	$"/root/GameManager".StartingSpellHands = _build_spell_card_hands()
 	$"/root/GameManager".ArmyStrengthCap = _get_army_strength_cap_value()

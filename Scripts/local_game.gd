@@ -102,6 +102,8 @@ var drop_piece_drag_position = Vector2.ZERO
 var drop_pool_hover_owner = ""
 var spell_cards_enabled = false
 var spell_cards_random = true
+var spell_card_allow_duplicates = true
+var spell_draw_replacement_after_cast = false
 var spell_card_available_ids: Array[String] = []
 var spell_card_definitions_by_id: Dictionary = {}
 var spell_card_hands = {
@@ -335,6 +337,8 @@ func _spell_initialize_state_from_game_manager() -> void:
 		spell_card_definitions_by_id[card_id] = card.duplicate(true)
 
 	spell_cards_random = bool($"/root/GameManager".SpellCardsRandom)
+	spell_card_allow_duplicates = bool($"/root/GameManager".SpellCardAllowDuplicates)
+	spell_draw_replacement_after_cast = bool($"/root/GameManager".SpellCardDrawReplacementAfterCast)
 	spell_card_available_ids.clear()
 	for card_id in $"/root/GameManager".normalize_spell_card_ids($"/root/GameManager".SpellCardAvailableIds):
 		var key = str(card_id)
@@ -395,12 +399,22 @@ func _spell_fill_hand_randomly(owner: String, target_size: int) -> void:
 	while hand.size() < max(target_size, 0):
 		if spell_card_available_ids.is_empty():
 			break
-		hand.append(spell_card_available_ids[randi_range(0, spell_card_available_ids.size() - 1)])
+		if spell_card_allow_duplicates:
+			hand.append(spell_card_available_ids[randi_range(0, spell_card_available_ids.size() - 1)])
+			continue
+		var candidates: Array = []
+		for candidate in spell_card_available_ids:
+			if not hand.has(candidate):
+				candidates.append(candidate)
+		if candidates.is_empty():
+			break
+		hand.append(candidates[randi_range(0, candidates.size() - 1)])
 	spell_card_hands[owner] = hand
 
 func _spell_clamp_hand_to_rules(owner: String) -> void:
 	var hand: Array = spell_card_hands.get(owner, [])
 	var clamped: Array = []
+	var seen = {}
 	var cap = _spell_hand_size_for_owner(owner)
 	for card_id in hand:
 		var key = str(card_id)
@@ -408,8 +422,11 @@ func _spell_clamp_hand_to_rules(owner: String) -> void:
 			continue
 		if not spell_card_available_ids.has(key):
 			continue
+		if not spell_card_allow_duplicates and seen.has(key):
+			continue
 		if clamped.size() >= cap:
 			break
+		seen[key] = true
 		clamped.append(key)
 	spell_card_hands[owner] = clamped
 
@@ -1428,7 +1445,7 @@ func _consume_spell_card_from_hand(owner: String, card_id: String) -> bool:
 		return false
 	hand.remove_at(index)
 	spell_card_hands[owner] = hand
-	if spell_cards_random:
+	if spell_cards_random and spell_draw_replacement_after_cast:
 		_spell_fill_hand_randomly(owner, _spell_hand_size_for_owner(owner))
 	return true
 
