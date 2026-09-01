@@ -202,7 +202,7 @@ const SPECIAL_RULE_SUBOPTION_NODE_NAMES = {
 	"piece_dropping": ["CaptureToDropPoolCheckBox"],
 	"piece_stacking": [],
 	"enable_territory": ["TerritoryRowsSpinBox"],
-	"enable_muster": ["TerritoryRowsSpinBox"],
+	"enable_muster": [],
 	"limit_army_strength": ["UnbalancedArmiesCheckBox", "ArmyStrengthCapSpinBox", "WhiteArmyStrengthCapSpinBox", "BlackArmyStrengthCapSpinBox"],
 	"enable_spell_cards": ["SpellHandSizeSpinBox", "SpellUnbalancedHandSizesCheckBox", "SpellHandSizeWhiteSpinBox", "SpellHandSizeBlackSpinBox", "RandomSpellCardsCheckBox", "SpellAllowDuplicatesCheckBox", "SpellDrawReplacementAfterCastCheckBox", "SpellAssignCardOption", "AvailableSpellCardsScroll"]
 }
@@ -747,10 +747,13 @@ func _build_special_rule_pages() -> void:
 
 	var territory_page = _make_rule_page()
 	territory_page.add_child(_layout_existing_control(enable_territory_check_box, true))
-	territory_page.add_child(_layout_existing_control(enable_muster_check_box, true))
 	territory_page.add_child(_make_labeled_row(territory_rows_label, territory_rows_spin_box))
 	_register_special_rule_page("enable_territory", territory_page)
-	_register_special_rule_page("enable_muster", territory_page)
+
+	var muster_page = _make_rule_page()
+	muster_page.add_child(_layout_existing_control(enable_muster_check_box, true))
+	muster_page.add_child(_make_rule_note("Territory row depth is configured under the Territory rule."))
+	_register_special_rule_page("enable_muster", muster_page)
 
 	var army_page = _make_rule_page()
 	army_page.add_child(_layout_existing_control(limit_army_strength_check_box, true))
@@ -792,6 +795,14 @@ func _make_inline_heading(text: String) -> Label:
 	label.text = _icon_text("•", text)
 	label.add_theme_font_size_override("font_size", 14)
 	label.add_theme_color_override("font_color", Color(0.94, 0.95, 0.98, 1.0))
+	return label
+
+func _make_rule_note(text: String) -> Label:
+	var label = Label.new()
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.text = text
+	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_color_override("font_color", Color(0.78, 0.82, 0.88, 1.0))
 	return label
 
 func _icon_text(icon: String, text: String) -> String:
@@ -1978,6 +1989,10 @@ func _on_piece_stacking_toggled(_is_enabled: bool) -> void:
 	_refresh_preview()
 
 func _on_territory_controls_toggled(_is_enabled: bool) -> void:
+	if enable_muster_check_box != null and enable_muster_check_box.button_pressed and enable_territory_check_box != null and not enable_territory_check_box.button_pressed:
+		enable_territory_check_box.button_pressed = true
+	if enable_muster_check_box != null and enable_muster_check_box.button_pressed and not piece_dropping_check_box.button_pressed:
+		piece_dropping_check_box.button_pressed = true
 	_update_territory_controls_visibility()
 	_refresh_special_rules_ui_state()
 	_refresh_preview()
