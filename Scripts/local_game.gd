@@ -613,6 +613,9 @@ func _initialize_board_state() -> void:
 		pieces.clear()
 		muster_phase_active = true
 		piece_dropping_enabled = true
+	en_passant_enabled = en_passant_enabled and _board_has_any_piece_id("pawn")
+	if not _board_has_any_piece_id("king"):
+		victory_condition = "total_war"
 	castling_enabled = castling_enabled and _board_supports_castling()
 	_update_game_state(false)
 
@@ -4394,6 +4397,13 @@ func _has_piece_on_board(piece_color: String, piece_id: String) -> bool:
 	for square in pieces.keys():
 		for layer in _get_piece_stack_on_state(pieces, square):
 			if str(layer.get("color", "")) == piece_color and str(layer.get("piece_id", "")) == piece_id:
+				return true
+	return false
+
+func _board_has_any_piece_id(piece_id: String) -> bool:
+	for square in pieces.keys():
+		for layer in _get_piece_stack_on_state(pieces, square):
+			if str(layer.get("piece_id", "")) == piece_id:
 				return true
 	return false
 

@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://q8kgq2luhui0"]
+﻿[gd_scene format=3 uid="uid://q8kgq2luhui0"]
 
 [ext_resource type="Script" uid="uid://bbthserpc0gqq" path="res://Scripts/local_game_menu.gd" id="1_2iipm"]
 
@@ -210,13 +210,13 @@ offset_right = 140.0
 offset_bottom = 551.0
 text = "Player 1"
 
-[node name="Player1ColorButton" type="ColorPickerButton" parent="OptionsScroll/OptionsContent"]
+[node name="Player1ColorButton" type="Button" parent="OptionsScroll/OptionsContent"]
 layout_mode = 0
 offset_left = 142.0
 offset_top = 524.0
 offset_right = 192.0
 offset_bottom = 555.0
-color = Color(1, 1, 1, 1)
+text = "#FFFFFF"
 
 [node name="Player2ColorLabel" type="Label" parent="OptionsScroll/OptionsContent"]
 layout_mode = 0
@@ -226,13 +226,13 @@ offset_right = 266.0
 offset_bottom = 551.0
 text = "Player 2"
 
-[node name="Player2ColorButton" type="ColorPickerButton" parent="OptionsScroll/OptionsContent"]
+[node name="Player2ColorButton" type="Button" parent="OptionsScroll/OptionsContent"]
 layout_mode = 0
 offset_left = 268.0
 offset_top = 524.0
 offset_right = 320.0
 offset_bottom = 555.0
-color = Color(0.08, 0.08, 0.08, 1)
+text = "#141414"
 
 [node name="PresetsTitleBackground" type="ColorRect" parent="OptionsScroll/OptionsContent" unique_id=1695805726]
 layout_mode = 0
@@ -609,13 +609,13 @@ offset_right = 166.0
 offset_bottom = 1847.0
 text = "Light Tiles"
 
-[node name="LightTileColorButton" type="ColorPickerButton" parent="OptionsScroll/OptionsContent"]
+[node name="LightTileColorButton" type="Button" parent="OptionsScroll/OptionsContent"]
 layout_mode = 0
 offset_left = 172.0
 offset_top = 1820.0
 offset_right = 224.0
 offset_bottom = 1851.0
-color = Color(1, 1, 1, 1)
+text = "#FFFFFF"
 
 [node name="DarkTileColorLabel" type="Label" parent="OptionsScroll/OptionsContent"]
 layout_mode = 0
@@ -625,13 +625,13 @@ offset_right = 166.0
 offset_bottom = 1879.0
 text = "Dark Tiles"
 
-[node name="DarkTileColorButton" type="ColorPickerButton" parent="OptionsScroll/OptionsContent"]
+[node name="DarkTileColorButton" type="Button" parent="OptionsScroll/OptionsContent"]
 layout_mode = 0
 offset_left = 172.0
 offset_top = 1852.0
 offset_right = 224.0
 offset_bottom = 1883.0
-color = Color(0.41, 0.41, 0.41, 1)
+text = "#696969"
 
 [node name="SpellCardsTitleBackground" type="ColorRect" parent="OptionsScroll/OptionsContent"]
 layout_mode = 0

@@ -36,10 +36,10 @@ extends Control
 @onready var army_strength_warning_label: Label = $OptionsScroll/OptionsContent/ArmyStrengthWarningLabel
 @onready var castling_support_hint_background: ColorRect = $OptionsScroll/OptionsContent/CastlingSupportHintBackground
 @onready var castling_support_hint: Label = $OptionsScroll/OptionsContent/CastlingSupportHint
-@onready var player1_color_button: ColorPickerButton = $OptionsScroll/OptionsContent/Player1ColorButton
-@onready var player2_color_button: ColorPickerButton = $OptionsScroll/OptionsContent/Player2ColorButton
-@onready var light_tile_color_button: ColorPickerButton = $OptionsScroll/OptionsContent/LightTileColorButton
-@onready var dark_tile_color_button: ColorPickerButton = $OptionsScroll/OptionsContent/DarkTileColorButton
+@onready var player1_color_button: Button = $OptionsScroll/OptionsContent/Player1ColorButton
+@onready var player2_color_button: Button = $OptionsScroll/OptionsContent/Player2ColorButton
+@onready var light_tile_color_button: Button = $OptionsScroll/OptionsContent/LightTileColorButton
+@onready var dark_tile_color_button: Button = $OptionsScroll/OptionsContent/DarkTileColorButton
 @onready var victory_condition_option: OptionButton = $OptionsScroll/OptionsContent/VictoryConditionOption
 @onready var victory_condition_description: Label = $OptionsScroll/OptionsContent/VictoryConditionDescription
 @onready var promotion_pieces_title_background: ColorRect = $OptionsScroll/OptionsContent/PromotionPiecesTitleBackground
@@ -220,7 +220,9 @@ var is_right_dragging = false
 var drag_changed_any = false
 var promotion_piece_checkboxes: Dictionary = {}
 var castling_user_preference = true
+var en_passant_user_preference = true
 var is_updating_castling_availability = false
+var is_updating_en_passant_availability = false
 var preview_drop_pools = {
 	"white": [],
 	"black": []
@@ -295,6 +297,9 @@ var special_rule_content_root: VBoxContainer
 var special_rule_pages: Dictionary = {}
 var zone_legend_white_swatch: ColorRect
 var zone_legend_black_swatch: ColorRect
+var shared_color_picker_dialog: AcceptDialog
+var shared_color_picker: ColorPicker
+var pending_color_target = ""
 var player_side_colors = {
 	"white": Color(1.0, 1.0, 1.0, 1.0),
 	"black": Color(0.08, 0.08, 0.08, 1.0)
@@ -314,6 +319,7 @@ func _ready() -> void:
 	preset_list.item_selected.connect(_on_preset_item_selected)
 	_populate_piece_bank()
 	_populate_presets()
+	_ensure_shared_color_picker_dialog()
 	_setup_piece_color_picker()
 	_setup_player_color_pickers()
 	_setup_tile_color_pickers()
@@ -1217,23 +1223,112 @@ func _setup_piece_color_picker() -> void:
 	piece_color_option.item_selected.connect(_on_piece_color_selected)
 
 func _setup_player_color_pickers() -> void:
-	player1_color_button.color_changed.connect(_on_player_color_changed.bind("white"))
-	player2_color_button.color_changed.connect(_on_player_color_changed.bind("black"))
+	player1_color_button.pressed.connect(_on_color_picker_button_pressed.bind("player_white"))
+	player2_color_button.pressed.connect(_on_color_picker_button_pressed.bind("player_black"))
 	_apply_player_colors_from_serialized($"/root/GameManager".PlayerColors)
 
-func _on_player_color_changed(new_color: Color, owner: String) -> void:
-	player_side_colors[owner] = Color(new_color.r, new_color.g, new_color.b, 1.0)
+func _setup_tile_color_pickers() -> void:
+	light_tile_color_button.pressed.connect(_on_color_picker_button_pressed.bind("tile_light"))
+	dark_tile_color_button.pressed.connect(_on_color_picker_button_pressed.bind("tile_dark"))
+	_apply_tile_colors_from_serialized($"/root/GameManager".TileColors)
+
+
+func _ensure_shared_color_picker_dialog() -> void:
+	if shared_color_picker_dialog != null:
+		return
+	shared_color_picker_dialog = AcceptDialog.new()
+	shared_color_picker_dialog.title = "Choose Color"
+	shared_color_picker_dialog.confirmed.connect(_on_shared_color_picker_confirmed)
+	shared_color_picker_dialog.canceled.connect(_on_shared_color_picker_closed)
+	shared_color_picker = ColorPicker.new()
+	shared_color_picker.custom_minimum_size = Vector2(320.0, 360.0)
+	shared_color_picker.color_modes_visible = false
+	shared_color_picker.sliders_visible = true
+	shared_color_picker.presets_visible = true
+	shared_color_picker_dialog.add_child(shared_color_picker)
+	add_child(shared_color_picker_dialog)
+
+func _on_color_picker_button_pressed(target: String) -> void:
+	pending_color_target = target
+	if shared_color_picker_dialog == null:
+		return
+	if shared_color_picker != null:
+		shared_color_picker.color = _current_color_for_target(target)
+	shared_color_picker_dialog.popup_centered_ratio(0.55)
+
+func _on_shared_color_picker_confirmed() -> void:
+	if shared_color_picker == null:
+		pending_color_target = ""
+		return
+	_apply_selected_color_target(pending_color_target, shared_color_picker.color)
+	pending_color_target = ""
+
+func _on_shared_color_picker_closed() -> void:
+	pending_color_target = ""
+
+func _current_color_for_target(target: String) -> Color:
+	match target:
+		"player_white":
+			return _get_player_color("white")
+		"player_black":
+			return _get_player_color("black")
+		"tile_light":
+			return board_tile_colors.get("light", Color(1.0, 1.0, 1.0, 1.0))
+		"tile_dark":
+			return board_tile_colors.get("dark", Color(0.41, 0.41, 0.41, 1.0))
+		_:
+			return Color(1.0, 1.0, 1.0, 1.0)
+
+func _apply_selected_color_target(target: String, selected_color: Color) -> void:
+	var next_color = Color(selected_color.r, selected_color.g, selected_color.b, 1.0)
+	match target:
+		"player_white":
+			player_side_colors["white"] = next_color
+			_update_color_button_visual(player1_color_button, next_color)
+		"player_black":
+			player_side_colors["black"] = next_color
+			_update_color_button_visual(player2_color_button, next_color)
+		"tile_light":
+			board_tile_colors["light"] = next_color
+			_update_color_button_visual(light_tile_color_button, next_color)
+		"tile_dark":
+			board_tile_colors["dark"] = next_color
+			_update_color_button_visual(dark_tile_color_button, next_color)
+		_:
+			return
 	_update_zone_legend_colors()
 	_refresh_preview()
 
-func _setup_tile_color_pickers() -> void:
-	light_tile_color_button.color_changed.connect(_on_tile_color_changed.bind("light"))
-	dark_tile_color_button.color_changed.connect(_on_tile_color_changed.bind("dark"))
-	_apply_tile_colors_from_serialized($"/root/GameManager".TileColors)
+func _update_color_button_visual(button: Button, color_value: Color) -> void:
+	if button == null:
+		return
+	button.text = _format_color_button_text(color_value)
+	button.add_theme_color_override("font_color", _best_contrast_text_color(color_value))
+	button.add_theme_stylebox_override("normal", _make_color_button_style(color_value, color_value.darkened(0.35)))
+	button.add_theme_stylebox_override("hover", _make_color_button_style(color_value.lightened(0.08), color_value.darkened(0.35)))
+	button.add_theme_stylebox_override("pressed", _make_color_button_style(color_value, color_value.darkened(0.45)))
+	button.add_theme_stylebox_override("focus", _make_color_button_style(color_value, color_value.darkened(0.45)))
 
-func _on_tile_color_changed(new_color: Color, tile_kind: String) -> void:
-	board_tile_colors[tile_kind] = Color(new_color.r, new_color.g, new_color.b, 1.0)
-	_refresh_preview()
+func _make_color_button_style(fill: Color, border: Color) -> StyleBoxFlat:
+	var style = StyleBoxFlat.new()
+	style.bg_color = fill
+	style.border_color = border
+	style.border_width_left = 2
+	style.border_width_top = 2
+	style.border_width_right = 2
+	style.border_width_bottom = 2
+	style.corner_radius_top_left = 8
+	style.corner_radius_top_right = 8
+	style.corner_radius_bottom_right = 8
+	style.corner_radius_bottom_left = 8
+	style.content_margin_left = 8.0
+	style.content_margin_right = 8.0
+	style.content_margin_top = 6.0
+	style.content_margin_bottom = 6.0
+	return style
+
+func _format_color_button_text(color_value: Color) -> String:
+	return "#%02X%02X%02X" % [int(round(color_value.r * 255.0)), int(round(color_value.g * 255.0)), int(round(color_value.b * 255.0))]
 
 func _setup_victory_condition_picker() -> void:
 	victory_condition_option.clear()
@@ -1241,6 +1336,7 @@ func _setup_victory_condition_picker() -> void:
 	victory_condition_option.add_item("Total War")
 	victory_condition_option.item_selected.connect(_on_victory_condition_selected)
 	_apply_victory_condition($"/root/GameManager".VictoryCondition)
+	_update_victory_condition_availability()
 
 func _build_victory_condition() -> String:
 	if victory_condition_option.selected == 1:
@@ -1256,6 +1352,7 @@ func _apply_victory_condition(victory_condition: String) -> void:
 
 func _on_victory_condition_selected(_index: int) -> void:
 	_update_victory_condition_description()
+	_update_victory_condition_availability()
 
 func _update_victory_condition_description() -> void:
 	if victory_condition_option.selected == 1:
@@ -1267,6 +1364,7 @@ func _setup_special_rules() -> void:
 	_ensure_piece_stacking_check_box()
 	_ensure_gungi_rule_controls()
 	castling_check_box.toggled.connect(_on_castling_rule_toggled)
+	en_passant_check_box.toggled.connect(_on_en_passant_rule_toggled)
 	promotion_check_box.toggled.connect(_on_promotion_rule_toggled)
 	enable_spell_cards_check_box.toggled.connect(_on_enable_spell_cards_toggled)
 	piece_dropping_check_box.toggled.connect(_on_piece_dropping_toggled)
@@ -1337,7 +1435,7 @@ func _setup_special_rules() -> void:
 	_update_territory_controls_visibility()
 	_update_army_strength_limit_visibility()
 	_ensure_army_strength_cap_meets_current_position()
-	_update_castling_rule_availability()
+	_update_preview_rule_dependencies()
 
 func _build_special_rules() -> Dictionary:
 	return {
@@ -1800,13 +1898,48 @@ func _update_castling_rule_availability() -> void:
 	castling_support_hint_background.visible = false
 	is_updating_castling_availability = false
 
+func _update_preview_rule_dependencies() -> void:
+	_update_castling_rule_availability()
+	_update_en_passant_rule_availability()
+	_update_victory_condition_availability()
+
+func _update_en_passant_rule_availability() -> void:
+	var supports_en_passant = _preview_supports_en_passant()
+	is_updating_en_passant_availability = true
+	en_passant_check_box.disabled = not supports_en_passant
+	if supports_en_passant:
+		en_passant_check_box.button_pressed = en_passant_user_preference
+	else:
+		en_passant_check_box.button_pressed = false
+	is_updating_en_passant_availability = false
+	_refresh_special_rules_ui_state()
+
+func _update_victory_condition_availability() -> void:
+	var has_king = _preview_has_any_piece_id("king")
+	var popup = victory_condition_option.get_popup()
+	if popup != null:
+		popup.set_item_disabled(0, not has_king)
+	if not has_king and victory_condition_option.selected == 0:
+		victory_condition_option.select(1)
+	_update_victory_condition_description()
+
 func _preview_supports_castling() -> bool:
 	return _preview_has_piece("white", "king") and _preview_has_piece("black", "king") and _preview_has_piece("white", "rook") and _preview_has_piece("black", "rook")
+
+func _preview_supports_en_passant() -> bool:
+	return _preview_has_any_piece_id("pawn")
 
 func _preview_has_piece(piece_color: String, piece_id: String) -> bool:
 	for square in preview_pieces.keys():
 		var piece_data: Dictionary = preview_pieces[square]
 		if piece_data.get("color", "") == piece_color and piece_data.get("piece_id", "") == piece_id:
+			return true
+	return false
+
+func _preview_has_any_piece_id(piece_id: String) -> bool:
+	for square in preview_pieces.keys():
+		var piece_data: Dictionary = preview_pieces[square]
+		if piece_data.get("piece_id", "") == piece_id:
 			return true
 	return false
 
@@ -1816,6 +1949,14 @@ func _on_castling_rule_toggled(is_enabled: bool) -> void:
 	if castling_check_box.disabled:
 		return
 	castling_user_preference = is_enabled
+	_refresh_special_rules_ui_state()
+
+func _on_en_passant_rule_toggled(is_enabled: bool) -> void:
+	if is_updating_en_passant_availability:
+		return
+	if en_passant_check_box.disabled:
+		return
+	en_passant_user_preference = is_enabled
 	_refresh_special_rules_ui_state()
 
 func _on_promotion_rule_toggled(_is_enabled: bool) -> void:
@@ -1914,6 +2055,7 @@ func _apply_special_rules(special_rules: Dictionary) -> void:
 	_update_territory_controls_visibility()
 	_update_army_strength_limit_visibility()
 	_refresh_special_rules_ui_state()
+	_update_victory_condition_availability()
 
 func _update_army_strength_limit_visibility() -> void:
 	var show_controls = limit_army_strength_check_box.button_pressed
@@ -2417,7 +2559,7 @@ func _refresh_preview(_value: float = 0.0) -> void:
 	_clamp_preview_spell_hands_to_rules()
 	_draw_preview_spell_hands(board_pixel_size)
 	_draw_preview_zone_legend(board_pixel_size)
-	_update_castling_rule_availability()
+	_update_preview_rule_dependencies()
 
 func _preview_side_panel_width() -> float:
 	return clampf(board_preview.size.x * 0.18, 92.0, 150.0)
@@ -3061,8 +3203,8 @@ func _apply_player_colors_from_serialized(serialized: Variant) -> void:
 		black_color = _color_from_variant(serialized.get("black", fallback_black), fallback_black)
 	player_side_colors["white"] = white_color
 	player_side_colors["black"] = black_color
-	player1_color_button.color = white_color
-	player2_color_button.color = black_color
+	_update_color_button_visual(player1_color_button, white_color)
+	_update_color_button_visual(player2_color_button, black_color)
 	_update_zone_legend_colors()
 
 func _serialize_player_colors() -> Dictionary:
@@ -3081,8 +3223,8 @@ func _apply_tile_colors_from_serialized(serialized: Variant) -> void:
 		dark_color = _color_from_variant(serialized.get("dark", fallback_dark), fallback_dark)
 	board_tile_colors["light"] = light_color
 	board_tile_colors["dark"] = dark_color
-	light_tile_color_button.color = light_color
-	dark_tile_color_button.color = dark_color
+	_update_color_button_visual(light_tile_color_button, light_color)
+	_update_color_button_visual(dark_tile_color_button, dark_color)
 
 func _serialize_tile_colors() -> Dictionary:
 	return {
