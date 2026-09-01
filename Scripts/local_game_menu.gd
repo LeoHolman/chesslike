@@ -1035,9 +1035,6 @@ func _section_scroll_target(section_id: String) -> int:
 	return 0
 
 func _on_special_rule_button_pressed(rule_id: String) -> void:
-	var check_box = _special_rule_checkbox(rule_id)
-	if check_box != null and not check_box.disabled:
-		check_box.button_pressed = not check_box.button_pressed
 	var previous_rule_id = active_special_rule_id
 	active_special_rule_id = rule_id
 	_refresh_special_rule_button_states()
