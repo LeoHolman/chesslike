@@ -26,19 +26,21 @@ func _refresh_piece_list() -> void:
 		message_label.text = ""
 
 func _on_create_piece_button_pressed() -> void:
+	$"/root/GameManager".queue_custom_piece_for_edit("")
+	get_tree().change_scene_to_file("res://Scenes/CreatePiece.tscn")
+
+func _on_edit_piece_button_pressed() -> void:
+	var piece_id = _get_selected_piece_id_or_show_error("Select a custom piece to edit.")
+	if piece_id == "":
+		return
+	$"/root/GameManager".queue_custom_piece_for_edit(piece_id)
 	get_tree().change_scene_to_file("res://Scenes/CreatePiece.tscn")
 
 func _on_delete_piece_button_pressed() -> void:
-	var selected = pieces_list.get_selected_items()
-	if selected.is_empty():
-		message_label.text = "Select a custom piece to delete."
-		return
-	var selected_index = int(selected[0])
-	if selected_index < 0 or selected_index >= list_piece_ids.size():
-		message_label.text = "Invalid selection."
+	var piece_id = _get_selected_piece_id_or_show_error("Select a custom piece to delete.")
+	if piece_id == "":
 		return
 
-	var piece_id = list_piece_ids[selected_index]
 	if not $"/root/GameManager".delete_custom_piece(piece_id):
 		message_label.text = "Could not delete custom piece."
 		return
@@ -48,3 +50,14 @@ func _on_delete_piece_button_pressed() -> void:
 
 func _on_back_button_pressed() -> void:
 	get_tree().change_scene_to_file("res://Scenes/MainMenu.tscn")
+
+func _get_selected_piece_id_or_show_error(error_text: String) -> String:
+	var selected = pieces_list.get_selected_items()
+	if selected.is_empty():
+		message_label.text = error_text
+		return ""
+	var selected_index = int(selected[0])
+	if selected_index < 0 or selected_index >= list_piece_ids.size():
+		message_label.text = "Invalid selection."
+		return ""
+	return list_piece_ids[selected_index]

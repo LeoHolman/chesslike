@@ -17,6 +17,8 @@ const SVG_CURVE_SEGMENTS = 16
 @onready var piece_id_input: LineEdit = %PieceIdInput
 @onready var piece_strength_spin_box: SpinBox = %PieceStrengthSpinBox
 @onready var piece_path_canvas = %PiecePathCanvas
+@onready var title_label: Label = $Scroll/RootMargin/RootVBox/TitleLabel
+@onready var save_piece_button: Button = $Scroll/RootMargin/RootVBox/ActionsRow/SavePieceButton
 @onready var movement_grid: GridContainer = %MovementGrid
 @onready var move_kind_option_button: OptionButton = %MoveKindOptionButton
 @onready var capture_mode_option_button: OptionButton = %CaptureModeOptionButton
@@ -34,6 +36,8 @@ var selected_move_kind = MOVE_KIND_JUMP
 var selected_capture_mode = CAPTURE_MODE_ANY
 var selected_initial_only = false
 var selected_slide_scope = SLIDE_SCOPE_INFINITE
+var is_editing_piece_mode = false
+var editing_piece_id = ""
 
 func _ready() -> void:
 	piece_strength_spin_box.min_value = 1.0
@@ -47,6 +51,58 @@ func _ready() -> void:
 	piece_path_canvas.outline_color = Color(0.08, 0.08, 0.08, 1.0)
 	if not piece_path_canvas.strokes_changed.is_connected(_on_piece_path_canvas_strokes_changed):
 		piece_path_canvas.strokes_changed.connect(_on_piece_path_canvas_strokes_changed)
+	_apply_pending_piece_edit_if_any()
+	_refresh_movement_grid_buttons()
+
+func _apply_pending_piece_edit_if_any() -> void:
+	var game_manager = $"/root/GameManager"
+	var pending_piece_id = game_manager.consume_pending_custom_piece_for_edit().strip_edges()
+	if pending_piece_id == "":
+		title_label.text = "Create Piece"
+		save_piece_button.text = "Save Piece"
+		piece_id_input.editable = true
+		return
+
+	var piece_data = game_manager.get_custom_piece_by_id(pending_piece_id)
+	if piece_data.is_empty():
+		message_label.text = "The selected custom piece no longer exists."
+		return
+
+	is_editing_piece_mode = true
+	editing_piece_id = pending_piece_id
+	title_label.text = "Edit Piece %s" % str(piece_data.get("name", pending_piece_id))
+	save_piece_button.text = "Save Changes"
+	piece_name_input.text = str(piece_data.get("name", pending_piece_id))
+	piece_id_input.text = str(piece_data.get("id", pending_piece_id))
+	piece_id_input.editable = false
+	piece_strength_spin_box.value = float(piece_data.get("strength", 1))
+
+	movement_rules_by_key.clear()
+	for rule_data in piece_data.get("movement_rules", []):
+		var rule = _movement_rule_from_variant(rule_data)
+		if rule.is_empty():
+			continue
+		var offset: Vector2i = rule.get("offset", Vector2i.ZERO)
+		var kind = str(rule.get("kind", MOVE_KIND_JUMP))
+		var capture_mode = str(rule.get("capture_mode", CAPTURE_MODE_ANY))
+		var initial_only = bool(rule.get("initial_only", false))
+		var slide_scope = str(rule.get("slide_scope", SLIDE_SCOPE_INFINITE))
+		var key = _build_movement_rule_key(kind, offset, capture_mode, initial_only, slide_scope)
+		movement_rules_by_key[key] = {
+			"x": offset.x,
+			"y": offset.y,
+			"kind": kind,
+			"capture_mode": capture_mode,
+			"initial_only": initial_only,
+			"slide_scope": slide_scope
+		}
+
+	var path_strokes = piece_data.get("path_strokes", [])
+	call_deferred("_load_path_strokes_deferred", path_strokes)
+	message_label.text = ""
+
+func _load_path_strokes_deferred(path_strokes: Array) -> void:
+	piece_path_canvas.set_normalized_strokes(path_strokes)
 	_refresh_movement_grid_buttons()
 
 func _build_movement_grid() -> void:
@@ -326,6 +382,8 @@ func _on_save_piece_button_pressed() -> void:
 	if piece_id == "":
 		message_label.text = "Piece ID is invalid."
 		return
+	if is_editing_piece_mode:
+		piece_id = editing_piece_id
 
 	if not piece_path_canvas.has_content():
 		message_label.text = "Draw the piece path first."
@@ -354,6 +412,7 @@ func _on_save_piece_button_pressed() -> void:
 		message_label.text = str(save_result.get("error", "Could not save piece."))
 		return
 
+	$"/root/GameManager".queue_custom_piece_for_edit("")
 	get_tree().change_scene_to_file("res://Scenes/ManagePieces.tscn")
 
 func _build_movement_data() -> Dictionary:

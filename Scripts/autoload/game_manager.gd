@@ -46,6 +46,7 @@ var TileColors = {
 	"dark": {"r": 0.41, "g": 0.41, "b": 0.41, "a": 1.0}
 }
 var PendingPresetName = ""
+var PendingCustomPieceEditId = ""
 var SavedPresets = {}
 var PieceBank = [
 	"pawn",
@@ -167,6 +168,14 @@ func queue_preset_for_edit(preset_name: String) -> void:
 func consume_pending_preset_for_edit() -> String:
 	var pending = PendingPresetName
 	PendingPresetName = ""
+	return pending
+
+func queue_custom_piece_for_edit(piece_id: String) -> void:
+	PendingCustomPieceEditId = piece_id.strip_edges()
+
+func consume_pending_custom_piece_for_edit() -> String:
+	var pending = PendingCustomPieceEditId
+	PendingCustomPieceEditId = ""
 	return pending
 
 func _load_saved_presets() -> void:
@@ -475,6 +484,13 @@ func get_custom_pieces() -> Array[Dictionary]:
 		var custom_piece_data: Dictionary = CustomPieces[custom_piece_id]
 		entries.append(custom_piece_data.duplicate(true))
 	return entries
+
+func get_custom_piece_by_id(piece_id: String) -> Dictionary:
+	var key = piece_id.strip_edges()
+	if key == "" or not CustomPieces.has(key):
+		return {}
+	var custom_piece_data: Dictionary = CustomPieces[key]
+	return custom_piece_data.duplicate(true)
 
 func save_custom_piece(source_data: Dictionary) -> Dictionary:
 	var normalized = _normalize_custom_piece_data(str(source_data.get("id", "")), source_data)
