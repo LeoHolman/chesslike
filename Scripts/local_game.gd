@@ -104,6 +104,8 @@ var local_player_side = "white"
 func _ready() -> void:
 	get_viewport().size_changed.connect(_on_viewport_resized)
 	_setup_online_match_state()
+	if OS.is_debug_build():
+		_debug_validate_history_entry_owner_parsing()
 	_initialize_board_state()
 	_ensure_promotion_picker()
 	_build_board()
@@ -986,13 +988,32 @@ func _draw_move_history_panel() -> void:
 
 func _history_entry_owner(entry_index: int, entry_line: String) -> String:
 	var lower_line = entry_line.to_lower()
-	if lower_line.find("player 2") != -1:
-		return "black"
-	if lower_line.find("player 1") != -1:
+	var mover_segment = lower_line
+	var delimiter_index = lower_line.find("|")
+	if delimiter_index != -1:
+		mover_segment = lower_line.substr(0, delimiter_index)
+	if mover_segment.find("player 1") != -1:
 		return "white"
+	if mover_segment.find("player 2") != -1:
+		return "black"
 	if lower_line == "no moves yet":
 		return "white"
 	return "white" if entry_index % 2 == 0 else "black"
+
+func _debug_validate_history_entry_owner_parsing() -> void:
+	var fixtures = [
+		{"line": "Player 1 | P e2 -> e4", "expected": "white"},
+		{"line": "Player 2 | N g8 -> f6", "expected": "black"},
+		{"line": "Player 1 | B c4 x f7 (Player 2 P)", "expected": "white"},
+		{"line": "Player 2 | Q h4 x e1 (Player 1 K)", "expected": "black"},
+		{"line": "No moves yet", "expected": "white"}
+	]
+	for fixture in fixtures:
+		var line = str(fixture.get("line", ""))
+		var expected = str(fixture.get("expected", "white"))
+		var actual = _history_entry_owner(0, line)
+		if actual != expected:
+			push_warning("History owner parse regression for line '%s': expected %s, got %s" % [line, expected, actual])
 
 func _high_contrast_text_color(background: Color) -> Color:
 	if _color_luma(background) < 0.5:
