@@ -2515,11 +2515,11 @@ func _refresh_preview(_value: float = 0.0) -> void:
 	_draw_preview_selection()
 	_draw_preview_pieces()
 	_draw_preview_ghost()
-	_draw_piece_bank_drag_preview()
 	_draw_preview_drop_pools(board_pixel_size)
 	_clamp_preview_spell_hands_to_rules()
 	_draw_preview_spell_hands(board_pixel_size)
 	_draw_preview_zone_legend(board_pixel_size)
+	_draw_piece_bank_drag_preview()
 	_update_preview_rule_dependencies()
 
 func _preview_side_panel_width() -> float:
@@ -2867,8 +2867,6 @@ func _draw_preview_ghost() -> void:
 
 func _draw_piece_bank_drag_preview() -> void:
 	if not dragging_piece_bank_piece:
-		return
-	if not Rect2(Vector2.ZERO, board_preview.size).has_point(piece_bank_drag_preview_position):
 		return
 
 	var drag_piece = _create_preview_piece_node(
@@ -3412,7 +3410,7 @@ func _on_piece_bank_gui_input(event: InputEvent) -> void:
 			dragging_piece_bank_piece = true
 			piece_bank_drag_piece_id = str(game_manager.PieceBank[selected_index])
 			piece_bank_drag_piece_color = selected_piece_color
-			piece_bank_drag_preview_position = board_preview.get_local_mouse_position()
+			piece_bank_drag_preview_position = _preview_mouse_local_position()
 			preview_drop_pool_hover_owner = _preview_drop_pool_side_at_position(piece_bank_drag_preview_position)
 			_refresh_preview()
 		else:
@@ -3422,7 +3420,7 @@ func _input(event: InputEvent) -> void:
 	if not dragging_piece_bank_piece:
 		return
 	if event is InputEventMouseMotion:
-		piece_bank_drag_preview_position = board_preview.get_local_mouse_position()
+		piece_bank_drag_preview_position = _preview_mouse_local_position()
 		preview_drop_pool_hover_owner = _preview_drop_pool_side_at_position(piece_bank_drag_preview_position)
 		_refresh_preview()
 		return
@@ -3432,12 +3430,29 @@ func _input(event: InputEvent) -> void:
 func _try_commit_piece_bank_drop() -> void:
 	if not dragging_piece_bank_piece:
 		return
-	var mouse_position = board_preview.get_local_mouse_position()
+	var mouse_position = _preview_mouse_local_position()
 	var target_pool = _preview_drop_pool_side_at_position(mouse_position)
+	var dropped = false
 	if target_pool != "":
 		_add_piece_to_preview_drop_pool(target_pool, piece_bank_drag_piece_id, true)
+		dropped = true
+	else:
+		var target_square = _preview_position_to_square(mouse_position)
+		if target_square != INVALID_SQUARE and _can_place_preview_piece(target_square, piece_bank_drag_piece_id, piece_bank_drag_piece_color):
+			preview_pieces[target_square] = {
+				"piece_id": piece_bank_drag_piece_id,
+				"color": piece_bank_drag_piece_color
+			}
+			selected_preview_square = target_square
+			_clear_army_strength_warning()
+			dropped = true
 	_clear_piece_bank_drag_state()
+	if not dropped:
+		last_drag_square = INVALID_SQUARE
 	_refresh_preview()
+
+func _preview_mouse_local_position() -> Vector2:
+	return board_preview.get_global_transform_with_canvas().affine_inverse() * get_viewport().get_mouse_position()
 
 func _clear_piece_bank_drag_state() -> void:
 	dragging_piece_bank_piece = false
