@@ -100,6 +100,9 @@ var drop_piece_drag_position = Vector2.ZERO
 var drop_pool_hover_owner = ""
 var online_mode = false
 var local_player_side = "white"
+var export_feedback_serial = 0
+var export_feedback_popup: AcceptDialog
+var export_file_dialog: FileDialog
 
 func _ready() -> void:
 	get_viewport().size_changed.connect(_on_viewport_resized)
@@ -985,6 +988,112 @@ func _draw_move_history_panel() -> void:
 		line_label.add_theme_color_override("font_color", _high_contrast_text_color(row_background))
 		line_label.add_theme_constant_override("outline_size", 0)
 		row_panel.add_child(line_label)
+
+	_draw_export_move_history_button(panel_position, panel_size)
+
+func _draw_export_move_history_button(history_panel_position: Vector2, history_panel_size: Vector2) -> void:
+	var viewport_size = get_viewport_rect().size
+	var button_height = clampf(tile_size * 0.5, 28.0, 38.0)
+	var button_width = clampf(history_panel_size.x * 0.86, 140.0, history_panel_size.x)
+	var button = Button.new()
+	button.text = "Export Move History"
+	button.size = Vector2(button_width, button_height)
+	button.position = Vector2(
+		history_panel_position.x + history_panel_size.x - button_width,
+		min(
+			history_panel_position.y + history_panel_size.y + 8.0,
+			viewport_size.y - button_height - TURN_INDICATOR_PADDING
+		)
+	)
+	button.pressed.connect(_on_export_move_history_pressed)
+	add_child(button)
+
+func _on_export_move_history_pressed() -> void:
+	_ensure_export_file_dialog()
+	if export_file_dialog == null:
+		_show_export_feedback("Export failed: could not open file picker.")
+		return
+	var timestamp = Time.get_datetime_string_from_system(false).replace(":", "-").replace(" ", "_")
+	export_file_dialog.current_file = "move_history_%s.txt" % timestamp
+	export_file_dialog.popup_centered_ratio(0.75)
+
+func _on_export_move_history_file_selected(path: String) -> void:
+	var selected_path = path.strip_edges()
+	if selected_path == "":
+		_show_export_feedback("Export failed: no file path selected.")
+		return
+	if selected_path.get_extension().to_lower() != "txt":
+		selected_path += ".txt"
+
+	var export_file = FileAccess.open(selected_path, FileAccess.WRITE)
+	if export_file == null:
+		_show_export_feedback("Export failed: could not write %s" % selected_path)
+		return
+
+	export_file.store_line("Chesslike Move History")
+	export_file.store_line("Exported: %s" % Time.get_datetime_string_from_system())
+	export_file.store_line("")
+	if move_history.is_empty():
+		export_file.store_line("No moves yet")
+		_show_export_feedback("Move history exported to: %s" % selected_path)
+		return
+	for index in range(move_history.size()):
+		export_file.store_line("%d. %s" % [index + 1, move_history[index]])
+	_show_export_feedback("Move history exported to: %s" % selected_path)
+
+func _show_export_feedback(message: String) -> void:
+	_ensure_export_feedback_popup()
+	if export_feedback_popup == null:
+		push_warning(message)
+		return
+	export_feedback_serial += 1
+	var serial = export_feedback_serial
+	export_feedback_popup.title = "Export Failed" if message.begins_with("Export failed") else "Move History Export"
+	export_feedback_popup.dialog_text = message
+	export_feedback_popup.popup_centered(Vector2i(620, 130))
+	_hide_export_feedback_after_delay(serial)
+
+func _hide_export_feedback_after_delay(serial: int) -> void:
+	await get_tree().create_timer(5.0).timeout
+	if serial != export_feedback_serial:
+		return
+	if export_feedback_popup != null and export_feedback_popup.visible:
+		export_feedback_popup.hide()
+
+func _ensure_export_feedback_popup() -> void:
+	if export_feedback_popup != null:
+		return
+	if promotion_picker_layer == null:
+		_ensure_promotion_picker()
+	if promotion_picker_layer == null:
+		return
+	export_feedback_popup = AcceptDialog.new()
+	export_feedback_popup.dialog_text = ""
+	export_feedback_popup.exclusive = false
+	var ok_button = export_feedback_popup.get_ok_button()
+	if ok_button != null:
+		ok_button.text = "OK"
+	promotion_picker_layer.add_child(export_feedback_popup)
+
+func _ensure_export_file_dialog() -> void:
+	if export_file_dialog != null:
+		return
+	if promotion_picker_layer == null:
+		_ensure_promotion_picker()
+	if promotion_picker_layer == null:
+		return
+	export_file_dialog = FileDialog.new()
+	export_file_dialog.file_mode = FileDialog.FILE_MODE_SAVE_FILE
+	export_file_dialog.access = FileDialog.ACCESS_FILESYSTEM
+	export_file_dialog.title = "Export Move History"
+	export_file_dialog.filters = PackedStringArray(["*.txt ; Text Files"])
+	var user_dir = DirAccess.open("user://")
+	if user_dir != null:
+		user_dir.make_dir_recursive("exports")
+	var default_export_dir = ProjectSettings.globalize_path("user://exports")
+	export_file_dialog.current_dir = default_export_dir
+	export_file_dialog.file_selected.connect(_on_export_move_history_file_selected)
+	promotion_picker_layer.add_child(export_file_dialog)
 
 func _history_entry_owner(entry_index: int, entry_line: String) -> String:
 	var lower_line = entry_line.to_lower()

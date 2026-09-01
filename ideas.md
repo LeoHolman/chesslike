@@ -1,6 +1,5 @@
 # Ideas
 1. Add special rule for spell cards
-1. export move history
 1. piece stacking like Gungi
     1. pieces can stack upon one another
     1. stacking a piece increases its movement
