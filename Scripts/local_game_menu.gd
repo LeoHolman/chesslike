@@ -2,6 +2,7 @@ extends Control
 
 @onready var width_spin_box: SpinBox = $OptionsScroll/OptionsContent/WidthSpinBox
 @onready var height_spin_box: SpinBox = $OptionsScroll/OptionsContent/HeightSpinBox
+@onready var options_scroll: ScrollContainer = $OptionsScroll
 @onready var local_game_title: Label = $OptionsScroll/OptionsContent/LocalGameTitle
 @onready var back_to_main_menu_button: Button = $BackToMainMenuButton
 @onready var start_game_button: Button = $StartGameButton
@@ -72,10 +73,136 @@ const PREVIEW_DROP_POOL_BORDER = Color(0.82, 0.85, 0.92, 0.95)
 const PREVIEW_WHITE_DROP_POOL_HOVER_BACKGROUND = Color(0.26, 0.36, 0.56, 0.92)
 const PREVIEW_BLACK_DROP_POOL_HOVER_BACKGROUND = Color(0.46, 0.24, 0.24, 0.92)
 const PREVIEW_SPELL_HAND_BORDER = Color(0.92, 0.95, 1.0, 0.95)
+const NAV_BUTTON_ACTIVE_COLOR = Color(0.18, 0.30, 0.45, 1.0)
+const NAV_BUTTON_INACTIVE_COLOR = Color(0.12, 0.12, 0.14, 1.0)
+const NAV_BUTTON_TEXT_COLOR = Color(0.94, 0.96, 1.0, 1.0)
+const NAV_BUTTON_ACTIVE_TEXT_COLOR = Color(1.0, 1.0, 1.0, 1.0)
+const RULE_BUTTON_ON_COLOR = Color(0.15, 0.38, 0.22, 1.0)
+const RULE_BUTTON_OFF_COLOR = Color(0.34, 0.19, 0.16, 1.0)
+const RULE_BUTTON_SELECTED_OUTLINE = Color(0.96, 0.84, 0.54, 1.0)
+const RULE_BUTTON_DISABLED_COLOR = Color(0.22, 0.22, 0.22, 1.0)
+const PAGE_ANIMATION_DURATION = 0.16
+const SECTION_BUTTON_VERTICAL_PADDING = 10.0
+const SECTION_CONTENT_TOP_GAP = 14.0
+const SECTION_CONTENT_PANEL_HEIGHT = 1860.0
+const SECTION_CONTENT_BOTTOM_PADDING = 36.0
+const SPECIAL_RULE_BUTTON_VERTICAL_PADDING = 8.0
 const PRESETS = {
 	"Standard Chess": "standard_chess",
 	"Standard Shogi": "standard_shogi",
 	"Gungi": "gungi"
+}
+const SECTION_ORDER: Array[String] = [
+	"board",
+	"pieces",
+	"presets",
+	"victory",
+	"special_rules",
+	"colors"
+]
+const SECTION_LABELS = {
+	"board": "Board Setup",
+	"pieces": "Available Pieces",
+	"presets": "Presets",
+	"victory": "Victory Condition",
+	"special_rules": "Special Rules",
+	"colors": "Colors"
+}
+const SECTION_ICONS = {
+	"board": "▦",
+	"pieces": "♞",
+	"presets": "▤",
+	"victory": "⚑",
+	"special_rules": "◇",
+	"colors": "◌"
+}
+const SECTION_HELPERS = {
+	"board": "Choose the board dimensions before arranging anything else.",
+	"pieces": "Pick from the available piece bank, then place pieces on the preview board.",
+	"presets": "Load, save, and manage reusable game setups.",
+	"victory": "Set the win condition that defines how the match ends.",
+	"special_rules": "Select a rule card to toggle it and reveal its related options.",
+	"colors": "Tune player and tile colors to match the mood of the variant."
+}
+const SECTION_NODE_NAMES = {
+	"board": ["BoardSizeTitleBackground", "BoardSizeTitle", "BoardWidth", "WidthSpinBox", "BoardHeight", "HeightSpinBox", "PreviewInstructions"],
+	"pieces": ["PieceBankTitleBackground", "PieceBankTitle", "PieceBankList", "PieceColorLabelBackground", "PieceColorLabel", "PieceColorOption"],
+	"presets": ["PresetsTitleBackground", "PresetsTitle", "PresetList", "PresetNameInput", "SavePresetButton", "DeletePresetButton"],
+	"victory": ["VictoryConditionTitleBackground", "VictoryConditionTitle", "VictoryConditionOption", "VictoryConditionDescription"],
+	"special_rules": ["SpecialRulesTitleBackground", "SpecialRulesTitle", "SpecialRuleButtonBox"],
+	"colors": ["PlayerColorsTitleBackground", "PlayerColorsTitle", "Player1ColorLabel", "Player1ColorButton", "Player2ColorLabel", "Player2ColorButton", "TileColorsTitleBackground", "TileColorsTitle", "LightTileColorLabel", "LightTileColorButton", "DarkTileColorLabel", "DarkTileColorButton"]
+}
+const SPECIAL_RULE_ORDER: Array[String] = [
+	"allow_undo",
+	"castling",
+	"en_passant",
+	"promotion",
+	"piece_dropping",
+	"piece_stacking",
+	"enable_territory",
+	"enable_muster",
+	"limit_army_strength",
+	"enable_spell_cards"
+]
+const SPECIAL_RULE_LABELS = {
+	"allow_undo": "Undo",
+	"castling": "Castling",
+	"en_passant": "En Passant",
+	"promotion": "Promotion",
+	"piece_dropping": "Piece Dropping",
+	"piece_stacking": "Stacking",
+	"enable_territory": "Territory",
+	"enable_muster": "Muster",
+	"limit_army_strength": "Army Cap",
+	"enable_spell_cards": "Spell Cards"
+}
+const SPECIAL_RULE_ICONS = {
+	"allow_undo": "↺",
+	"castling": "♖",
+	"en_passant": "⇄",
+	"promotion": "↑",
+	"piece_dropping": "↓",
+	"piece_stacking": "▥",
+	"enable_territory": "⌂",
+	"enable_muster": "◈",
+	"limit_army_strength": "≡",
+	"enable_spell_cards": "✦"
+}
+const SPECIAL_RULE_HELPERS = {
+	"allow_undo": "Allow players to rewind the last action locally.",
+	"castling": "Enable standard king-rook castling when the board setup supports it.",
+	"en_passant": "Allow the special pawn capture after a two-square advance.",
+	"promotion": "Configure promotion zones and which pieces promotion can become.",
+	"piece_dropping": "Allow pieces from pools to be dropped back onto the board.",
+	"piece_stacking": "Enable stack-based movement growth and same/lower-level stacking rules.",
+	"enable_territory": "Restrict certain setup actions to each side's home territory.",
+	"enable_muster": "Start with an empty board and deploy pieces through the muster phase.",
+	"limit_army_strength": "Cap the total strength a side may field across board and pool.",
+	"enable_spell_cards": "Enable spell-card hands and configure how cards are dealt and assigned."
+}
+const SPECIAL_RULE_NODE_NAMES = {
+	"allow_undo": ["AllowUndoCheckBox"],
+	"castling": ["CastlingCheckBox", "CastlingSupportHintBackground", "CastlingSupportHint"],
+	"en_passant": ["EnPassantCheckBox"],
+	"promotion": ["PromotionCheckBox", "PromotionZonesTitleBackground", "PromotionZonesTitle", "Player1PromotionZoneLabel", "Player1PromotionZoneSpinBox", "Player2PromotionZoneLabel", "Player2PromotionZoneSpinBox", "PromotionPiecesTitleBackground", "PromotionPiecesTitle", "PromotionPiecesScroll"],
+	"piece_dropping": ["PieceDroppingCheckBox", "CaptureToDropPoolCheckBox"],
+	"piece_stacking": ["PieceStackingCheckBox"],
+	"enable_territory": ["EnableTerritoryCheckBox", "TerritoryRowsLabel", "TerritoryRowsSpinBox"],
+	"enable_muster": ["EnableMusterCheckBox", "TerritoryRowsLabel", "TerritoryRowsSpinBox"],
+	"limit_army_strength": ["LimitArmyStrengthCheckBox", "UnbalancedArmiesCheckBox", "ArmyStrengthCapLabel", "ArmyStrengthCapSpinBox", "WhiteArmyStrengthCapLabel", "WhiteArmyStrengthCapSpinBox", "BlackArmyStrengthCapLabel", "BlackArmyStrengthCapSpinBox", "ArmyStrengthWarningLabel"],
+	"enable_spell_cards": ["SpellCardsTitleBackground", "SpellCardsTitle", "EnableSpellCardsCheckBox", "SpellHandSizeLabel", "SpellHandSizeSpinBox", "SpellUnbalancedHandSizesCheckBox", "SpellHandSizeWhiteLabel", "SpellHandSizeWhiteSpinBox", "SpellHandSizeBlackLabel", "SpellHandSizeBlackSpinBox", "RandomSpellCardsCheckBox", "SpellAllowDuplicatesCheckBox", "SpellDrawReplacementAfterCastCheckBox", "SpellAssignCardLabel", "SpellAssignCardOption", "SpellCardsHintLabel", "AvailableSpellCardsTitleBackground", "AvailableSpellCardsTitle", "AvailableSpellCardsScroll"]
+}
+const SPECIAL_RULE_SUBOPTION_NODE_NAMES = {
+	"allow_undo": [],
+	"castling": [],
+	"en_passant": [],
+	"promotion": ["Player1PromotionZoneSpinBox", "Player2PromotionZoneSpinBox", "PromotionPiecesScroll"],
+	"piece_dropping": ["CaptureToDropPoolCheckBox"],
+	"piece_stacking": [],
+	"enable_territory": ["TerritoryRowsSpinBox"],
+	"enable_muster": ["TerritoryRowsSpinBox"],
+	"limit_army_strength": ["UnbalancedArmiesCheckBox", "ArmyStrengthCapSpinBox", "WhiteArmyStrengthCapSpinBox", "BlackArmyStrengthCapSpinBox"],
+	"enable_spell_cards": ["SpellHandSizeSpinBox", "SpellUnbalancedHandSizesCheckBox", "SpellHandSizeWhiteSpinBox", "SpellHandSizeBlackSpinBox", "RandomSpellCardsCheckBox", "SpellAllowDuplicatesCheckBox", "SpellDrawReplacementAfterCastCheckBox", "SpellAssignCardOption", "AvailableSpellCardsScroll"]
 }
 
 var selected_piece_id = ""
@@ -149,6 +276,21 @@ var enable_territory_check_box: CheckBox
 var enable_muster_check_box: CheckBox
 var territory_rows_label: Label
 var territory_rows_spin_box: SpinBox
+var section_button_box: FlowContainer
+var section_buttons: Dictionary = {}
+var active_section_id = "pieces"
+var navigation_helper_label: Label
+var section_content_panel: PanelContainer
+var section_content_root: VBoxContainer
+var section_pages: Dictionary = {}
+var section_layout_built = false
+var special_rule_button_box: FlowContainer
+var special_rule_buttons: Dictionary = {}
+var active_special_rule_id = "castling"
+var special_rule_helper_label: Label
+var special_rule_detail_title_label: Label
+var special_rule_content_root: VBoxContainer
+var special_rule_pages: Dictionary = {}
 var player_side_colors = {
 	"white": Color(1.0, 1.0, 1.0, 1.0),
 	"black": Color(0.08, 0.08, 0.08, 1.0)
@@ -173,10 +315,13 @@ func _ready() -> void:
 	_setup_tile_color_pickers()
 	_setup_victory_condition_picker()
 	_setup_special_rules()
+	_setup_section_navigation_ui()
+	resized.connect(_on_menu_resized)
 	_reset_preview_to_default(false, false)
 	_apply_pending_preset_selection()
 	_update_menu_title_for_mode()
 	_update_primary_action_for_mode()
+	_set_active_section(active_section_id)
 	_refresh_preview(0.0)
 
 func _update_menu_title_for_mode() -> void:
@@ -196,6 +341,746 @@ func _update_primary_action_for_mode() -> void:
 		return
 	start_game_button.text = "Start Game"
 	back_to_main_menu_button.visible = true
+
+func _setup_section_navigation_ui() -> void:
+	options_content.custom_minimum_size.y = max(options_content.custom_minimum_size.y, 2160.0)
+	_ensure_section_button_box()
+	_ensure_navigation_helper_label()
+	_ensure_section_content_panel()
+	_ensure_special_rule_button_box()
+	_build_container_layout()
+	call_deferred("_update_section_navigation_layout")
+	_refresh_section_button_states()
+	_refresh_special_rule_button_states()
+	call_deferred("_update_special_rule_button_layout")
+	_refresh_section_visibility()
+
+func _ensure_section_button_box() -> void:
+	if section_button_box != null:
+		return
+	var existing = options_content.get_node_or_null("SectionButtonBox")
+	if existing is FlowContainer:
+		section_button_box = existing
+	else:
+		var container = FlowContainer.new()
+		container.name = "SectionButtonBox"
+		container.layout_mode = 0
+		container.offset_left = 76.0
+		container.offset_top = 126.0
+		container.offset_right = 412.0
+		container.offset_bottom = 184.0
+		container.add_theme_constant_override("h_separation", 6)
+		container.add_theme_constant_override("v_separation", 6)
+		options_content.add_child(container)
+		section_button_box = container
+
+	section_buttons.clear()
+	for child in section_button_box.get_children():
+		child.queue_free()
+
+	for section_id in SECTION_ORDER:
+		var button = Button.new()
+		button.text = _icon_text(str(SECTION_ICONS.get(section_id, "")), str(SECTION_LABELS.get(section_id, section_id.capitalize())))
+		button.toggle_mode = true
+		button.focus_mode = Control.FOCUS_NONE
+		button.custom_minimum_size = Vector2(106.0, 36.0)
+		button.pressed.connect(_on_section_button_pressed.bind(section_id))
+		section_button_box.add_child(button)
+		section_buttons[section_id] = button
+
+func _ensure_navigation_helper_label() -> void:
+	if navigation_helper_label != null:
+		return
+	var existing = options_content.get_node_or_null("NavigationHelperLabel")
+	if existing is Label:
+		navigation_helper_label = existing
+		return
+	var helper_label = Label.new()
+	helper_label.name = "NavigationHelperLabel"
+	helper_label.layout_mode = 0
+	helper_label.offset_left = 76.0
+	helper_label.offset_top = 70.0
+	helper_label.offset_right = 412.0
+	helper_label.offset_bottom = 118.0
+	helper_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	helper_label.add_theme_font_size_override("font_size", 14)
+	helper_label.add_theme_color_override("font_color", Color(0.86, 0.9, 0.96, 1.0))
+	options_content.add_child(helper_label)
+	navigation_helper_label = helper_label
+
+func _ensure_section_content_panel() -> void:
+	if section_content_panel != null and section_content_root != null:
+		return
+	var existing_panel = options_content.get_node_or_null("SectionContentPanel")
+	if existing_panel is PanelContainer:
+		section_content_panel = existing_panel
+		section_content_root = existing_panel.get_node_or_null("SectionContentMargin/SectionContentRoot")
+		return
+	section_content_panel = PanelContainer.new()
+	section_content_panel.name = "SectionContentPanel"
+	section_content_panel.layout_mode = 0
+	section_content_panel.offset_left = 76.0
+	section_content_panel.offset_top = 240.0
+	section_content_panel.offset_right = 412.0
+	section_content_panel.offset_bottom = 2100.0
+	var panel_style = StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.07, 0.08, 0.1, 0.94)
+	panel_style.border_width_left = 2
+	panel_style.border_width_top = 2
+	panel_style.border_width_right = 2
+	panel_style.border_width_bottom = 2
+	panel_style.border_color = Color(0.27, 0.31, 0.37, 1.0)
+	panel_style.corner_radius_top_left = 12
+	panel_style.corner_radius_top_right = 12
+	panel_style.corner_radius_bottom_right = 12
+	panel_style.corner_radius_bottom_left = 12
+	section_content_panel.add_theme_stylebox_override("panel", panel_style)
+	options_content.add_child(section_content_panel)
+
+	var margin = MarginContainer.new()
+	margin.name = "SectionContentMargin"
+	margin.add_theme_constant_override("margin_left", 16)
+	margin.add_theme_constant_override("margin_top", 16)
+	margin.add_theme_constant_override("margin_right", 16)
+	margin.add_theme_constant_override("margin_bottom", 16)
+	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	section_content_panel.add_child(margin)
+
+	section_content_root = VBoxContainer.new()
+	section_content_root.name = "SectionContentRoot"
+	section_content_root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	section_content_root.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	section_content_root.add_theme_constant_override("separation", 14)
+	margin.add_child(section_content_root)
+
+func _ensure_special_rule_button_box() -> void:
+	if special_rule_button_box != null:
+		return
+	var existing = options_content.get_node_or_null("SpecialRuleButtonBox")
+	if existing is FlowContainer:
+		special_rule_button_box = existing
+	else:
+		var container = FlowContainer.new()
+		container.name = "SpecialRuleButtonBox"
+		container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		container.add_theme_constant_override("h_separation", 6)
+		container.add_theme_constant_override("v_separation", 6)
+		special_rule_button_box = container
+
+	special_rule_buttons.clear()
+	for child in special_rule_button_box.get_children():
+		child.queue_free()
+
+	for rule_id in SPECIAL_RULE_ORDER:
+		var button = Button.new()
+		button.text = _icon_text(str(SPECIAL_RULE_ICONS.get(rule_id, "")), str(SPECIAL_RULE_LABELS.get(rule_id, rule_id.capitalize())))
+		button.toggle_mode = true
+		button.focus_mode = Control.FOCUS_NONE
+		button.custom_minimum_size = Vector2(126.0, 36.0)
+		button.pressed.connect(_on_special_rule_button_pressed.bind(rule_id))
+		special_rule_button_box.add_child(button)
+		special_rule_buttons[rule_id] = button
+
+func _build_container_layout() -> void:
+	if section_layout_built:
+		return
+	_hide_unused_absolute_headers()
+	_build_section_pages()
+	section_layout_built = true
+
+func _hide_unused_absolute_headers() -> void:
+	for node_name in [
+		"BoardSizeTitleBackground", "BoardSizeTitle",
+		"PieceBankTitleBackground", "PieceBankTitle",
+		"PieceColorLabelBackground",
+		"PresetsTitleBackground", "PresetsTitle",
+		"SpecialRulesTitleBackground", "SpecialRulesTitle",
+		"VictoryConditionTitleBackground", "VictoryConditionTitle",
+		"PlayerColorsTitleBackground", "PlayerColorsTitle",
+		"TileColorsTitleBackground", "TileColorsTitle",
+		"SpellCardsTitleBackground", "SpellCardsTitle",
+		"AvailableSpellCardsTitleBackground", "AvailableSpellCardsTitle",
+		"PromotionZonesTitleBackground", "PromotionZonesTitle",
+		"PromotionPiecesTitleBackground", "PromotionPiecesTitle"
+	]:
+		var node = _find_option_node(node_name)
+		if node is CanvasItem:
+			node.visible = false
+
+func _build_section_pages() -> void:
+	section_pages.clear()
+	section_content_root.add_child(_build_board_section_page())
+	section_content_root.add_child(_build_pieces_section_page())
+	section_content_root.add_child(_build_presets_section_page())
+	section_content_root.add_child(_build_victory_section_page())
+	section_content_root.add_child(_build_special_rules_section_page())
+	section_content_root.add_child(_build_colors_section_page())
+
+func _make_section_page(section_id: String, title: String) -> VBoxContainer:
+	var page = VBoxContainer.new()
+	page.name = "%sPage" % section_id.capitalize()
+	page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	page.add_theme_constant_override("separation", 10)
+	var title_label = Label.new()
+	title_label.text = _icon_text(str(SECTION_ICONS.get(section_id, "")), title)
+	title_label.add_theme_font_size_override("font_size", 18)
+	title_label.add_theme_color_override("font_color", Color(1.0, 0.95, 0.84, 1.0))
+	page.add_child(title_label)
+	section_pages[section_id] = page
+	return page
+
+func _build_board_section_page() -> VBoxContainer:
+	var page = _make_section_page("board", "Board Setup")
+	page.add_child(_make_labeled_spin_row("BoardWidth", "WidthSpinBox", "BoardHeight", "HeightSpinBox"))
+	page.add_child(_layout_existing_control(_find_option_node("PreviewInstructions"), true))
+	return page
+
+func _build_pieces_section_page() -> VBoxContainer:
+	var page = _make_section_page("pieces", "Available Pieces")
+	page.add_child(_layout_existing_control(piece_bank_list, true, Vector2(0.0, 244.0)))
+	page.add_child(_make_labeled_row(_find_option_node("PieceColorLabel"), piece_color_option))
+	return page
+
+func _build_presets_section_page() -> VBoxContainer:
+	var page = _make_section_page("presets", "Presets")
+	page.add_child(_layout_existing_control(preset_list, true, Vector2(0.0, 176.0)))
+	page.add_child(_layout_existing_control(preset_name_input, true))
+	page.add_child(_make_button_row(_find_option_node("SavePresetButton"), _find_option_node("DeletePresetButton")))
+	return page
+
+func _build_victory_section_page() -> VBoxContainer:
+	var page = _make_section_page("victory", "Victory Condition")
+	page.add_child(_layout_existing_control(victory_condition_option, true))
+	page.add_child(_layout_existing_control(victory_condition_description, true))
+	return page
+
+func _build_special_rules_section_page() -> VBoxContainer:
+	var page = _make_section_page("special_rules", "Special Rules")
+	page.add_child(_layout_existing_control(special_rule_button_box, true))
+	var detail_title = Label.new()
+	detail_title.add_theme_font_size_override("font_size", 16)
+	detail_title.add_theme_color_override("font_color", Color(0.96, 0.9, 0.74, 1.0))
+	page.add_child(detail_title)
+	special_rule_detail_title_label = detail_title
+	var helper = Label.new()
+	helper.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	helper.add_theme_font_size_override("font_size", 13)
+	helper.add_theme_color_override("font_color", Color(0.82, 0.86, 0.92, 1.0))
+	page.add_child(helper)
+	special_rule_helper_label = helper
+	var detail_panel = PanelContainer.new()
+	detail_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var detail_style = StyleBoxFlat.new()
+	detail_style.bg_color = Color(0.11, 0.12, 0.15, 0.96)
+	detail_style.border_width_left = 1
+	detail_style.border_width_top = 1
+	detail_style.border_width_right = 1
+	detail_style.border_width_bottom = 1
+	detail_style.border_color = Color(0.27, 0.31, 0.38, 1.0)
+	detail_style.corner_radius_top_left = 10
+	detail_style.corner_radius_top_right = 10
+	detail_style.corner_radius_bottom_right = 10
+	detail_style.corner_radius_bottom_left = 10
+	detail_panel.add_theme_stylebox_override("panel", detail_style)
+	page.add_child(detail_panel)
+	var detail_margin = MarginContainer.new()
+	detail_margin.add_theme_constant_override("margin_left", 12)
+	detail_margin.add_theme_constant_override("margin_top", 12)
+	detail_margin.add_theme_constant_override("margin_right", 12)
+	detail_margin.add_theme_constant_override("margin_bottom", 12)
+	detail_panel.add_child(detail_margin)
+	special_rule_content_root = VBoxContainer.new()
+	special_rule_content_root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	special_rule_content_root.add_theme_constant_override("separation", 8)
+	detail_margin.add_child(special_rule_content_root)
+	_build_special_rule_pages()
+	return page
+
+func _build_colors_section_page() -> VBoxContainer:
+	var page = _make_section_page("colors", "Colors")
+	var player_title = Label.new()
+	player_title.text = _icon_text("◍", "Player Colors")
+	player_title.add_theme_font_size_override("font_size", 15)
+	page.add_child(player_title)
+	page.add_child(_make_button_row(_make_labeled_control(player1_color_button, "Player 1"), _make_labeled_control(player2_color_button, "Player 2")))
+	var tile_title = Label.new()
+	tile_title.text = _icon_text("▣", "Board Tile Colors")
+	tile_title.add_theme_font_size_override("font_size", 15)
+	page.add_child(tile_title)
+	page.add_child(_make_button_row(_make_labeled_control(light_tile_color_button, "Light Tiles"), _make_labeled_control(dark_tile_color_button, "Dark Tiles")))
+	return page
+
+func _build_special_rule_pages() -> void:
+	special_rule_pages.clear()
+	var undo_page = _make_rule_page()
+	undo_page.add_child(_layout_existing_control(allow_undo_check_box, true))
+	_register_special_rule_page("allow_undo", undo_page)
+
+	var castling_page = _make_rule_page()
+	castling_page.add_child(_layout_existing_control(castling_check_box, true))
+	castling_page.add_child(_layout_existing_control(castling_support_hint, true))
+	_register_special_rule_page("castling", castling_page)
+
+	var en_passant_page = _make_rule_page()
+	en_passant_page.add_child(_layout_existing_control(en_passant_check_box, true))
+	_register_special_rule_page("en_passant", en_passant_page)
+
+	var promotion_page = _make_rule_page()
+	promotion_page.add_child(_layout_existing_control(promotion_check_box, true))
+	promotion_page.add_child(_make_inline_heading("Promotion Zones"))
+	promotion_page.add_child(_make_labeled_row(player1_promotion_zone_label, player1_promotion_zone_spin_box))
+	promotion_page.add_child(_make_labeled_row(player2_promotion_zone_label, player2_promotion_zone_spin_box))
+	promotion_page.add_child(_make_inline_heading("Promotion Pieces"))
+	promotion_page.add_child(_layout_existing_control(promotion_pieces_list.get_parent(), true, Vector2(0.0, 220.0)))
+	_register_special_rule_page("promotion", promotion_page)
+
+	var dropping_page = _make_rule_page()
+	dropping_page.add_child(_layout_existing_control(piece_dropping_check_box, true))
+	dropping_page.add_child(_layout_existing_control(capture_to_drop_pool_check_box, true))
+	_register_special_rule_page("piece_dropping", dropping_page)
+
+	var stacking_page = _make_rule_page()
+	stacking_page.add_child(_layout_existing_control(piece_stacking_check_box, true))
+	_register_special_rule_page("piece_stacking", stacking_page)
+
+	var territory_page = _make_rule_page()
+	territory_page.add_child(_layout_existing_control(enable_territory_check_box, true))
+	territory_page.add_child(_layout_existing_control(enable_muster_check_box, true))
+	territory_page.add_child(_make_labeled_row(territory_rows_label, territory_rows_spin_box))
+	_register_special_rule_page("enable_territory", territory_page)
+	_register_special_rule_page("enable_muster", territory_page)
+
+	var army_page = _make_rule_page()
+	army_page.add_child(_layout_existing_control(limit_army_strength_check_box, true))
+	army_page.add_child(_layout_existing_control(unbalanced_armies_check_box, true))
+	army_page.add_child(_make_labeled_row(army_strength_cap_label, army_strength_cap_spin_box))
+	army_page.add_child(_make_labeled_row(white_army_strength_cap_label, white_army_strength_cap_spin_box))
+	army_page.add_child(_make_labeled_row(black_army_strength_cap_label, black_army_strength_cap_spin_box))
+	army_page.add_child(_layout_existing_control(army_strength_warning_label, true))
+	_register_special_rule_page("limit_army_strength", army_page)
+
+	var spell_page = _make_rule_page()
+	spell_page.add_child(_layout_existing_control(enable_spell_cards_check_box, true))
+	spell_page.add_child(_make_labeled_row(spell_hand_size_label, spell_hand_size_spin_box))
+	spell_page.add_child(_layout_existing_control(spell_unbalanced_hand_sizes_check_box, true))
+	spell_page.add_child(_make_labeled_row(spell_hand_size_white_label, spell_hand_size_white_spin_box))
+	spell_page.add_child(_make_labeled_row(spell_hand_size_black_label, spell_hand_size_black_spin_box))
+	spell_page.add_child(_layout_existing_control(random_spell_cards_check_box, true))
+	spell_page.add_child(_layout_existing_control(spell_allow_duplicates_check_box, true))
+	spell_page.add_child(_layout_existing_control(spell_draw_replacement_after_cast_check_box, true))
+	spell_page.add_child(_make_labeled_row(spell_assign_card_label, spell_assign_card_option))
+	spell_page.add_child(_layout_existing_control(spell_cards_hint_label, true))
+	spell_page.add_child(_make_inline_heading("Available Cards"))
+	spell_page.add_child(_layout_existing_control(available_spell_cards_scroll, true, Vector2(0.0, 214.0)))
+	_register_special_rule_page("enable_spell_cards", spell_page)
+
+func _make_rule_page() -> VBoxContainer:
+	var page = VBoxContainer.new()
+	page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	page.add_theme_constant_override("separation", 8)
+	if special_rule_content_root != null:
+		special_rule_content_root.add_child(page)
+	return page
+
+func _register_special_rule_page(rule_id: String, page: VBoxContainer) -> void:
+	special_rule_pages[rule_id] = page
+
+func _make_inline_heading(text: String) -> Label:
+	var label = Label.new()
+	label.text = _icon_text("•", text)
+	label.add_theme_font_size_override("font_size", 14)
+	label.add_theme_color_override("font_color", Color(0.94, 0.95, 0.98, 1.0))
+	return label
+
+func _icon_text(icon: String, text: String) -> String:
+	if icon == "":
+		return text
+	return "%s  %s" % [icon, text]
+
+func _layout_existing_control(node: Node, expand_width: bool, min_size: Vector2 = Vector2.ZERO) -> Control:
+	var control = node as Control
+	if control == null:
+		return Control.new()
+	if control.get_parent() != null:
+		control.get_parent().remove_child(control)
+	control.size_flags_horizontal = Control.SIZE_EXPAND_FILL if expand_width else Control.SIZE_SHRINK_BEGIN
+	if min_size != Vector2.ZERO:
+		control.custom_minimum_size = min_size
+	control.layout_mode = 2
+	control.offset_left = 0.0
+	control.offset_top = 0.0
+	control.offset_right = 0.0
+	control.offset_bottom = 0.0
+	return control
+
+func _make_labeled_row(label_node: Node, field_node: Node) -> HBoxContainer:
+	var row = HBoxContainer.new()
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_theme_constant_override("separation", 10)
+	var label = label_node as Control
+	var field = field_node as Control
+	if label != null:
+		if label.get_parent() != null:
+			label.get_parent().remove_child(label)
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		label.custom_minimum_size = Vector2(132.0, 0.0)
+		label.layout_mode = 2
+		label.offset_left = 0.0
+		label.offset_top = 0.0
+		label.offset_right = 0.0
+		label.offset_bottom = 0.0
+		row.add_child(label)
+	if field != null:
+		if field.get_parent() != null:
+			field.get_parent().remove_child(field)
+		field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		field.layout_mode = 2
+		field.offset_left = 0.0
+		field.offset_top = 0.0
+		field.offset_right = 0.0
+		field.offset_bottom = 0.0
+		row.add_child(field)
+	return row
+
+func _make_labeled_spin_row(left_label_name: StringName, left_field_name: StringName, right_label_name: StringName, right_field_name: StringName) -> HBoxContainer:
+	var row = HBoxContainer.new()
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_theme_constant_override("separation", 10)
+	row.add_child(_make_labeled_row(_find_option_node(String(left_label_name)), _find_option_node(String(left_field_name))))
+	row.add_child(_make_labeled_row(_find_option_node(String(right_label_name)), _find_option_node(String(right_field_name))))
+	return row
+
+func _make_button_row(left_node: Node, right_node: Node) -> HBoxContainer:
+	var row = HBoxContainer.new()
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_theme_constant_override("separation", 10)
+	for node in [left_node, right_node]:
+		var control = node as Control
+		if control == null:
+			continue
+		if control.get_parent() != null:
+			control.get_parent().remove_child(control)
+		control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		control.layout_mode = 2
+		control.offset_left = 0.0
+		control.offset_top = 0.0
+		control.offset_right = 0.0
+		control.offset_bottom = 0.0
+		row.add_child(control)
+	return row
+
+func _make_labeled_control(control: Control, label_text: String) -> VBoxContainer:
+	var box = VBoxContainer.new()
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var label = Label.new()
+	label.text = label_text
+	box.add_child(label)
+	if control.get_parent() != null:
+		control.get_parent().remove_child(control)
+	control.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	control.layout_mode = 2
+	control.offset_left = 0.0
+	control.offset_top = 0.0
+	control.offset_right = 0.0
+	control.offset_bottom = 0.0
+	box.add_child(control)
+	return box
+
+func _on_section_button_pressed(section_id: String) -> void:
+	_set_active_section(section_id)
+
+func _set_active_section(section_id: String) -> void:
+	if not SECTION_ORDER.has(section_id):
+		return
+	var previous_section_id = active_section_id
+	active_section_id = section_id
+	preview_warning_label.visible = false
+	_refresh_section_button_states()
+	_refresh_section_visibility()
+	_animate_section_transition(previous_section_id, active_section_id)
+
+func _refresh_section_button_states() -> void:
+	for section_id in section_buttons.keys():
+		var button: Button = section_buttons[section_id]
+		button.button_pressed = str(section_id) == active_section_id
+		_style_section_button(button, str(section_id) == active_section_id)
+
+func _style_section_button(button: Button, is_active: bool) -> void:
+	button.add_theme_color_override("font_color", NAV_BUTTON_ACTIVE_TEXT_COLOR if is_active else NAV_BUTTON_TEXT_COLOR)
+	button.add_theme_color_override("font_focus_color", NAV_BUTTON_ACTIVE_TEXT_COLOR if is_active else NAV_BUTTON_TEXT_COLOR)
+	button.add_theme_color_override("font_hover_color", NAV_BUTTON_ACTIVE_TEXT_COLOR)
+	button.add_theme_color_override("font_pressed_color", NAV_BUTTON_ACTIVE_TEXT_COLOR)
+	button.add_theme_stylebox_override("normal", _make_tab_stylebox(NAV_BUTTON_ACTIVE_COLOR if is_active else NAV_BUTTON_INACTIVE_COLOR, RULE_BUTTON_SELECTED_OUTLINE if is_active else Color(0.28, 0.31, 0.38, 1.0), 12.0))
+	button.add_theme_stylebox_override("hover", _make_tab_stylebox(Color(0.21, 0.25, 0.31, 1.0), RULE_BUTTON_SELECTED_OUTLINE, 12.0))
+	button.add_theme_stylebox_override("pressed", _make_tab_stylebox(NAV_BUTTON_ACTIVE_COLOR, RULE_BUTTON_SELECTED_OUTLINE, 12.0))
+	button.add_theme_stylebox_override("focus", _make_tab_stylebox(NAV_BUTTON_ACTIVE_COLOR, RULE_BUTTON_SELECTED_OUTLINE, 12.0))
+
+func _make_tab_stylebox(fill: Color, border: Color, radius: float) -> StyleBoxFlat:
+	var style = StyleBoxFlat.new()
+	style.bg_color = fill
+	style.border_color = border
+	style.border_width_left = 2
+	style.border_width_top = 2
+	style.border_width_right = 2
+	style.border_width_bottom = 2
+	style.corner_radius_top_left = int(radius)
+	style.corner_radius_top_right = int(radius)
+	style.corner_radius_bottom_right = int(radius)
+	style.corner_radius_bottom_left = int(radius)
+	style.content_margin_left = 10.0
+	style.content_margin_right = 10.0
+	style.content_margin_top = 6.0
+	style.content_margin_bottom = 6.0
+	return style
+
+func _set_nodes_visible_by_name(node_names: Array, is_visible: bool) -> void:
+	for node_name in node_names:
+		var node = _find_option_node(str(node_name))
+		if node is CanvasItem:
+			node.visible = is_visible
+
+func _find_option_node(node_name: String) -> Node:
+	return options_content.find_child(node_name, true, false)
+
+func _refresh_section_visibility() -> void:
+	if navigation_helper_label != null:
+		navigation_helper_label.text = str(SECTION_HELPERS.get(active_section_id, ""))
+		call_deferred("_update_section_navigation_layout")
+	for section_id in section_pages.keys():
+		var page = section_pages[section_id] as VBoxContainer
+		if page != null:
+			page.visible = str(section_id) == active_section_id
+
+	if active_section_id == "special_rules":
+		_refresh_special_rule_visibility()
+
+	if options_scroll != null:
+		options_scroll.scroll_vertical = 0
+
+func _on_menu_resized() -> void:
+	call_deferred("_update_section_navigation_layout")
+
+func _update_section_navigation_layout() -> void:
+	if section_button_box == null or navigation_helper_label == null or section_content_panel == null:
+		return
+	var button_height = _measure_flow_container_height(section_button_box)
+	var button_top = section_button_box.offset_top
+	section_button_box.offset_bottom = button_top + button_height + SECTION_BUTTON_VERTICAL_PADDING * 2.0
+	var panel_top = section_button_box.offset_bottom + SECTION_CONTENT_TOP_GAP
+	section_content_panel.offset_top = panel_top
+	section_content_panel.offset_bottom = panel_top + SECTION_CONTENT_PANEL_HEIGHT
+	options_content.custom_minimum_size.y = max(options_content.custom_minimum_size.y, section_content_panel.offset_bottom + SECTION_CONTENT_BOTTOM_PADDING)
+	call_deferred("_update_special_rule_button_layout")
+
+func _update_special_rule_button_layout() -> void:
+	if special_rule_button_box == null:
+		return
+	var button_height = _measure_flow_container_height(special_rule_button_box)
+	special_rule_button_box.custom_minimum_size.y = button_height + SPECIAL_RULE_BUTTON_VERTICAL_PADDING * 2.0
+
+func _measure_flow_container_height(container: FlowContainer) -> float:
+	var available_width = _flow_container_available_width(container)
+	var h_separation = float(container.get_theme_constant("h_separation", "FlowContainer"))
+	var v_separation = float(container.get_theme_constant("v_separation", "FlowContainer"))
+	var current_row_width = 0.0
+	var current_row_height = 0.0
+	var total_height = 0.0
+	var row_count = 0
+	for child in container.get_children():
+		if not (child is Control):
+			continue
+		var control := child as Control
+		if not control.visible:
+			continue
+		var min_size = control.get_combined_minimum_size()
+		var child_width = min_size.x
+		var child_height = min_size.y
+		if row_count == 0:
+			row_count = 1
+		if current_row_width > 0.0 and current_row_width + h_separation + child_width > available_width:
+			total_height += current_row_height
+			total_height += v_separation
+			current_row_width = child_width
+			current_row_height = child_height
+			row_count += 1
+			continue
+		if current_row_width > 0.0:
+			current_row_width += h_separation
+		current_row_width += child_width
+		current_row_height = max(current_row_height, child_height)
+	if row_count == 0:
+		return 0.0
+	total_height += current_row_height
+	return total_height
+
+func _flow_container_available_width(container: FlowContainer) -> float:
+	var available_width = container.size.x
+	if available_width <= 1.0 and container.get_parent() is Control:
+		available_width = (container.get_parent() as Control).size.x
+	if available_width <= 1.0:
+		available_width = container.offset_right - container.offset_left
+	return max(available_width, 1.0)
+
+func _animate_section_transition(previous_section_id: String, next_section_id: String) -> void:
+	if navigation_helper_label != null:
+		navigation_helper_label.modulate = Color(1.0, 1.0, 1.0, 0.0)
+		var helper_tween = create_tween()
+		helper_tween.tween_property(navigation_helper_label, "modulate:a", 1.0, PAGE_ANIMATION_DURATION)
+	if previous_section_id == next_section_id:
+		var current_page = section_pages.get(next_section_id, null) as Control
+		if current_page != null:
+			_animate_page_in(current_page)
+		return
+	var next_page = section_pages.get(next_section_id, null) as Control
+	if next_page != null:
+		_animate_page_in(next_page)
+
+func _section_scroll_target(section_id: String) -> int:
+	return 0
+
+func _on_special_rule_button_pressed(rule_id: String) -> void:
+	var check_box = _special_rule_checkbox(rule_id)
+	if check_box != null and not check_box.disabled:
+		check_box.button_pressed = not check_box.button_pressed
+	var previous_rule_id = active_special_rule_id
+	active_special_rule_id = rule_id
+	_refresh_special_rule_button_states()
+	_refresh_special_rule_visibility()
+	_animate_rule_transition(previous_rule_id, active_special_rule_id)
+
+func _refresh_special_rule_button_states() -> void:
+	for rule_id in special_rule_buttons.keys():
+		var button: Button = special_rule_buttons[rule_id]
+		var enabled = false
+		var check_box = _special_rule_checkbox(str(rule_id))
+		var disabled = false
+		if check_box != null:
+			enabled = check_box.button_pressed
+			disabled = check_box.disabled
+		var title = _icon_text(str(SPECIAL_RULE_ICONS.get(rule_id, "")), str(SPECIAL_RULE_LABELS.get(rule_id, str(rule_id).capitalize())))
+		button.text = "%s | %s" % [title, "N/A" if disabled else ("ON" if enabled else "OFF")]
+		button.button_pressed = str(rule_id) == active_special_rule_id
+		_style_special_rule_button(button, enabled, str(rule_id) == active_special_rule_id, disabled)
+	call_deferred("_update_special_rule_button_layout")
+
+func _style_special_rule_button(button: Button, is_enabled: bool, is_active: bool, is_disabled: bool) -> void:
+	var fill = RULE_BUTTON_DISABLED_COLOR if is_disabled else (RULE_BUTTON_ON_COLOR if is_enabled else RULE_BUTTON_OFF_COLOR)
+	var text_color = Color(0.82, 0.82, 0.82, 1.0) if is_disabled else NAV_BUTTON_ACTIVE_TEXT_COLOR
+	button.add_theme_color_override("font_color", text_color)
+	button.add_theme_color_override("font_focus_color", text_color)
+	button.add_theme_color_override("font_hover_color", NAV_BUTTON_ACTIVE_TEXT_COLOR)
+	button.add_theme_color_override("font_pressed_color", NAV_BUTTON_ACTIVE_TEXT_COLOR)
+	button.add_theme_stylebox_override("normal", _make_tab_stylebox(fill, RULE_BUTTON_SELECTED_OUTLINE if is_active else Color(0.29, 0.30, 0.34, 1.0), 10.0))
+	button.add_theme_stylebox_override("hover", _make_tab_stylebox(fill.lightened(0.08), RULE_BUTTON_SELECTED_OUTLINE, 10.0))
+	button.add_theme_stylebox_override("pressed", _make_tab_stylebox(fill, RULE_BUTTON_SELECTED_OUTLINE, 10.0))
+	button.add_theme_stylebox_override("focus", _make_tab_stylebox(fill, RULE_BUTTON_SELECTED_OUTLINE, 10.0))
+
+func _special_rule_checkbox(rule_id: String) -> CheckBox:
+	match rule_id:
+		"allow_undo":
+			return allow_undo_check_box
+		"castling":
+			return castling_check_box
+		"en_passant":
+			return en_passant_check_box
+		"promotion":
+			return promotion_check_box
+		"piece_dropping":
+			return piece_dropping_check_box
+		"piece_stacking":
+			return piece_stacking_check_box
+		"enable_territory":
+			return enable_territory_check_box
+		"enable_muster":
+			return enable_muster_check_box
+		"limit_army_strength":
+			return limit_army_strength_check_box
+		"enable_spell_cards":
+			return enable_spell_cards_check_box
+		_:
+			return null
+
+func _refresh_special_rule_visibility() -> void:
+	if special_rule_detail_title_label != null:
+		special_rule_detail_title_label.text = _icon_text(str(SPECIAL_RULE_ICONS.get(active_special_rule_id, "")), str(SPECIAL_RULE_LABELS.get(active_special_rule_id, "Rule Details")))
+	if special_rule_helper_label != null:
+		special_rule_helper_label.text = str(SPECIAL_RULE_HELPERS.get(active_special_rule_id, ""))
+	for rule_id in special_rule_pages.keys():
+		var page = special_rule_pages[rule_id] as VBoxContainer
+		if page != null:
+			page.visible = str(rule_id) == active_special_rule_id
+
+	if active_special_rule_id == "castling":
+		_update_castling_rule_availability()
+	if active_special_rule_id == "promotion":
+		_update_promotion_piece_visibility()
+	if active_special_rule_id == "piece_dropping":
+		_update_piece_dropping_visibility()
+	if active_special_rule_id == "enable_spell_cards":
+		_update_spell_card_visibility()
+	if active_special_rule_id == "limit_army_strength":
+		_update_army_strength_limit_visibility()
+	if active_special_rule_id == "enable_territory" or active_special_rule_id == "enable_muster":
+		_update_territory_controls_visibility()
+
+	_apply_special_rule_suboption_enabled_state(active_special_rule_id)
+
+func _animate_rule_transition(previous_rule_id: String, next_rule_id: String) -> void:
+	if special_rule_helper_label != null:
+		special_rule_helper_label.modulate = Color(1.0, 1.0, 1.0, 0.0)
+		var helper_tween = create_tween()
+		helper_tween.tween_property(special_rule_helper_label, "modulate:a", 1.0, PAGE_ANIMATION_DURATION)
+	if special_rule_detail_title_label != null:
+		special_rule_detail_title_label.modulate = Color(1.0, 1.0, 1.0, 0.0)
+		var title_tween = create_tween()
+		title_tween.tween_property(special_rule_detail_title_label, "modulate:a", 1.0, PAGE_ANIMATION_DURATION)
+	if previous_rule_id == next_rule_id:
+		var current_page = special_rule_pages.get(next_rule_id, null) as Control
+		if current_page != null:
+			_animate_page_in(current_page)
+		return
+	var next_page = special_rule_pages.get(next_rule_id, null) as Control
+	if next_page != null:
+		_animate_page_in(next_page)
+
+func _animate_page_in(control: Control) -> void:
+	control.scale = Vector2(0.985, 0.985)
+	control.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	var tween = create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(control, "modulate:a", 1.0, PAGE_ANIMATION_DURATION)
+	tween.tween_property(control, "scale", Vector2.ONE, PAGE_ANIMATION_DURATION)
+
+func _set_control_interactive_state(node: Node, is_enabled: bool) -> void:
+	if node is Button:
+		(node as Button).disabled = not is_enabled
+		(node as Button).modulate = Color(1.0, 1.0, 1.0, 1.0) if is_enabled else Color(0.72, 0.72, 0.72, 1.0)
+		return
+	if node is OptionButton:
+		(node as OptionButton).disabled = not is_enabled
+		(node as OptionButton).modulate = Color(1.0, 1.0, 1.0, 1.0) if is_enabled else Color(0.72, 0.72, 0.72, 1.0)
+		return
+	if node is SpinBox:
+		(node as SpinBox).editable = is_enabled
+		(node as SpinBox).modulate = Color(1.0, 1.0, 1.0, 1.0) if is_enabled else Color(0.7, 0.7, 0.7, 1.0)
+		return
+	if node is ScrollContainer:
+		(node as ScrollContainer).mouse_filter = Control.MOUSE_FILTER_PASS if is_enabled else Control.MOUSE_FILTER_IGNORE
+		(node as ScrollContainer).modulate = Color(1.0, 1.0, 1.0, 1.0) if is_enabled else Color(0.7, 0.7, 0.7, 1.0)
+
+func _apply_special_rule_suboption_enabled_state(rule_id: String) -> void:
+	var check_box = _special_rule_checkbox(rule_id)
+	var is_enabled = check_box != null and check_box.button_pressed
+	var node_names: Array = SPECIAL_RULE_SUBOPTION_NODE_NAMES.get(rule_id, [])
+	for node_name in node_names:
+		var node = _find_option_node(str(node_name))
+		if node != null:
+			_set_control_interactive_state(node, is_enabled)
+
+func _refresh_special_rules_ui_state() -> void:
+	_refresh_special_rule_button_states()
+	if active_section_id == "special_rules":
+		_refresh_special_rule_visibility()
 
 func _on_board_dimension_changed(_value: float) -> void:
 	_update_promotion_zone_limits()
@@ -716,6 +1601,7 @@ func _on_spell_assign_card_selected(index: int) -> void:
 func _on_enable_spell_cards_toggled(_is_enabled: bool) -> void:
 	_update_spell_card_visibility()
 	_clamp_preview_spell_hands_to_rules()
+	_refresh_special_rules_ui_state()
 	_refresh_preview()
 
 func _on_spell_unbalanced_hand_sizes_toggled(_is_enabled: bool) -> void:
@@ -741,15 +1627,15 @@ func _on_spell_hand_size_value_changed(_value: float) -> void:
 
 func _update_promotion_piece_visibility() -> void:
 	var show_promotion_piece_pool = promotion_check_box.button_pressed
-	promotion_zones_title_background.visible = show_promotion_piece_pool
-	promotion_zones_title.visible = show_promotion_piece_pool
 	player1_promotion_zone_label.visible = show_promotion_piece_pool
 	player1_promotion_zone_spin_box.visible = show_promotion_piece_pool
 	player2_promotion_zone_label.visible = show_promotion_piece_pool
 	player2_promotion_zone_spin_box.visible = show_promotion_piece_pool
-	promotion_pieces_title_background.visible = show_promotion_piece_pool
-	promotion_pieces_title.visible = show_promotion_piece_pool
 	promotion_pieces_list.get_parent().visible = show_promotion_piece_pool
+	promotion_zones_title_background.visible = false
+	promotion_zones_title.visible = false
+	promotion_pieces_title_background.visible = false
+	promotion_pieces_title.visible = false
 
 func _build_promotion_zones() -> Dictionary:
 	return {
@@ -792,9 +1678,9 @@ func _update_spell_card_visibility() -> void:
 	random_spell_cards_check_box.visible = enabled
 	spell_allow_duplicates_check_box.visible = enabled
 	spell_draw_replacement_after_cast_check_box.visible = enabled and _is_random_spell_cards_enabled()
-	available_spell_cards_title_background.visible = enabled
-	available_spell_cards_title.visible = enabled
 	available_spell_cards_scroll.visible = enabled
+	available_spell_cards_title_background.visible = false
+	available_spell_cards_title.visible = false
 
 	var unbalanced = enabled and spell_unbalanced_hand_sizes_check_box.button_pressed
 	spell_hand_size_white_label.visible = unbalanced
@@ -813,12 +1699,11 @@ func _update_castling_rule_availability() -> void:
 	castling_check_box.disabled = not supports_castling
 	if supports_castling:
 		castling_support_hint.visible = false
-		castling_support_hint_background.visible = false
 		castling_check_box.button_pressed = castling_user_preference
 	else:
 		castling_support_hint.visible = true
-		castling_support_hint_background.visible = true
 		castling_check_box.button_pressed = false
+	castling_support_hint_background.visible = false
 	is_updating_castling_availability = false
 
 func _preview_supports_castling() -> bool:
@@ -837,9 +1722,11 @@ func _on_castling_rule_toggled(is_enabled: bool) -> void:
 	if castling_check_box.disabled:
 		return
 	castling_user_preference = is_enabled
+	_refresh_special_rules_ui_state()
 
 func _on_promotion_rule_toggled(_is_enabled: bool) -> void:
 	_update_promotion_piece_visibility()
+	_refresh_special_rules_ui_state()
 	_refresh_preview()
 
 func _on_promotion_zone_value_changed(_value: float) -> void:
@@ -848,13 +1735,16 @@ func _on_promotion_zone_value_changed(_value: float) -> void:
 
 func _on_piece_dropping_toggled(_is_enabled: bool) -> void:
 	_update_piece_dropping_visibility()
+	_refresh_special_rules_ui_state()
 	_refresh_preview()
 
 func _on_piece_stacking_toggled(_is_enabled: bool) -> void:
+	_refresh_special_rules_ui_state()
 	_refresh_preview()
 
 func _on_territory_controls_toggled(_is_enabled: bool) -> void:
 	_update_territory_controls_visibility()
+	_refresh_special_rules_ui_state()
 	_refresh_preview()
 
 func _on_territory_rows_value_changed(_value: float) -> void:
@@ -867,6 +1757,7 @@ func _on_limit_army_strength_toggled(is_enabled: bool) -> void:
 		_clear_army_strength_warning(true)
 	else:
 		_clear_army_strength_warning(true)
+	_refresh_special_rules_ui_state()
 	_refresh_preview()
 
 func _on_unbalanced_armies_toggled(_is_enabled: bool) -> void:
@@ -874,6 +1765,7 @@ func _on_unbalanced_armies_toggled(_is_enabled: bool) -> void:
 	if _is_army_strength_rule_enabled():
 		_ensure_army_strength_cap_meets_current_position()
 	_clear_army_strength_warning(true)
+	_refresh_special_rules_ui_state()
 	_refresh_preview()
 
 func _on_army_strength_cap_value_changed(_value: float) -> void:
@@ -927,6 +1819,7 @@ func _apply_special_rules(special_rules: Dictionary) -> void:
 	_update_piece_dropping_visibility()
 	_update_territory_controls_visibility()
 	_update_army_strength_limit_visibility()
+	_refresh_special_rules_ui_state()
 
 func _update_army_strength_limit_visibility() -> void:
 	var show_controls = limit_army_strength_check_box.button_pressed

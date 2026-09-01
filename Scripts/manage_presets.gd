@@ -5,23 +5,252 @@ const BUILTIN_PRESETS = {
 	"Standard Shogi": "standard_shogi",
 	"Gungi": "gungi"
 }
+const ACTION_BUTTON_FILL = Color(0.14, 0.15, 0.18, 1.0)
+const ACTION_BUTTON_BORDER = Color(0.30, 0.34, 0.40, 1.0)
+const ACTION_BUTTON_HIGHLIGHT = Color(0.94, 0.82, 0.56, 1.0)
 
+@onready var title_label: Label = $Title
 @onready var preset_list: ItemList = $PresetList
 @onready var rename_input: LineEdit = $RenameInput
+@onready var rename_button: Button = $RenameButton
+@onready var edit_button: Button = $EditButton
+@onready var delete_button: Button = $DeleteButton
+@onready var export_button: Button = $ExportButton
+@onready var import_preset_button: Button = $ImportPresetButton
+@onready var back_button: Button = $BackButton
 @onready var message_label: Label = $MessageLabel
 @onready var export_dialog: FileDialog = $ExportDialog
 @onready var import_dialog: FileDialog = $ImportDialog
 @onready var delete_confirm_dialog: ConfirmationDialog = $DeleteConfirmDialog
 
 var pending_delete_preset_name = ""
+var helper_label: Label
+var layout_panel: PanelContainer
 
 func _ready() -> void:
 	preset_list.item_selected.connect(_on_preset_selected)
 	export_dialog.file_selected.connect(_on_export_file_selected)
 	import_dialog.file_selected.connect(_on_import_file_selected)
 	delete_confirm_dialog.confirmed.connect(_on_delete_confirmed)
+	_setup_polished_layout()
 	_refresh_preset_list()
 	_message("Select a preset to manage.")
+
+func _setup_polished_layout() -> void:
+	title_label.text = _icon_text("▤", "Manage Presets")
+	title_label.add_theme_font_size_override("font_size", 26)
+	_ensure_helper_label()
+	_ensure_layout_panel()
+	_style_action_buttons()
+	_animate_layout_entry()
+
+func _ensure_helper_label() -> void:
+	if helper_label != null:
+		return
+	helper_label = Label.new()
+	helper_label.name = "HelperLabel"
+	helper_label.layout_mode = 0
+	helper_label.offset_left = 80.0
+	helper_label.offset_top = 82.0
+	helper_label.offset_right = 930.0
+	helper_label.offset_bottom = 122.0
+	helper_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	helper_label.text = "Browse built-in or custom presets, then rename, export, import, or jump into editing."
+	helper_label.add_theme_font_size_override("font_size", 14)
+	helper_label.add_theme_color_override("font_color", Color(0.84, 0.88, 0.94, 1.0))
+	add_child(helper_label)
+
+func _ensure_layout_panel() -> void:
+	if layout_panel != null:
+		return
+	layout_panel = PanelContainer.new()
+	layout_panel.name = "LayoutPanel"
+	layout_panel.layout_mode = 0
+	layout_panel.offset_left = 78.0
+	layout_panel.offset_top = 132.0
+	layout_panel.offset_right = 940.0
+	layout_panel.offset_bottom = 588.0
+	var panel_style = StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.08, 0.09, 0.11, 0.96)
+	panel_style.border_width_left = 2
+	panel_style.border_width_top = 2
+	panel_style.border_width_right = 2
+	panel_style.border_width_bottom = 2
+	panel_style.border_color = Color(0.27, 0.31, 0.37, 1.0)
+	panel_style.corner_radius_top_left = 14
+	panel_style.corner_radius_top_right = 14
+	panel_style.corner_radius_bottom_right = 14
+	panel_style.corner_radius_bottom_left = 14
+	layout_panel.add_theme_stylebox_override("panel", panel_style)
+	add_child(layout_panel)
+
+	var margin = MarginContainer.new()
+	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 18)
+	margin.add_theme_constant_override("margin_top", 18)
+	margin.add_theme_constant_override("margin_right", 18)
+	margin.add_theme_constant_override("margin_bottom", 18)
+	layout_panel.add_child(margin)
+
+	var root = HBoxContainer.new()
+	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	root.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	root.add_theme_constant_override("separation", 18)
+	margin.add_child(root)
+
+	root.add_child(_build_presets_column())
+	root.add_child(_build_actions_column())
+
+func _build_presets_column() -> VBoxContainer:
+	var column = VBoxContainer.new()
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	column.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	column.add_theme_constant_override("separation", 10)
+	column.add_child(_panel_heading("▤", "Preset Library"))
+	var list_panel = _make_inner_panel()
+	column.add_child(list_panel)
+	var list_margin = _make_panel_margin()
+	list_panel.add_child(list_margin)
+	if preset_list.get_parent() != null:
+		preset_list.get_parent().remove_child(preset_list)
+	preset_list.layout_mode = 2
+	preset_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	preset_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	preset_list.custom_minimum_size = Vector2(0.0, 344.0)
+	list_margin.add_child(preset_list)
+	return column
+
+func _build_actions_column() -> VBoxContainer:
+	var column = VBoxContainer.new()
+	column.custom_minimum_size = Vector2(340.0, 0.0)
+	column.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	column.add_theme_constant_override("separation", 10)
+	column.add_child(_panel_heading("✎", "Actions"))
+	var action_panel = _make_inner_panel()
+	column.add_child(action_panel)
+	var margin = _make_panel_margin()
+	action_panel.add_child(margin)
+	var content = VBoxContainer.new()
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content.add_theme_constant_override("separation", 10)
+	margin.add_child(content)
+
+	if rename_input.get_parent() != null:
+		rename_input.get_parent().remove_child(rename_input)
+	rename_input.layout_mode = 2
+	rename_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.add_child(rename_input)
+	content.add_child(_button_row(rename_button, edit_button))
+	content.add_child(_button_row(delete_button, export_button))
+	content.add_child(_button_row(import_preset_button, back_button))
+	if message_label.get_parent() != null:
+		message_label.get_parent().remove_child(message_label)
+	message_label.layout_mode = 2
+	message_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	message_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	message_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	message_label.custom_minimum_size = Vector2(0.0, 108.0)
+	content.add_child(_panel_heading("ℹ", "Status"))
+	content.add_child(message_label)
+	return column
+
+func _panel_heading(icon: String, text: String) -> Label:
+	var label = Label.new()
+	label.text = _icon_text(icon, text)
+	label.add_theme_font_size_override("font_size", 18)
+	label.add_theme_color_override("font_color", Color(0.98, 0.94, 0.83, 1.0))
+	return label
+
+func _make_inner_panel() -> PanelContainer:
+	var panel = PanelContainer.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.12, 0.13, 0.16, 1.0)
+	style.border_width_left = 1
+	style.border_width_top = 1
+	style.border_width_right = 1
+	style.border_width_bottom = 1
+	style.border_color = Color(0.25, 0.28, 0.34, 1.0)
+	style.corner_radius_top_left = 10
+	style.corner_radius_top_right = 10
+	style.corner_radius_bottom_right = 10
+	style.corner_radius_bottom_left = 10
+	panel.add_theme_stylebox_override("panel", style)
+	return panel
+
+func _make_panel_margin() -> MarginContainer:
+	var margin = MarginContainer.new()
+	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 12)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 12)
+	return margin
+
+func _button_row(left_button: Button, right_button: Button) -> HBoxContainer:
+	var row = HBoxContainer.new()
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_theme_constant_override("separation", 10)
+	for button in [left_button, right_button]:
+		if button.get_parent() != null:
+			button.get_parent().remove_child(button)
+		button.layout_mode = 2
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(button)
+	return row
+
+func _style_action_buttons() -> void:
+	rename_button.text = _icon_text("↺", "Rename")
+	edit_button.text = _icon_text("✎", "Edit")
+	delete_button.text = _icon_text("×", "Delete")
+	export_button.text = _icon_text("⇪", "Export")
+	import_preset_button.text = _icon_text("⇩", "Import Preset")
+	back_button.text = _icon_text("←", "Back to Main Menu")
+	for button in [rename_button, edit_button, delete_button, export_button, import_preset_button, back_button]:
+		button.custom_minimum_size = Vector2(0.0, 38.0)
+		button.add_theme_color_override("font_color", Color(0.95, 0.97, 1.0, 1.0))
+		button.add_theme_stylebox_override("normal", _button_style(ACTION_BUTTON_FILL, ACTION_BUTTON_BORDER))
+		button.add_theme_stylebox_override("hover", _button_style(ACTION_BUTTON_FILL.lightened(0.08), ACTION_BUTTON_HIGHLIGHT))
+		button.add_theme_stylebox_override("pressed", _button_style(ACTION_BUTTON_FILL, ACTION_BUTTON_HIGHLIGHT))
+		button.add_theme_stylebox_override("focus", _button_style(ACTION_BUTTON_FILL, ACTION_BUTTON_HIGHLIGHT))
+
+func _button_style(fill: Color, border: Color) -> StyleBoxFlat:
+	var style = StyleBoxFlat.new()
+	style.bg_color = fill
+	style.border_color = border
+	style.border_width_left = 2
+	style.border_width_top = 2
+	style.border_width_right = 2
+	style.border_width_bottom = 2
+	style.corner_radius_top_left = 10
+	style.corner_radius_top_right = 10
+	style.corner_radius_bottom_right = 10
+	style.corner_radius_bottom_left = 10
+	style.content_margin_left = 10.0
+	style.content_margin_right = 10.0
+	style.content_margin_top = 6.0
+	style.content_margin_bottom = 6.0
+	return style
+
+func _animate_layout_entry() -> void:
+	if helper_label != null:
+		helper_label.modulate = Color(1.0, 1.0, 1.0, 0.0)
+		var helper_tween = create_tween()
+		helper_tween.tween_property(helper_label, "modulate:a", 1.0, 0.16)
+	if layout_panel != null:
+		layout_panel.modulate = Color(1.0, 1.0, 1.0, 0.0)
+		layout_panel.scale = Vector2(0.99, 0.99)
+		var panel_tween = create_tween()
+		panel_tween.set_parallel(true)
+		panel_tween.tween_property(layout_panel, "modulate:a", 1.0, 0.16)
+		panel_tween.tween_property(layout_panel, "scale", Vector2.ONE, 0.16)
+
+func _icon_text(icon: String, text: String) -> String:
+	if icon == "":
+		return text
+	return "%s  %s" % [icon, text]
 
 func _refresh_preset_list() -> void:
 	preset_list.clear()
@@ -334,3 +563,6 @@ func _select_preset(target_name: String) -> void:
 
 func _message(value: String) -> void:
 	message_label.text = value
+	message_label.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	var tween = create_tween()
+	tween.tween_property(message_label, "modulate:a", 1.0, 0.12)
