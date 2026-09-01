@@ -19,6 +19,11 @@ static func ensure_atmospheric_background(root: Control, top_anchors: Vector4 = 
 	_ensure_background_layer(root, "GlowTop", 1, top_anchors, top_color)
 	_ensure_background_layer(root, "GlowBottom", 2, bottom_anchors, bottom_color)
 
+static func ensure_flat_background(root: Control, base_color: Color = Color(0.05, 0.06, 0.08, 1.0)) -> void:
+	_ensure_background_layer(root, "Background", 0, Vector4(0.0, 0.0, 1.0, 1.0), base_color)
+	_hide_background_layer(root, "GlowTop")
+	_hide_background_layer(root, "GlowBottom")
+
 static func panel_style(fill: Color, border: Color = PANEL_BORDER, radius: int = 14, border_width: int = 2) -> StyleBoxFlat:
 	var style = StyleBoxFlat.new()
 	style.bg_color = fill
@@ -130,3 +135,8 @@ static func _ensure_background_layer(root: Control, name: String, index: int, an
 	color_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	color_layer.color = color
 	root.move_child(color_layer, index)
+
+static func _hide_background_layer(root: Control, name: String) -> void:
+	var layer = root.get_node_or_null(name)
+	if layer is CanvasItem:
+		(layer as CanvasItem).visible = false

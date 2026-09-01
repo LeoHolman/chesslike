@@ -41,7 +41,7 @@ func _ready() -> void:
 func _setup_polished_layout() -> void:
 	title_label.text = _icon_text("▤", "Manage Presets")
 	UITheme.apply_title_text(title_label, 26)
-	UITheme.ensure_atmospheric_background(self)
+	UITheme.ensure_flat_background(self)
 	_ensure_helper_label()
 	_ensure_layout_panel()
 	_style_action_buttons()

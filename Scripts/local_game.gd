@@ -1,5 +1,7 @@
 extends Node2D
 
+const UITheme = preload("res://Scripts/ui_theme.gd")
+
 var WhiteTile = preload("res://Scenes/WhiteTile.tscn")
 var BlackTile = preload("res://Scenes/BlackTile.tscn")
 const BOARD_MARGIN_RATIO = 0.05
@@ -279,6 +281,7 @@ func _ensure_promotion_picker() -> void:
 	promotion_panel = PanelContainer.new()
 	promotion_panel.custom_minimum_size = Vector2(280.0, 250.0)
 	promotion_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	promotion_panel.add_theme_stylebox_override("panel", UITheme.panel_style(Color(0.10, 0.12, 0.15, 0.98)))
 	promotion_picker_root.add_child(promotion_panel)
 
 	var content = VBoxContainer.new()
@@ -288,7 +291,7 @@ func _ensure_promotion_picker() -> void:
 	promotion_title_label = Label.new()
 	promotion_title_label.text = "Promote Pawn"
 	promotion_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	promotion_title_label.add_theme_font_size_override("font_size", 20)
+	UITheme.apply_section_text(promotion_title_label, 20)
 	content.add_child(promotion_title_label)
 
 	promotion_options_container = VBoxContainer.new()
@@ -297,6 +300,7 @@ func _ensure_promotion_picker() -> void:
 
 	var cancel_button = Button.new()
 	cancel_button.text = "Cancel Move"
+	UITheme.apply_secondary_button_theme(cancel_button, 38.0, 14)
 	cancel_button.pressed.connect(_on_promotion_cancelled)
 	content.add_child(cancel_button)
 
@@ -332,6 +336,7 @@ func _rebuild_promotion_option_buttons() -> void:
 	for piece_id in promotion_piece_options:
 		var option_button = Button.new()
 		option_button.text = "%s %s" % [_get_piece_symbol(piece_id), piece_id.capitalize()]
+		UITheme.apply_button_theme(option_button, Color(0.21, 0.26, 0.40, 1.0), 36.0, 14)
 		option_button.pressed.connect(_on_promotion_option_selected.bind(piece_id))
 		promotion_options_container.add_child(option_button)
 		promotion_option_buttons[piece_id] = option_button
@@ -888,6 +893,7 @@ func _draw_back_to_main_menu_button() -> void:
 	button.position = Vector2(TURN_INDICATOR_PADDING, TURN_INDICATOR_PADDING + indicator_height + 8.0)
 	button.size = _hud_top_action_button_size()
 	button.text = "Back to Main Menu"
+	_style_hud_action_button(button, Color(0.14, 0.15, 0.18, 1.0))
 	button.pressed.connect(_on_back_to_main_menu_pressed)
 	add_child(button)
 
@@ -900,6 +906,7 @@ func _draw_undo_button() -> void:
 	button.position = Vector2(TURN_INDICATOR_PADDING, TURN_INDICATOR_PADDING + indicator_height + 8.0 + action_button_size.y + 8.0)
 	button.size = action_button_size
 	button.text = "Undo"
+	_style_hud_action_button(button, Color(0.18, 0.27, 0.38, 1.0))
 	button.disabled = undo_snapshots.is_empty() or promotion_pending
 	button.pressed.connect(_on_undo_button_pressed)
 	add_child(button)
@@ -918,8 +925,12 @@ func _draw_muster_pass_button() -> void:
 	button.position = Vector2(TURN_INDICATOR_PADDING, y_offset)
 	button.size = action_button_size
 	button.text = "Pass (Muster)"
+	_style_hud_action_button(button, Color(0.36, 0.28, 0.15, 1.0))
 	button.pressed.connect(_on_muster_pass_pressed)
 	add_child(button)
+
+func _style_hud_action_button(button: Button, fill: Color) -> void:
+	UITheme.apply_button_theme(button, fill, button.size.y, _hud_font_size(0.14, 11, 14))
 
 func _draw_zone_legend_panel() -> void:
 	if not _has_active_zone_rings():

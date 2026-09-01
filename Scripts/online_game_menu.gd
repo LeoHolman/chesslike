@@ -35,6 +35,7 @@ func _ready() -> void:
 	status_label.text = "Host a game, or join with your friend's public IP and port."
 
 func _apply_visual_style() -> void:
+	UITheme.ensure_flat_background(self)
 	title_label.text = "Online Game"
 	subtitle_label.text = "Host a lobby or join an existing one with an IP address and port."
 	connection_panel.add_theme_stylebox_override("panel", UITheme.panel_style(Color(0.10, 0.12, 0.15, 0.96)))

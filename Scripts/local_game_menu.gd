@@ -5,6 +5,7 @@ const UITheme = preload("res://Scripts/ui_theme.gd")
 @onready var width_spin_box: SpinBox = $OptionsScroll/OptionsContent/WidthSpinBox
 @onready var height_spin_box: SpinBox = $OptionsScroll/OptionsContent/HeightSpinBox
 @onready var options_scroll: ScrollContainer = $OptionsScroll
+@onready var preview_area: Panel = $PreviewArea
 @onready var local_game_title: Label = $OptionsScroll/OptionsContent/LocalGameTitle
 @onready var back_to_main_menu_button: Button = $BackToMainMenuButton
 @onready var start_game_button: Button = $StartGameButton
@@ -312,6 +313,7 @@ var board_tile_colors = {
 }
 
 func _ready() -> void:
+	_apply_scene_chrome_style()
 	width_spin_box.value_changed.connect(_on_board_dimension_changed)
 	height_spin_box.value_changed.connect(_on_board_dimension_changed)
 	board_preview.gui_input.connect(_on_board_preview_gui_input)
@@ -335,6 +337,18 @@ func _ready() -> void:
 	_update_primary_action_for_mode()
 	_set_active_section(active_section_id)
 	_refresh_preview(0.0)
+
+func _apply_scene_chrome_style() -> void:
+	UITheme.ensure_flat_background(self)
+	options_scroll.add_theme_stylebox_override("panel", UITheme.panel_style(Color(0.08, 0.09, 0.11, 0.95), UITheme.PANEL_BORDER, 12, 2))
+	preview_area.add_theme_stylebox_override("panel", UITheme.panel_style(Color(0.08, 0.09, 0.11, 0.95), UITheme.PANEL_BORDER, 14, 2))
+	if not local_game_title.text.begins_with("▦"):
+		local_game_title.text = _icon_text("▦", local_game_title.text)
+	UITheme.apply_title_text(local_game_title, 28)
+	preview_warning_label.add_theme_color_override("font_color", Color(1.0, 0.42, 0.42, 1.0))
+	preview_warning_label.add_theme_font_size_override("font_size", 20)
+	UITheme.apply_secondary_button_theme(back_to_main_menu_button, 38.0, 14)
+	UITheme.apply_button_theme(start_game_button, Color(0.16, 0.35, 0.28, 1.0), 38.0, 14)
 
 func _update_menu_title_for_mode() -> void:
 	if is_editing_preset_mode:
