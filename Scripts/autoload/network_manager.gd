@@ -174,6 +174,7 @@ func _build_match_config_from_game_manager() -> Dictionary:
 		"starting_spell_hands": game_manager.StartingSpellHands.duplicate(true),
 		"promotion_piece_pool": game_manager.PromotionPiecePool.duplicate(true),
 		"promotion_zones": game_manager.PromotionZones.duplicate(true),
+		"territory_rows": int(game_manager.TerritoryRows),
 		"victory_condition": str(game_manager.VictoryCondition),
 		"army_strength_cap": int(game_manager.ArmyStrengthCap),
 		"army_strength_cap_white": int(game_manager.ArmyStrengthCapWhite),
@@ -201,6 +202,7 @@ func _apply_match_config_to_game_manager(config: Dictionary) -> void:
 	game_manager.StartingSpellHands = game_manager.normalize_spell_card_hands(config.get("starting_spell_hands", game_manager.StartingSpellHands))
 	game_manager.PromotionPiecePool = config.get("promotion_piece_pool", game_manager.PromotionPiecePool).duplicate(true)
 	game_manager.PromotionZones = config.get("promotion_zones", game_manager.PromotionZones).duplicate(true)
+	game_manager.TerritoryRows = int(config.get("territory_rows", game_manager.TerritoryRows))
 	game_manager.VictoryCondition = str(config.get("victory_condition", game_manager.VictoryCondition))
 	game_manager.ArmyStrengthCap = int(config.get("army_strength_cap", game_manager.ArmyStrengthCap))
 	game_manager.ArmyStrengthCapWhite = int(config.get("army_strength_cap_white", game_manager.ArmyStrengthCapWhite))

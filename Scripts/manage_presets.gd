@@ -2,7 +2,8 @@ extends Control
 
 const BUILTIN_PRESETS = {
 	"Standard Chess": "standard_chess",
-	"Standard Shogi": "standard_shogi"
+	"Standard Shogi": "standard_shogi",
+	"Gungi": "gungi"
 }
 
 @onready var preset_list: ItemList = $PresetList
@@ -177,6 +178,49 @@ func _preset_config_by_name(preset_name: String) -> Dictionary:
 	return {}
 
 func _builtin_preset_config(preset_id: String) -> Dictionary:
+	if preset_id == "gungi":
+		return {
+			"width": 9,
+			"height": 9,
+			"pieces": [],
+			"drop_pools": {
+				"white": ["lance", "shogi_knight", "silver_general", "gold_general", "king", "gold_general", "silver_general", "shogi_knight", "lance", "rook", "bishop", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn"],
+				"black": ["lance", "shogi_knight", "silver_general", "gold_general", "king", "gold_general", "silver_general", "shogi_knight", "lance", "rook", "bishop", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn"]
+			},
+			"victory_condition": "checkmate",
+			"special_rules": {
+				"castling": false,
+				"en_passant": false,
+				"promotion": false,
+				"allow_undo": false,
+				"enable_spell_cards": false,
+				"piece_dropping": true,
+				"piece_stacking": true,
+				"enable_territory": true,
+				"enable_muster": true,
+				"capture_to_drop_pool": true,
+				"limit_army_strength": false,
+				"unbalanced_armies": false
+			},
+			"spell_cards": {
+				"hand_size": 0,
+				"unbalanced_hand_sizes": false,
+				"hand_size_white": 0,
+				"hand_size_black": 0,
+				"random_cards": true,
+				"allow_duplicates": true,
+				"draw_replacement_after_cast": false,
+				"available_cards": ["haste", "assassinate", "fortify", "teleport", "barrier"],
+				"starting_hands": {"white": [], "black": []}
+			},
+			"army_strength_cap": 32,
+			"army_strength_caps": {"white": 32, "black": 32},
+			"promotion_pieces": ["rook", "bishop", "silver_general", "gold_general", "lance", "shogi_knight", "shogi_pawn"],
+			"promotion_zones": {"white_rows": 3, "black_rows": 3},
+			"territory_rows": 3,
+			"player_colors": {},
+			"tile_colors": {}
+		}
 	if preset_id == "standard_shogi":
 		return {
 			"width": 9,
@@ -191,6 +235,9 @@ func _builtin_preset_config(preset_id: String) -> Dictionary:
 				"allow_undo": false,
 				"enable_spell_cards": false,
 				"piece_dropping": true,
+				"piece_stacking": false,
+				"enable_territory": false,
+				"enable_muster": false,
 				"capture_to_drop_pool": true,
 				"limit_army_strength": false,
 				"unbalanced_armies": false
@@ -210,6 +257,7 @@ func _builtin_preset_config(preset_id: String) -> Dictionary:
 			"army_strength_caps": {"white": 32, "black": 32},
 			"promotion_pieces": ["rook", "bishop", "silver_general", "gold_general", "lance", "shogi_knight", "shogi_pawn"],
 			"promotion_zones": {"white_rows": 3, "black_rows": 3},
+			"territory_rows": 3,
 			"player_colors": {},
 			"tile_colors": {}
 		}
@@ -226,6 +274,9 @@ func _builtin_preset_config(preset_id: String) -> Dictionary:
 			"allow_undo": false,
 			"enable_spell_cards": false,
 			"piece_dropping": false,
+			"piece_stacking": false,
+			"enable_territory": false,
+			"enable_muster": false,
 			"capture_to_drop_pool": false,
 			"limit_army_strength": false,
 			"unbalanced_armies": false
@@ -245,6 +296,7 @@ func _builtin_preset_config(preset_id: String) -> Dictionary:
 		"army_strength_caps": {"white": 32, "black": 32},
 		"promotion_pieces": ["queen", "rook", "bishop", "knight"],
 		"promotion_zones": {"white_rows": 1, "black_rows": 1},
+		"territory_rows": 2,
 		"player_colors": {},
 		"tile_colors": {}
 	}

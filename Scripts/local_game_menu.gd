@@ -6,6 +6,7 @@ extends Control
 @onready var back_to_main_menu_button: Button = $BackToMainMenuButton
 @onready var start_game_button: Button = $StartGameButton
 @onready var board_preview: Control = $PreviewArea/BoardPreview
+@onready var options_content: Control = $OptionsScroll/OptionsContent
 @onready var preview_warning_label: Label = $PreviewWarningLabel
 @onready var piece_bank_list: ItemList = $OptionsScroll/OptionsContent/PieceBankList
 @onready var piece_color_option: OptionButton = $OptionsScroll/OptionsContent/PieceColorOption
@@ -73,7 +74,8 @@ const PREVIEW_BLACK_DROP_POOL_HOVER_BACKGROUND = Color(0.46, 0.24, 0.24, 0.92)
 const PREVIEW_SPELL_HAND_BORDER = Color(0.92, 0.95, 1.0, 0.95)
 const PRESETS = {
 	"Standard Chess": "standard_chess",
-	"Standard Shogi": "standard_shogi"
+	"Standard Shogi": "standard_shogi",
+	"Gungi": "gungi"
 }
 
 var selected_piece_id = ""
@@ -142,6 +144,11 @@ var editing_preset_name = ""
 var spell_card_checkboxes: Dictionary = {}
 var spell_assign_card_ids: Array[String] = []
 var selected_spell_card_id = ""
+var piece_stacking_check_box: CheckBox
+var enable_territory_check_box: CheckBox
+var enable_muster_check_box: CheckBox
+var territory_rows_label: Label
+var territory_rows_spin_box: SpinBox
 var player_side_colors = {
 	"white": Color(1.0, 1.0, 1.0, 1.0),
 	"black": Color(0.08, 0.08, 0.08, 1.0)
@@ -278,10 +285,20 @@ func _update_victory_condition_description() -> void:
 		victory_condition_description.text = "CHECKMATE\nWin by checkmating the king."
 
 func _setup_special_rules() -> void:
+	_ensure_piece_stacking_check_box()
+	_ensure_gungi_rule_controls()
 	castling_check_box.toggled.connect(_on_castling_rule_toggled)
 	promotion_check_box.toggled.connect(_on_promotion_rule_toggled)
 	enable_spell_cards_check_box.toggled.connect(_on_enable_spell_cards_toggled)
 	piece_dropping_check_box.toggled.connect(_on_piece_dropping_toggled)
+	if piece_stacking_check_box != null:
+		piece_stacking_check_box.toggled.connect(_on_piece_stacking_toggled)
+	if enable_territory_check_box != null:
+		enable_territory_check_box.toggled.connect(_on_territory_controls_toggled)
+	if enable_muster_check_box != null:
+		enable_muster_check_box.toggled.connect(_on_territory_controls_toggled)
+	if territory_rows_spin_box != null:
+		territory_rows_spin_box.value_changed.connect(_on_territory_rows_value_changed)
 	limit_army_strength_check_box.toggled.connect(_on_limit_army_strength_toggled)
 	unbalanced_armies_check_box.toggled.connect(_on_unbalanced_armies_toggled)
 	spell_unbalanced_hand_sizes_check_box.toggled.connect(_on_spell_unbalanced_hand_sizes_toggled)
@@ -320,9 +337,14 @@ func _setup_special_rules() -> void:
 	spell_hand_size_black_spin_box.min_value = 0.0
 	spell_hand_size_black_spin_box.step = 1.0
 	spell_hand_size_black_spin_box.rounded = true
+	if territory_rows_spin_box != null:
+		territory_rows_spin_box.min_value = 1.0
+		territory_rows_spin_box.step = 1.0
+		territory_rows_spin_box.rounded = true
 	_build_promotion_piece_checkboxes()
 	_build_spell_card_checkboxes()
 	_apply_special_rules($"/root/GameManager".SpecialRules)
+	_apply_territory_rows(int($"/root/GameManager".TerritoryRows))
 	_apply_spell_card_config($"/root/GameManager")
 	_apply_promotion_zones($"/root/GameManager".PromotionZones)
 	_update_promotion_zone_limits()
@@ -333,6 +355,7 @@ func _setup_special_rules() -> void:
 	_update_promotion_piece_visibility()
 	_update_spell_card_visibility()
 	_update_piece_dropping_visibility()
+	_update_territory_controls_visibility()
 	_update_army_strength_limit_visibility()
 	_ensure_army_strength_cap_meets_current_position()
 	_update_castling_rule_availability()
@@ -345,10 +368,116 @@ func _build_special_rules() -> Dictionary:
 		"allow_undo": allow_undo_check_box.button_pressed,
 		"enable_spell_cards": enable_spell_cards_check_box.button_pressed,
 		"piece_dropping": piece_dropping_check_box.button_pressed,
+		"piece_stacking": piece_stacking_check_box != null and piece_stacking_check_box.button_pressed,
+		"enable_territory": enable_territory_check_box != null and enable_territory_check_box.button_pressed,
+		"enable_muster": enable_muster_check_box != null and enable_muster_check_box.button_pressed,
 		"capture_to_drop_pool": capture_to_drop_pool_check_box.button_pressed,
 		"limit_army_strength": limit_army_strength_check_box.button_pressed,
 		"unbalanced_armies": unbalanced_armies_check_box.button_pressed
 	}
+
+func _ensure_piece_stacking_check_box() -> void:
+	if piece_stacking_check_box != null:
+		return
+	var existing = options_content.get_node_or_null("PieceStackingCheckBox")
+	if existing is CheckBox:
+		piece_stacking_check_box = existing
+		return
+	var check_box = CheckBox.new()
+	check_box.name = "PieceStackingCheckBox"
+	check_box.layout_mode = 0
+	check_box.offset_left = 80.0
+	check_box.offset_top = 1576.0
+	check_box.offset_right = 332.0
+	check_box.offset_bottom = 1600.0
+	check_box.text = "Enable Piece Stacking (Gungi)"
+	options_content.add_child(check_box)
+	piece_stacking_check_box = check_box
+
+func _ensure_gungi_rule_controls() -> void:
+	if enable_territory_check_box == null:
+		var existing_territory = options_content.get_node_or_null("EnableTerritoryCheckBox")
+		if existing_territory is CheckBox:
+			enable_territory_check_box = existing_territory
+		else:
+			var territory_check = CheckBox.new()
+			territory_check.name = "EnableTerritoryCheckBox"
+			territory_check.layout_mode = 0
+			territory_check.offset_left = 80.0
+			territory_check.offset_top = 1604.0
+			territory_check.offset_right = 332.0
+			territory_check.offset_bottom = 1628.0
+			territory_check.text = "Enable Territory Rules"
+			options_content.add_child(territory_check)
+			enable_territory_check_box = territory_check
+
+	if enable_muster_check_box == null:
+		var existing_muster = options_content.get_node_or_null("EnableMusterCheckBox")
+		if existing_muster is CheckBox:
+			enable_muster_check_box = existing_muster
+		else:
+			var muster_check = CheckBox.new()
+			muster_check.name = "EnableMusterCheckBox"
+			muster_check.layout_mode = 0
+			muster_check.offset_left = 80.0
+			muster_check.offset_top = 1632.0
+			muster_check.offset_right = 332.0
+			muster_check.offset_bottom = 1656.0
+			muster_check.text = "Enable Muster Opening"
+			options_content.add_child(muster_check)
+			enable_muster_check_box = muster_check
+
+	if territory_rows_label == null:
+		var existing_label = options_content.get_node_or_null("TerritoryRowsLabel")
+		if existing_label is Label:
+			territory_rows_label = existing_label
+		else:
+			var rows_label = Label.new()
+			rows_label.name = "TerritoryRowsLabel"
+			rows_label.layout_mode = 0
+			rows_label.offset_left = 80.0
+			rows_label.offset_top = 1664.0
+			rows_label.offset_right = 212.0
+			rows_label.offset_bottom = 1688.0
+			rows_label.text = "Territory Rows"
+			options_content.add_child(rows_label)
+			territory_rows_label = rows_label
+
+	if territory_rows_spin_box == null:
+		var existing_spin = options_content.get_node_or_null("TerritoryRowsSpinBox")
+		if existing_spin is SpinBox:
+			territory_rows_spin_box = existing_spin
+		else:
+			var rows_spin = SpinBox.new()
+			rows_spin.name = "TerritoryRowsSpinBox"
+			rows_spin.layout_mode = 0
+			rows_spin.offset_left = 228.0
+			rows_spin.offset_top = 1664.0
+			rows_spin.offset_right = 332.0
+			rows_spin.offset_bottom = 1688.0
+			options_content.add_child(rows_spin)
+			territory_rows_spin_box = rows_spin
+
+func _territory_rows_value() -> int:
+	if territory_rows_spin_box == null:
+		return 3
+	return max(int(round(territory_rows_spin_box.value)), 1)
+
+func _apply_territory_rows(rows: int) -> void:
+	if territory_rows_spin_box == null:
+		return
+	territory_rows_spin_box.value = float(max(rows, 1))
+
+func _update_territory_controls_visibility() -> void:
+	if territory_rows_label == null or territory_rows_spin_box == null:
+		return
+	var enabled = false
+	if enable_territory_check_box != null and enable_territory_check_box.button_pressed:
+		enabled = true
+	if enable_muster_check_box != null and enable_muster_check_box.button_pressed:
+		enabled = true
+	territory_rows_label.visible = enabled
+	territory_rows_spin_box.visible = enabled
 
 func _build_promotion_piece_pool() -> Array:
 	var selected_piece_ids: Array = []
@@ -721,6 +850,16 @@ func _on_piece_dropping_toggled(_is_enabled: bool) -> void:
 	_update_piece_dropping_visibility()
 	_refresh_preview()
 
+func _on_piece_stacking_toggled(_is_enabled: bool) -> void:
+	_refresh_preview()
+
+func _on_territory_controls_toggled(_is_enabled: bool) -> void:
+	_update_territory_controls_visibility()
+	_refresh_preview()
+
+func _on_territory_rows_value_changed(_value: float) -> void:
+	_refresh_preview()
+
 func _on_limit_army_strength_toggled(is_enabled: bool) -> void:
 	_update_army_strength_limit_visibility()
 	if is_enabled:
@@ -774,12 +913,19 @@ func _apply_special_rules(special_rules: Dictionary) -> void:
 	allow_undo_check_box.button_pressed = bool(special_rules.get("allow_undo", false))
 	enable_spell_cards_check_box.button_pressed = bool(special_rules.get("enable_spell_cards", false))
 	piece_dropping_check_box.button_pressed = bool(special_rules.get("piece_dropping", false))
+	if piece_stacking_check_box != null:
+		piece_stacking_check_box.button_pressed = bool(special_rules.get("piece_stacking", false))
+	if enable_territory_check_box != null:
+		enable_territory_check_box.button_pressed = bool(special_rules.get("enable_territory", false))
+	if enable_muster_check_box != null:
+		enable_muster_check_box.button_pressed = bool(special_rules.get("enable_muster", false))
 	capture_to_drop_pool_check_box.button_pressed = bool(special_rules.get("capture_to_drop_pool", false))
 	limit_army_strength_check_box.button_pressed = bool(special_rules.get("limit_army_strength", false))
 	unbalanced_armies_check_box.button_pressed = bool(special_rules.get("unbalanced_armies", false))
 	_update_castling_rule_availability()
 	_update_spell_card_visibility()
 	_update_piece_dropping_visibility()
+	_update_territory_controls_visibility()
 	_update_army_strength_limit_visibility()
 
 func _update_army_strength_limit_visibility() -> void:
@@ -951,10 +1097,14 @@ func _reset_preview_to_default(should_refresh: bool = true, use_standard_layout:
 		"allow_undo": false,
 		"enable_spell_cards": false,
 		"piece_dropping": false,
+		"piece_stacking": false,
+		"enable_territory": false,
+		"enable_muster": false,
 		"capture_to_drop_pool": false,
 		"limit_army_strength": false,
 		"unbalanced_armies": false
 	})
+	_apply_territory_rows(3)
 	_apply_spell_card_config_from_preset({
 		"hand_size": 3,
 		"unbalanced_hand_sizes": false,
@@ -1008,10 +1158,14 @@ func _apply_preset(preset_id: String) -> void:
 				"allow_undo": false,
 				"enable_spell_cards": false,
 				"piece_dropping": false,
+				"piece_stacking": false,
+				"enable_territory": false,
+				"enable_muster": false,
 				"capture_to_drop_pool": false,
 				"limit_army_strength": false,
 				"unbalanced_armies": false
 			})
+			_apply_territory_rows(2)
 			_apply_spell_card_config_from_preset({
 				"hand_size": 3,
 				"unbalanced_hand_sizes": false,
@@ -1048,10 +1202,14 @@ func _apply_preset(preset_id: String) -> void:
 				"allow_undo": false,
 				"enable_spell_cards": false,
 				"piece_dropping": true,
+				"piece_stacking": false,
+				"enable_territory": false,
+				"enable_muster": false,
 				"capture_to_drop_pool": true,
 				"limit_army_strength": false,
 				"unbalanced_armies": false
 			})
+			_apply_territory_rows(3)
 			_apply_spell_card_config_from_preset({
 				"hand_size": 3,
 				"unbalanced_hand_sizes": false,
@@ -1074,6 +1232,50 @@ func _apply_preset(preset_id: String) -> void:
 			preview_drop_pools = {
 				"white": [],
 				"black": []
+			}
+			_refresh_preview()
+		"gungi":
+			_reset_preview_to_default(false, false)
+			width_spin_box.value = 9
+			height_spin_box.value = 9
+			preview_pieces.clear()
+			_apply_special_rules({
+				"castling": false,
+				"en_passant": false,
+				"promotion": false,
+				"allow_undo": false,
+				"enable_spell_cards": false,
+				"piece_dropping": true,
+				"piece_stacking": true,
+				"enable_territory": true,
+				"enable_muster": true,
+				"capture_to_drop_pool": true,
+				"limit_army_strength": false,
+				"unbalanced_armies": false
+			})
+			_apply_territory_rows(3)
+			_apply_spell_card_config_from_preset({
+				"hand_size": 0,
+				"unbalanced_hand_sizes": false,
+				"hand_size_white": 0,
+				"hand_size_black": 0,
+				"random_cards": true,
+				"allow_duplicates": true,
+				"draw_replacement_after_cast": false,
+				"available_cards": $"/root/GameManager".normalize_spell_card_ids([]),
+				"starting_hands": {"white": [], "black": []}
+			})
+			_set_army_strength_cap_value(32)
+			_set_unbalanced_army_strength_cap_value("white", 32)
+			_set_unbalanced_army_strength_cap_value("black", 32)
+			_apply_promotion_piece_pool(["rook", "bishop", "silver_general", "gold_general", "lance", "shogi_knight", "shogi_pawn"])
+			_apply_promotion_zones({"white_rows": 3, "black_rows": 3})
+			_apply_victory_condition("checkmate")
+			_apply_player_colors_from_serialized({})
+			_apply_tile_colors_from_serialized({})
+			preview_drop_pools = {
+				"white": ["lance", "shogi_knight", "silver_general", "gold_general", "king", "gold_general", "silver_general", "shogi_knight", "lance", "rook", "bishop", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn"],
+				"black": ["lance", "shogi_knight", "silver_general", "gold_general", "king", "gold_general", "silver_general", "shogi_knight", "lance", "rook", "bishop", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn"]
 			}
 			_refresh_preview()
 		_:
@@ -1100,6 +1302,7 @@ func _apply_saved_preset_config(preset_config: Dictionary) -> void:
 	_apply_promotion_piece_pool(preset_config.get("promotion_pieces", ["queen", "rook", "bishop", "knight"]))
 	_apply_promotion_zones(preset_config.get("promotion_zones", {}))
 	_apply_spell_card_config_from_preset(preset_config.get("spell_cards", {}))
+	_apply_territory_rows(int(preset_config.get("territory_rows", 3)))
 	_update_promotion_zone_limits()
 	_apply_player_colors_from_serialized(preset_config.get("player_colors", {}))
 	_apply_tile_colors_from_serialized(preset_config.get("tile_colors", {}))
@@ -2209,6 +2412,7 @@ func _build_preset_config() -> Dictionary:
 		},
 		"promotion_pieces": _build_promotion_piece_pool(),
 		"promotion_zones": _build_promotion_zones(),
+		"territory_rows": _territory_rows_value(),
 		"player_colors": _serialize_player_colors(),
 		"tile_colors": _serialize_tile_colors()
 	}
@@ -2299,6 +2503,7 @@ func _on_start_game_button_pressed() -> void:
 	$"/root/GameManager".ArmyStrengthCapBlack = _get_unbalanced_army_strength_cap_value("black")
 	$"/root/GameManager".PromotionPiecePool = _build_promotion_piece_pool()
 	$"/root/GameManager".PromotionZones = _build_promotion_zones()
+	$"/root/GameManager".TerritoryRows = _territory_rows_value()
 	$"/root/GameManager".PlayerColors = _serialize_player_colors()
 	$"/root/GameManager".TileColors = _serialize_tile_colors()
 
