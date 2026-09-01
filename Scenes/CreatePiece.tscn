@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://Scripts/create_piece.gd" id="1_b9x8y"]
+[ext_resource type="Script" path="res://Scripts/piece_path_canvas.gd" id="2_t6je7"]
 
 [node name="Control" type="Control"]
 layout_mode = 3
@@ -84,23 +85,49 @@ value = 3.0
 rounded = true
 unique_name_in_owner = true
 
-[node name="IconRow" type="HBoxContainer" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel"]
+[node name="PathLabel" type="Label" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel"]
+layout_mode = 2
+text = "Piece Shape Path"
+
+[node name="PathHintLabel" type="Label" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Draw one or more strokes. These paths are recolored per player in-game with a high-contrast outline."
+
+[node name="PiecePathCanvas" type="Control" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel"]
+layout_mode = 2
+custom_minimum_size = Vector2(220, 220)
+size_flags_horizontal = 3
+script = ExtResource("2_t6je7")
+unique_name_in_owner = true
+
+[node name="PathButtons" type="HBoxContainer" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel"]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="PickIconButton" type="Button" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/IconRow"]
+[node name="UndoPathButton" type="Button" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/PathButtons"]
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Upload Piece Icon"
+text = "Undo Stroke"
 
-[node name="IconPreview" type="TextureRect" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/IconRow"]
+[node name="ClearPathButton" type="Button" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/PathButtons"]
 layout_mode = 2
-custom_minimum_size = Vector2(64, 64)
-size_flags_horizontal = 4
-size_flags_vertical = 4
-expand_mode = 1
-stretch_mode = 5
-unique_name_in_owner = true
+size_flags_horizontal = 3
+text = "Clear Drawing"
+
+[node name="SvgButtons" type="HBoxContainer" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="ExportSvgButton" type="Button" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/SvgButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Export SVG"
+
+[node name="ImportSvgButton" type="Button" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/SvgButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Import SVG"
 
 [node name="RightPanel" type="VBoxContainer" parent="Scroll/RootMargin/RootVBox/MainColumns"]
 layout_mode = 2
@@ -175,14 +202,24 @@ layout_mode = 2
 size_flags_horizontal = 3
 text = "Cancel"
 
-[node name="ImagePickerDialog" type="FileDialog" parent="."]
-title = "Choose Piece Icon"
+[node name="ExportSvgFileDialog" type="FileDialog" parent="."]
+title = "Export Piece Shape SVG"
+file_mode = 4
+access = 2
+filters = PackedStringArray("*.svg ; SVG Files")
+
+[node name="ImportSvgFileDialog" type="FileDialog" parent="."]
+title = "Import Piece Shape SVG"
 file_mode = 0
 access = 2
-filters = PackedStringArray("*.png ; PNG Images", "*.jpg,*.jpeg ; JPEG Images", "*.webp ; WEBP Images")
+filters = PackedStringArray("*.svg ; SVG Files", "*.txt ; Text Files")
 
-[connection signal="pressed" from="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/IconRow/PickIconButton" to="." method="_on_pick_icon_button_pressed"]
+[connection signal="pressed" from="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/PathButtons/UndoPathButton" to="." method="_on_undo_path_button_pressed"]
+[connection signal="pressed" from="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/PathButtons/ClearPathButton" to="." method="_on_clear_path_button_pressed"]
+[connection signal="pressed" from="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/SvgButtons/ExportSvgButton" to="." method="_on_export_svg_button_pressed"]
+[connection signal="pressed" from="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/SvgButtons/ImportSvgButton" to="." method="_on_import_svg_button_pressed"]
 [connection signal="pressed" from="Scroll/RootMargin/RootVBox/MainColumns/RightPanel/ClearGridButton" to="." method="_on_clear_grid_button_pressed"]
 [connection signal="pressed" from="Scroll/RootMargin/RootVBox/ActionsRow/SavePieceButton" to="." method="_on_save_piece_button_pressed"]
 [connection signal="pressed" from="Scroll/RootMargin/RootVBox/ActionsRow/CancelButton" to="." method="_on_cancel_button_pressed"]
-[connection signal="file_selected" from="ImagePickerDialog" to="." method="_on_image_picker_dialog_file_selected"]
+[connection signal="file_selected" from="ExportSvgFileDialog" to="." method="_on_export_svg_file_dialog_file_selected"]
+[connection signal="file_selected" from="ImportSvgFileDialog" to="." method="_on_import_svg_file_dialog_file_selected"]

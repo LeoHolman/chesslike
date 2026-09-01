@@ -122,6 +122,9 @@ var _base_piece_definitions = {}
 var CustomPieces = {}
 var PieceIconCache = {}
 
+const PATH_ICON_TEXTURE_SIZE = 96
+const PATH_ICON_MARGIN_RATIO = 0.1
+
 func _ready() -> void:
 	_base_piece_bank = PieceBank.duplicate(true)
 	_base_piece_definitions = PieceDefinitions.duplicate(true)
@@ -236,6 +239,8 @@ func _normalize_custom_piece_data(custom_piece_id: String, source_data: Dictiona
 	piece_strength = max(piece_strength, 1)
 
 	var icon_path = str(source_data.get("icon_path", "")).strip_edges()
+	var path_strokes = _normalize_custom_path_strokes(source_data.get("path_strokes", []))
+	var path_stroke_width = clampf(float(source_data.get("path_stroke_width", 0.18)), 0.05, 0.45)
 	var jump_offsets: Array = []
 	for value in source_data.get("jump_offsets", []):
 		var parsed_jump = _parse_vector2i_data(value)
@@ -300,6 +305,8 @@ func _normalize_custom_piece_data(custom_piece_id: String, source_data: Dictiona
 
 	if jump_offsets.is_empty() and slide_directions.is_empty() and movement_rules.is_empty():
 		return {}
+	if path_strokes.is_empty() and icon_path == "":
+		return {}
 
 	return {
 		"id": piece_id,
@@ -308,10 +315,50 @@ func _normalize_custom_piece_data(custom_piece_id: String, source_data: Dictiona
 		"move_type": "custom",
 		"strength": piece_strength,
 		"icon_path": icon_path,
+		"path_strokes": path_strokes,
+		"path_stroke_width": path_stroke_width,
 		"movement_rules": movement_rules,
 		"jump_offsets": _serialize_vector2i_array(jump_offsets),
 		"slide_directions": _serialize_vector2i_array(slide_directions)
 	}
+
+func _normalize_custom_path_strokes(source_strokes: Variant) -> Array:
+	var normalized: Array = []
+	if not (source_strokes is Array):
+		return normalized
+
+	for raw_stroke in source_strokes:
+		if not (raw_stroke is Array):
+			continue
+		var stroke_points: Array = []
+		for raw_point in raw_stroke:
+			var parsed = _parse_normalized_path_point(raw_point)
+			if parsed == null:
+				continue
+			stroke_points.append(parsed)
+		if stroke_points.size() >= 2:
+			normalized.append(stroke_points)
+
+	return normalized
+
+func _parse_normalized_path_point(value: Variant) -> Variant:
+	if value is Dictionary:
+		return {
+			"x": clampf(float(value.get("x", 0.0)), 0.0, 1.0),
+			"y": clampf(float(value.get("y", 0.0)), 0.0, 1.0)
+		}
+	if value is Array and value.size() >= 2:
+		return {
+			"x": clampf(float(value[0]), 0.0, 1.0),
+			"y": clampf(float(value[1]), 0.0, 1.0)
+		}
+	if value is Vector2:
+		var point: Vector2 = value
+		return {
+			"x": clampf(point.x, 0.0, 1.0),
+			"y": clampf(point.y, 0.0, 1.0)
+		}
+	return null
 
 func _normalize_custom_movement_rules(source_rules: Variant) -> Array:
 	var normalized_rules: Array = []
@@ -474,23 +521,106 @@ func get_piece_icon_texture(piece_id: String) -> Texture2D:
 		return null
 	var piece_definition: Dictionary = PieceDefinitions[piece_id]
 	var icon_path = str(piece_definition.get("icon_path", "")).strip_edges()
-	if icon_path == "":
-		return null
-	if PieceIconCache.has(icon_path):
-		return PieceIconCache[icon_path]
+	if icon_path != "":
+		if PieceIconCache.has(icon_path):
+			return PieceIconCache[icon_path]
 
-	var absolute_path = ProjectSettings.globalize_path(icon_path)
-	if not FileAccess.file_exists(absolute_path):
+		var absolute_path = ProjectSettings.globalize_path(icon_path)
+		if not FileAccess.file_exists(absolute_path):
+			return null
+
+		var image = Image.new()
+		var load_result = image.load(absolute_path)
+		if load_result != OK:
+			return null
+
+		var texture = ImageTexture.create_from_image(image)
+		PieceIconCache[icon_path] = texture
+		return texture
+
+	var path_strokes = _normalize_custom_path_strokes(piece_definition.get("path_strokes", []))
+	if path_strokes.is_empty():
 		return null
 
-	var image = Image.new()
-	var load_result = image.load(absolute_path)
-	if load_result != OK:
-		return null
+	var path_stroke_width = clampf(float(piece_definition.get("path_stroke_width", 0.18)), 0.05, 0.45)
+	var cache_key = "path:%s:%0.3f" % [piece_id, path_stroke_width]
+	if PieceIconCache.has(cache_key):
+		return PieceIconCache[cache_key]
 
-	var texture = ImageTexture.create_from_image(image)
-	PieceIconCache[icon_path] = texture
-	return texture
+	var generated_texture = _build_path_piece_icon_texture(path_strokes, path_stroke_width)
+	if generated_texture != null:
+		PieceIconCache[cache_key] = generated_texture
+	return generated_texture
+
+func _build_path_piece_icon_texture(path_strokes: Array, path_stroke_width: float) -> Texture2D:
+	var image = Image.create(PATH_ICON_TEXTURE_SIZE, PATH_ICON_TEXTURE_SIZE, false, Image.FORMAT_RGBA8)
+	image.fill(Color(0.0, 0.0, 0.0, 0.0))
+
+	var min_pos = PATH_ICON_TEXTURE_SIZE * PATH_ICON_MARGIN_RATIO
+	var max_pos = PATH_ICON_TEXTURE_SIZE * (1.0 - PATH_ICON_MARGIN_RATIO)
+	var draw_span = max_pos - min_pos
+	var fill_color = Color(0.95, 0.95, 0.95, 1.0)
+	var outline_color = Color(0.08, 0.08, 0.08, 1.0)
+	var fill_width = max(1, int(round(PATH_ICON_TEXTURE_SIZE * path_stroke_width)))
+	var outline_width = fill_width + max(2, int(round(fill_width * 0.4)))
+
+	for stroke_data in path_strokes:
+		if not (stroke_data is Array):
+			continue
+		if stroke_data.size() < 2:
+			continue
+
+		for point_index in range(stroke_data.size() - 1):
+			var a = stroke_data[point_index]
+			var b = stroke_data[point_index + 1]
+			if not (a is Dictionary) or not (b is Dictionary):
+				continue
+
+			var ax = clampf(float(a.get("x", 0.0)), 0.0, 1.0)
+			var ay = clampf(float(a.get("y", 0.0)), 0.0, 1.0)
+			var bx = clampf(float(b.get("x", 0.0)), 0.0, 1.0)
+			var by = clampf(float(b.get("y", 0.0)), 0.0, 1.0)
+			var from = Vector2(min_pos + ax * draw_span, min_pos + ay * draw_span)
+			var to = Vector2(min_pos + bx * draw_span, min_pos + by * draw_span)
+
+			_draw_thick_segment(image, from, to, outline_width, outline_color)
+			_draw_thick_segment(image, from, to, fill_width, fill_color)
+
+	return ImageTexture.create_from_image(image)
+
+func _draw_thick_segment(image: Image, from: Vector2, to: Vector2, width: int, color: Color) -> void:
+	var radius = max(1, int(round(float(width) * 0.5)))
+	var segment_length = from.distance_to(to)
+	var steps = max(int(ceil(segment_length * 2.0)), 1)
+	for step in range(steps + 1):
+		var t = float(step) / float(steps)
+		_stamp_circle(image, from.lerp(to, t), radius, color)
+
+func _stamp_circle(image: Image, center: Vector2, radius: int, color: Color) -> void:
+	var min_x = max(0, int(floor(center.x - radius)))
+	var max_x = min(image.get_width() - 1, int(ceil(center.x + radius)))
+	var min_y = max(0, int(floor(center.y - radius)))
+	var max_y = min(image.get_height() - 1, int(ceil(center.y + radius)))
+	var radius_sq = float(radius * radius)
+	for y in range(min_y, max_y + 1):
+		for x in range(min_x, max_x + 1):
+			var dx = float(x) - center.x
+			var dy = float(y) - center.y
+			if dx * dx + dy * dy <= radius_sq:
+				image.set_pixel(x, y, color)
+
+func get_piece_path_strokes(piece_id: String) -> Array:
+	if not PieceDefinitions.has(piece_id):
+		return []
+	var piece_definition: Dictionary = PieceDefinitions[piece_id]
+	var normalized = _normalize_custom_path_strokes(piece_definition.get("path_strokes", []))
+	return normalized.duplicate(true)
+
+func get_piece_path_stroke_width(piece_id: String) -> float:
+	if not PieceDefinitions.has(piece_id):
+		return 0.18
+	var piece_definition: Dictionary = PieceDefinitions[piece_id]
+	return clampf(float(piece_definition.get("path_stroke_width", 0.18)), 0.05, 0.45)
 
 func get_piece_strength(piece_id: String, include_king: bool = false) -> int:
 	if PieceDefinitions.has(piece_id):

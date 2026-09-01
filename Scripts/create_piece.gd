@@ -9,12 +9,14 @@ const CAPTURE_MODE_NON_CAPTURE = "non_capture"
 const CAPTURE_MODE_CAPTURE_ONLY = "capture_only"
 const SLIDE_SCOPE_INFINITE = "infinite"
 const SLIDE_SCOPE_HALTING = "halting"
-const ICON_PREVIEW_MAX_SIZE = 64
+const CUSTOM_PATH_STROKE_WIDTH_RATIO = 0.18
+const SVG_EXPORT_VIEWBOX_SIZE = 1000.0
+const SVG_CURVE_SEGMENTS = 16
 
 @onready var piece_name_input: LineEdit = %PieceNameInput
 @onready var piece_id_input: LineEdit = %PieceIdInput
 @onready var piece_strength_spin_box: SpinBox = %PieceStrengthSpinBox
-@onready var icon_preview: TextureRect = %IconPreview
+@onready var piece_path_canvas = %PiecePathCanvas
 @onready var movement_grid: GridContainer = %MovementGrid
 @onready var move_kind_option_button: OptionButton = %MoveKindOptionButton
 @onready var capture_mode_option_button: OptionButton = %CaptureModeOptionButton
@@ -22,9 +24,9 @@ const ICON_PREVIEW_MAX_SIZE = 64
 @onready var initial_only_check_box: CheckBox = %InitialOnlyCheckBox
 @onready var movement_legend_label: Label = %MovementLegendLabel
 @onready var message_label: Label = %MessageLabel
-@onready var image_picker_dialog: FileDialog = $ImagePickerDialog
+@onready var export_svg_file_dialog: FileDialog = $ExportSvgFileDialog
+@onready var import_svg_file_dialog: FileDialog = $ImportSvgFileDialog
 
-var selected_icon_source_path = ""
 var movement_buttons: Array[Button] = []
 var movement_rules_by_key: Dictionary = {}
 
@@ -40,6 +42,11 @@ func _ready() -> void:
 	piece_strength_spin_box.value = 3.0
 	_build_movement_grid()
 	_setup_movement_brush_controls()
+	piece_path_canvas.stroke_width_px = 10.0
+	piece_path_canvas.fill_color = Color(0.94, 0.94, 0.94, 1.0)
+	piece_path_canvas.outline_color = Color(0.08, 0.08, 0.08, 1.0)
+	if not piece_path_canvas.strokes_changed.is_connected(_on_piece_path_canvas_strokes_changed):
+		piece_path_canvas.strokes_changed.connect(_on_piece_path_canvas_strokes_changed)
 	_refresh_movement_grid_buttons()
 
 func _build_movement_grid() -> void:
@@ -156,15 +163,8 @@ func _refresh_movement_grid_buttons() -> void:
 		if row == ORIGIN_CELL.y and col == ORIGIN_CELL.x:
 			button.text = "X"
 			button.icon = null
-			if icon_preview.texture != null:
-				button.text = ""
-				button.icon = icon_preview.texture
-				button.expand_icon = true
-				button.disabled = false
-				button.modulate = Color(1.0, 1.0, 1.0, 1.0)
-			else:
-				button.disabled = true
-				button.modulate = Color(0.8, 0.7, 0.3, 1.0)
+			button.disabled = true
+			button.modulate = Color(0.92, 0.96, 0.82, 1.0) if piece_path_canvas.has_content() else Color(0.8, 0.7, 0.3, 1.0)
 			continue
 
 		button.disabled = false
@@ -248,34 +248,66 @@ func _update_movement_legend() -> void:
 
 	movement_legend_label.text = "Brush: %s%s, %s, %s\nLegend: J/S (halting slide), arrows for infinite slide, A/N/C capture mode, prefix I for initial-only.\nRight-click a cell to clear rules affecting that cell." % [kind_text, slide_text, capture_text, initial_text]
 
-func _on_pick_icon_button_pressed() -> void:
-	image_picker_dialog.popup_centered_ratio(0.8)
-
-func _on_image_picker_dialog_file_selected(path: String) -> void:
-	selected_icon_source_path = path
-	var image = Image.new()
-	if image.load(path) != OK:
-		message_label.text = "Could not load image file."
-		return
-	icon_preview.texture = _build_preview_texture(image)
+func _on_piece_path_canvas_strokes_changed() -> void:
 	_refresh_movement_grid_buttons()
-	message_label.text = ""
+	if piece_path_canvas.has_content():
+		message_label.text = ""
 
-func _build_preview_texture(source_image: Image) -> Texture2D:
-	if source_image == null or source_image.is_empty():
-		return null
+func _on_undo_path_button_pressed() -> void:
+	piece_path_canvas.undo_last_stroke()
 
-	var thumbnail = source_image.duplicate()
-	var width = max(thumbnail.get_width(), 1)
-	var height = max(thumbnail.get_height(), 1)
-	var largest_edge = max(width, height)
-	if largest_edge > ICON_PREVIEW_MAX_SIZE:
-		var scale = float(ICON_PREVIEW_MAX_SIZE) / float(largest_edge)
-		var resized_width = max(1, int(round(width * scale)))
-		var resized_height = max(1, int(round(height * scale)))
-		thumbnail.resize(resized_width, resized_height, Image.INTERPOLATE_LANCZOS)
+func _on_clear_path_button_pressed() -> void:
+	piece_path_canvas.clear_strokes()
 
-	return ImageTexture.create_from_image(thumbnail)
+func _on_export_svg_button_pressed() -> void:
+	if not piece_path_canvas.has_content():
+		message_label.text = "Draw a piece path before exporting SVG."
+		return
+	var suggested_name = _sanitize_piece_id(piece_id_input.text if piece_id_input.text.strip_edges() != "" else piece_name_input.text)
+	if suggested_name == "":
+		suggested_name = "custom_piece"
+	export_svg_file_dialog.current_file = "%s.svg" % suggested_name
+	export_svg_file_dialog.popup_centered_ratio(0.8)
+
+func _on_import_svg_button_pressed() -> void:
+	import_svg_file_dialog.popup_centered_ratio(0.8)
+
+func _on_export_svg_file_dialog_file_selected(path: String) -> void:
+	var target_path = path
+	if not target_path.to_lower().ends_with(".svg"):
+		target_path += ".svg"
+
+	var file = FileAccess.open(target_path, FileAccess.WRITE)
+	if file == null:
+		message_label.text = "Could not open selected SVG export path."
+		return
+	file.store_string(_build_svg_document(piece_path_canvas.get_normalized_strokes(), CUSTOM_PATH_STROKE_WIDTH_RATIO))
+	message_label.text = "Exported SVG to %s" % target_path
+
+func _on_import_svg_file_dialog_file_selected(path: String) -> void:
+	if not FileAccess.file_exists(path):
+		message_label.text = "Selected SVG file was not found."
+		return
+	var file = FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		message_label.text = "Could not read selected SVG file."
+		return
+
+	var parse_result = _parse_svg_text_to_normalized_strokes(file.get_as_text())
+	if not bool(parse_result.get("ok", false)):
+		message_label.text = str(parse_result.get("error", "Could not parse SVG path."))
+		return
+
+	var imported_strokes: Array = parse_result.get("strokes", [])
+	if imported_strokes.is_empty():
+		message_label.text = "No supported path strokes found in SVG."
+		return
+
+	piece_path_canvas.set_normalized_strokes(imported_strokes)
+	var imported_point_count = _count_stroke_points(imported_strokes)
+	message_label.text = "Imported %d stroke(s), %d point(s)." % [imported_strokes.size(), imported_point_count]
+	if imported_point_count >= 2500:
+		message_label.text += " Shape is detailed; consider simplifying if editing feels slow."
 
 func _on_clear_grid_button_pressed() -> void:
 	movement_rules_by_key.clear()
@@ -295,8 +327,8 @@ func _on_save_piece_button_pressed() -> void:
 		message_label.text = "Piece ID is invalid."
 		return
 
-	if selected_icon_source_path == "":
-		message_label.text = "Select an icon image first."
+	if not piece_path_canvas.has_content():
+		message_label.text = "Draw the piece path first."
 		return
 
 	var movement_data = _build_movement_data()
@@ -305,17 +337,14 @@ func _on_save_piece_button_pressed() -> void:
 		return
 
 	var game_manager = $"/root/GameManager"
-	var icon_path = game_manager.save_custom_piece_icon(piece_id, selected_icon_source_path)
-	if icon_path == "":
-		message_label.text = "Could not save icon into user storage."
-		return
 
 	var save_result: Dictionary = game_manager.save_custom_piece({
 		"id": piece_id,
 		"name": piece_name,
 		"symbol": piece_name.substr(0, 1).to_upper(),
 		"strength": int(piece_strength_spin_box.value),
-		"icon_path": icon_path,
+		"path_strokes": piece_path_canvas.get_normalized_strokes(),
+		"path_stroke_width": CUSTOM_PATH_STROKE_WIDTH_RATIO,
 		"movement_rules": movement_data["movement_rules"],
 		"jump_offsets": movement_data["jump_offsets"],
 		"slide_directions": movement_data["slide_directions"]
@@ -522,3 +551,457 @@ func _sanitize_piece_id(source: String) -> String:
 				prev_underscore = true
 	result = result.trim_prefix("_").trim_suffix("_")
 	return result
+
+func _build_svg_document(normalized_strokes: Array, stroke_width_ratio: float) -> String:
+	var path_data = _normalized_strokes_to_svg_path_data(normalized_strokes)
+	var stroke_width = int(round(clampf(stroke_width_ratio, 0.01, 0.5) * SVG_EXPORT_VIEWBOX_SIZE))
+	return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1000 1000\">\n\t<path d=\"%s\" fill=\"none\" stroke=\"#000000\" stroke-width=\"%d\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n</svg>\n" % [path_data, stroke_width]
+
+func _normalized_strokes_to_svg_path_data(normalized_strokes: Array) -> String:
+	var commands: Array[String] = []
+	for stroke_data in normalized_strokes:
+		if not (stroke_data is Array):
+			continue
+		if stroke_data.size() < 2:
+			continue
+		for point_index in range(stroke_data.size()):
+			var point_data = stroke_data[point_index]
+			if not (point_data is Dictionary):
+				continue
+			var x = clampf(float(point_data.get("x", 0.0)), 0.0, 1.0) * SVG_EXPORT_VIEWBOX_SIZE
+			var y = clampf(float(point_data.get("y", 0.0)), 0.0, 1.0) * SVG_EXPORT_VIEWBOX_SIZE
+			var cmd = "M" if point_index == 0 else "L"
+			commands.append("%s %s %s" % [cmd, _svg_number(x), _svg_number(y)])
+	return " ".join(commands)
+
+func _svg_number(value: float) -> String:
+	var rounded = round(value * 1000.0) / 1000.0
+	var text = str(rounded)
+	if text.find(".") != -1:
+		while text.ends_with("0"):
+			text = text.left(text.length() - 1)
+		if text.ends_with("."):
+			text = text.left(text.length() - 1)
+	return text
+
+func _parse_svg_text_to_normalized_strokes(svg_or_path_text: String) -> Dictionary:
+	var source_text = svg_or_path_text.strip_edges()
+	if source_text == "":
+		return {"ok": false, "error": "SVG text is empty."}
+
+	var d_values = _extract_svg_path_d_values(source_text)
+	if d_values.is_empty():
+		d_values.append(source_text)
+
+	var all_strokes: Array = []
+	for d_value in d_values:
+		var parse_result = _parse_svg_path_commands(str(d_value))
+		if not bool(parse_result.get("ok", false)):
+			return parse_result
+		for stroke in parse_result.get("strokes", []):
+			all_strokes.append(stroke)
+
+	if all_strokes.is_empty():
+		return {"ok": false, "error": "No supported path points were parsed."}
+
+	return {"ok": true, "strokes": _normalize_imported_strokes_to_unit_square(all_strokes)}
+
+func _extract_svg_path_d_values(source_text: String) -> Array[String]:
+	var regex = RegEx.new()
+	var compile_error = regex.compile("d\\s*=\\s*\"([^\"]+)\"|d\\s*=\\s*'([^']+)'")
+	if compile_error != OK:
+		return []
+
+	var matches = regex.search_all(source_text)
+	var values: Array[String] = []
+	for match in matches:
+		var quoted_double = match.get_string(1)
+		var quoted_single = match.get_string(2)
+		var d_value = quoted_double if quoted_double != "" else quoted_single
+		if d_value.strip_edges() != "":
+			values.append(d_value.strip_edges())
+	return values
+
+func _parse_svg_path_commands(path_data: String) -> Dictionary:
+	var tokens = _tokenize_svg_path_data(path_data)
+	if tokens.is_empty():
+		return {"ok": false, "error": "Path data is empty."}
+
+	var strokes: Array = []
+	var current_stroke: Array = []
+	var current_point = Vector2.ZERO
+	var stroke_start = Vector2.ZERO
+	var last_cubic_control = Vector2.ZERO
+	var has_last_cubic_control = false
+	var last_quad_control = Vector2.ZERO
+	var has_last_quad_control = false
+	var index = 0
+	var active_command = ""
+
+	while index < tokens.size():
+		var token = str(tokens[index])
+		if _is_svg_command_token(token):
+			active_command = token
+			index += 1
+		else:
+			if active_command == "":
+				return {"ok": false, "error": "Path data missing command before coordinates."}
+
+		match active_command:
+			"M", "m":
+				if index + 1 >= tokens.size():
+					return {"ok": false, "error": "Move command is missing coordinate values."}
+				var move_point = _read_svg_point(tokens, index)
+				if move_point == null:
+					return {"ok": false, "error": "Invalid move command coordinates."}
+				index += 2
+				if active_command == "m":
+					current_point += move_point
+				else:
+					current_point = move_point
+				if current_stroke.size() >= 2:
+					strokes.append(current_stroke)
+				current_stroke = []
+				current_stroke.append(current_point)
+				stroke_start = current_point
+				has_last_cubic_control = false
+				has_last_quad_control = false
+
+				while index + 1 < tokens.size() and not _is_svg_command_token(str(tokens[index])):
+					var implied_line_point = _read_svg_point(tokens, index)
+					if implied_line_point == null:
+						break
+					index += 2
+					if active_command == "m":
+						current_point += implied_line_point
+					else:
+						current_point = implied_line_point
+					current_stroke.append(current_point)
+					has_last_cubic_control = false
+					has_last_quad_control = false
+			"L", "l":
+				if current_stroke.is_empty():
+					return {"ok": false, "error": "Line command appears before move command."}
+				if index + 1 >= tokens.size():
+					return {"ok": false, "error": "Line command is missing coordinate values."}
+				while index + 1 < tokens.size() and not _is_svg_command_token(str(tokens[index])):
+					var line_point = _read_svg_point(tokens, index)
+					if line_point == null:
+						return {"ok": false, "error": "Invalid line command coordinates."}
+					index += 2
+					if active_command == "l":
+						current_point += line_point
+					else:
+						current_point = line_point
+					current_stroke.append(current_point)
+					has_last_cubic_control = false
+					has_last_quad_control = false
+			"H", "h":
+				if current_stroke.is_empty():
+					return {"ok": false, "error": "Horizontal line command appears before move command."}
+				while index < tokens.size() and not _is_svg_command_token(str(tokens[index])):
+					var x_value = _read_svg_number(tokens[index])
+					if x_value == null:
+						return {"ok": false, "error": "Invalid horizontal line coordinate."}
+					index += 1
+					current_point.x = current_point.x + float(x_value) if active_command == "h" else float(x_value)
+					current_stroke.append(current_point)
+					has_last_cubic_control = false
+					has_last_quad_control = false
+			"V", "v":
+				if current_stroke.is_empty():
+					return {"ok": false, "error": "Vertical line command appears before move command."}
+				while index < tokens.size() and not _is_svg_command_token(str(tokens[index])):
+					var y_value = _read_svg_number(tokens[index])
+					if y_value == null:
+						return {"ok": false, "error": "Invalid vertical line coordinate."}
+					index += 1
+					current_point.y = current_point.y + float(y_value) if active_command == "v" else float(y_value)
+					current_stroke.append(current_point)
+					has_last_cubic_control = false
+					has_last_quad_control = false
+			"C", "c":
+				if current_stroke.is_empty():
+					return {"ok": false, "error": "Cubic curve command appears before move command."}
+				while index + 5 < tokens.size() and not _is_svg_command_token(str(tokens[index])):
+					var c1 = _read_svg_point(tokens, index)
+					var c2 = _read_svg_point(tokens, index + 2)
+					var end_point = _read_svg_point(tokens, index + 4)
+					if c1 == null or c2 == null or end_point == null:
+						return {"ok": false, "error": "Invalid cubic curve coordinates."}
+					index += 6
+					var control1: Vector2 = current_point + c1 if active_command == "c" else c1
+					var control2: Vector2 = current_point + c2 if active_command == "c" else c2
+					var curve_end: Vector2 = current_point + end_point if active_command == "c" else end_point
+					_append_cubic_curve_points(current_stroke, current_point, control1, control2, curve_end)
+					current_point = curve_end
+					last_cubic_control = control2
+					has_last_cubic_control = true
+					has_last_quad_control = false
+			"S", "s":
+				if current_stroke.is_empty():
+					return {"ok": false, "error": "Smooth cubic curve command appears before move command."}
+				while index + 3 < tokens.size() and not _is_svg_command_token(str(tokens[index])):
+					var c2 = _read_svg_point(tokens, index)
+					var end_point = _read_svg_point(tokens, index + 2)
+					if c2 == null or end_point == null:
+						return {"ok": false, "error": "Invalid smooth cubic curve coordinates."}
+					index += 4
+					var reflected_control = current_point * 2.0 - last_cubic_control if has_last_cubic_control else current_point
+					var control2: Vector2 = current_point + c2 if active_command == "s" else c2
+					var curve_end: Vector2 = current_point + end_point if active_command == "s" else end_point
+					_append_cubic_curve_points(current_stroke, current_point, reflected_control, control2, curve_end)
+					current_point = curve_end
+					last_cubic_control = control2
+					has_last_cubic_control = true
+					has_last_quad_control = false
+			"Q", "q":
+				if current_stroke.is_empty():
+					return {"ok": false, "error": "Quadratic curve command appears before move command."}
+				while index + 3 < tokens.size() and not _is_svg_command_token(str(tokens[index])):
+					var control = _read_svg_point(tokens, index)
+					var end_point = _read_svg_point(tokens, index + 2)
+					if control == null or end_point == null:
+						return {"ok": false, "error": "Invalid quadratic curve coordinates."}
+					index += 4
+					var quad_control: Vector2 = current_point + control if active_command == "q" else control
+					var curve_end: Vector2 = current_point + end_point if active_command == "q" else end_point
+					_append_quadratic_curve_points(current_stroke, current_point, quad_control, curve_end)
+					current_point = curve_end
+					last_quad_control = quad_control
+					has_last_quad_control = true
+					has_last_cubic_control = false
+			"T", "t":
+				if current_stroke.is_empty():
+					return {"ok": false, "error": "Smooth quadratic curve command appears before move command."}
+				while index + 1 < tokens.size() and not _is_svg_command_token(str(tokens[index])):
+					var end_point = _read_svg_point(tokens, index)
+					if end_point == null:
+						return {"ok": false, "error": "Invalid smooth quadratic curve coordinates."}
+					index += 2
+					var reflected_control = current_point * 2.0 - last_quad_control if has_last_quad_control else current_point
+					var curve_end: Vector2 = current_point + end_point if active_command == "t" else end_point
+					_append_quadratic_curve_points(current_stroke, current_point, reflected_control, curve_end)
+					current_point = curve_end
+					last_quad_control = reflected_control
+					has_last_quad_control = true
+					has_last_cubic_control = false
+			"A", "a":
+				if current_stroke.is_empty():
+					return {"ok": false, "error": "Arc command appears before move command."}
+				while index + 6 < tokens.size() and not _is_svg_command_token(str(tokens[index])):
+					var rx_raw = _read_svg_number(tokens[index])
+					var ry_raw = _read_svg_number(tokens[index + 1])
+					var rotation_raw = _read_svg_number(tokens[index + 2])
+					var large_arc_raw = _read_svg_number(tokens[index + 3])
+					var sweep_raw = _read_svg_number(tokens[index + 4])
+					var end_point = _read_svg_point(tokens, index + 5)
+					if rx_raw == null or ry_raw == null or rotation_raw == null or large_arc_raw == null or sweep_raw == null or end_point == null:
+						return {"ok": false, "error": "Invalid arc command parameters."}
+					index += 7
+					var arc_end: Vector2 = current_point + end_point if active_command == "a" else end_point
+					_append_arc_curve_points(current_stroke, current_point, arc_end, float(rx_raw), float(ry_raw), float(rotation_raw), abs(float(large_arc_raw)) >= 0.5, abs(float(sweep_raw)) >= 0.5)
+					current_point = arc_end
+					has_last_cubic_control = false
+					has_last_quad_control = false
+			"Z", "z":
+				if not current_stroke.is_empty() and current_stroke[current_stroke.size() - 1] != stroke_start:
+					current_stroke.append(stroke_start)
+				if current_stroke.size() >= 2:
+					strokes.append(current_stroke)
+				current_stroke = []
+				active_command = ""
+				has_last_cubic_control = false
+				has_last_quad_control = false
+			_:
+				return {"ok": false, "error": "Unsupported SVG command: %s." % active_command}
+
+	if current_stroke.size() >= 2:
+		strokes.append(current_stroke)
+
+	if strokes.is_empty():
+		return {"ok": false, "error": "No drawable strokes found in path data."}
+	return {"ok": true, "strokes": _vector_strokes_to_dictionary_strokes(strokes)}
+
+func _tokenize_svg_path_data(path_data: String) -> Array:
+	var tokens: Array = []
+	var regex = RegEx.new()
+	if regex.compile("([MmLlHhVvZzCcSsQqTtAa])|([-+]?(?:\\d*\\.\\d+|\\d+\\.?)(?:[eE][-+]?\\d+)?)") != OK:
+		return tokens
+	for found in regex.search_all(path_data):
+		var command = found.get_string(1)
+		var number = found.get_string(2)
+		if command != "":
+			tokens.append(command)
+		elif number != "":
+			tokens.append(number)
+	return tokens
+
+func _is_svg_command_token(token: String) -> bool:
+	return token == "M" or token == "m" or token == "L" or token == "l" or token == "H" or token == "h" or token == "V" or token == "v" or token == "Z" or token == "z" or token == "C" or token == "c" or token == "S" or token == "s" or token == "Q" or token == "q" or token == "T" or token == "t" or token == "A" or token == "a"
+
+func _read_svg_number(token: Variant) -> Variant:
+	var text = str(token)
+	if text == "":
+		return null
+	if not text.is_valid_float() and not text.is_valid_int():
+		return null
+	return float(text)
+
+func _read_svg_point(tokens: Array, index: int) -> Variant:
+	if index + 1 >= tokens.size():
+		return null
+	var x = _read_svg_number(tokens[index])
+	var y = _read_svg_number(tokens[index + 1])
+	if x == null or y == null:
+		return null
+	return Vector2(float(x), float(y))
+
+func _append_cubic_curve_points(stroke: Array, start: Vector2, c1: Vector2, c2: Vector2, finish: Vector2) -> void:
+	for step in range(1, SVG_CURVE_SEGMENTS + 1):
+		var t = float(step) / float(SVG_CURVE_SEGMENTS)
+		var omt = 1.0 - t
+		var point = omt * omt * omt * start + 3.0 * omt * omt * t * c1 + 3.0 * omt * t * t * c2 + t * t * t * finish
+		stroke.append(point)
+
+func _append_quadratic_curve_points(stroke: Array, start: Vector2, control: Vector2, finish: Vector2) -> void:
+	for step in range(1, SVG_CURVE_SEGMENTS + 1):
+		var t = float(step) / float(SVG_CURVE_SEGMENTS)
+		var omt = 1.0 - t
+		var point = omt * omt * start + 2.0 * omt * t * control + t * t * finish
+		stroke.append(point)
+
+func _append_arc_curve_points(stroke: Array, start: Vector2, finish: Vector2, rx_in: float, ry_in: float, x_axis_rotation_deg: float, large_arc: bool, sweep: bool) -> void:
+	if start == finish:
+		return
+
+	var rx = absf(rx_in)
+	var ry = absf(ry_in)
+	if rx <= 0.0001 or ry <= 0.0001:
+		stroke.append(finish)
+		return
+
+	var phi = deg_to_rad(fposmod(x_axis_rotation_deg, 360.0))
+	var cos_phi = cos(phi)
+	var sin_phi = sin(phi)
+
+	var half_delta = (start - finish) * 0.5
+	var x1p = cos_phi * half_delta.x + sin_phi * half_delta.y
+	var y1p = -sin_phi * half_delta.x + cos_phi * half_delta.y
+
+	var rx_sq = rx * rx
+	var ry_sq = ry * ry
+	var x1p_sq = x1p * x1p
+	var y1p_sq = y1p * y1p
+
+	var lambda = x1p_sq / rx_sq + y1p_sq / ry_sq
+	if lambda > 1.0:
+		var scale = sqrt(lambda)
+		rx *= scale
+		ry *= scale
+		rx_sq = rx * rx
+		ry_sq = ry * ry
+
+	var numerator = rx_sq * ry_sq - rx_sq * y1p_sq - ry_sq * x1p_sq
+	var denominator = rx_sq * y1p_sq + ry_sq * x1p_sq
+	if denominator <= 0.0:
+		stroke.append(finish)
+		return
+
+	var sign = -1.0 if large_arc == sweep else 1.0
+	var coef = sign * sqrt(max(numerator / denominator, 0.0))
+	var cxp = coef * (rx * y1p / ry)
+	var cyp = coef * (-ry * x1p / rx)
+
+	var midpoint = (start + finish) * 0.5
+	var cx = cos_phi * cxp - sin_phi * cyp + midpoint.x
+	var cy = sin_phi * cxp + cos_phi * cyp + midpoint.y
+
+	var ux = (x1p - cxp) / rx
+	var uy = (y1p - cyp) / ry
+	var vx = (-x1p - cxp) / rx
+	var vy = (-y1p - cyp) / ry
+
+	var start_angle = atan2(uy, ux)
+	var sweep_angle = atan2(ux * vy - uy * vx, ux * vx + uy * vy)
+	if not sweep and sweep_angle > 0.0:
+		sweep_angle -= TAU
+	elif sweep and sweep_angle < 0.0:
+		sweep_angle += TAU
+
+	var segment_count = max(4, int(ceil(absf(sweep_angle) / (PI / 8.0))))
+	for step in range(1, segment_count + 1):
+		var t = float(step) / float(segment_count)
+		var angle = start_angle + sweep_angle * t
+		var cos_t = cos(angle)
+		var sin_t = sin(angle)
+		var x = cx + cos_phi * rx * cos_t - sin_phi * ry * sin_t
+		var y = cy + sin_phi * rx * cos_t + cos_phi * ry * sin_t
+		stroke.append(Vector2(x, y))
+
+func _vector_strokes_to_dictionary_strokes(vector_strokes: Array) -> Array:
+	var result: Array = []
+	for vector_stroke in vector_strokes:
+		if not (vector_stroke is Array):
+			continue
+		var serialized: Array = []
+		for point in vector_stroke:
+			if point is Vector2:
+				var vector_point: Vector2 = point
+				serialized.append({"x": vector_point.x, "y": vector_point.y})
+		if serialized.size() >= 2:
+			result.append(serialized)
+	return result
+
+func _normalize_imported_strokes_to_unit_square(raw_strokes: Array) -> Array:
+	var min_x = INF
+	var min_y = INF
+	var max_x = -INF
+	var max_y = -INF
+	for stroke_data in raw_strokes:
+		if not (stroke_data is Array):
+			continue
+		for point_data in stroke_data:
+			if not (point_data is Dictionary):
+				continue
+			var x = float(point_data.get("x", 0.0))
+			var y = float(point_data.get("y", 0.0))
+			min_x = min(min_x, x)
+			min_y = min(min_y, y)
+			max_x = max(max_x, x)
+			max_y = max(max_y, y)
+
+	if min_x == INF or min_y == INF or max_x == -INF or max_y == -INF:
+		return []
+
+	var width = max(max_x - min_x, 1.0)
+	var height = max(max_y - min_y, 1.0)
+	var scale = 1.0 / max(width, height)
+	var offset_x = (1.0 - width * scale) * 0.5
+	var offset_y = (1.0 - height * scale) * 0.5
+
+	var normalized: Array = []
+	for stroke_data in raw_strokes:
+		if not (stroke_data is Array):
+			continue
+		var normalized_stroke: Array = []
+		for point_data in stroke_data:
+			if not (point_data is Dictionary):
+				continue
+			var px = (float(point_data.get("x", 0.0)) - min_x) * scale + offset_x
+			var py = (float(point_data.get("y", 0.0)) - min_y) * scale + offset_y
+			normalized_stroke.append({
+				"x": clampf(px, 0.0, 1.0),
+				"y": clampf(py, 0.0, 1.0)
+			})
+		if normalized_stroke.size() >= 2:
+			normalized.append(normalized_stroke)
+
+	return normalized
+
+func _count_stroke_points(strokes: Array) -> int:
+	var total = 0
+	for stroke_data in strokes:
+		if stroke_data is Array:
+			total += (stroke_data as Array).size()
+	return total

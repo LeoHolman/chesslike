@@ -1101,6 +1101,13 @@ func _create_preview_piece_node(square: Vector2i, piece_data: Dictionary, tint: 
 	piece_root.size = Vector2(preview_tile_size, preview_tile_size)
 	piece_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var piece_id = str(piece_data.get("piece_id", ""))
+	var path_strokes = $"/root/GameManager".get_piece_path_strokes(piece_id)
+	if not path_strokes.is_empty():
+		var icon_extent = max(preview_tile_size * 0.68, 12.0)
+		var icon_offset = (preview_tile_size - icon_extent) * 0.5
+		var stroke_width = icon_extent * $"/root/GameManager".get_piece_path_stroke_width(piece_id)
+		_add_preview_piece_path_visual(piece_root, path_strokes, Vector2(icon_offset, icon_offset), icon_extent, stroke_width, _piece_fill_color(piece_data.get("color", "white")), _piece_outline_color(piece_data.get("color", "white")), tint)
+		return piece_root
 
 	var icon_texture = $"/root/GameManager".get_piece_icon_texture(piece_id)
 	if icon_texture != null:
@@ -1131,6 +1138,40 @@ func _create_preview_piece_node(square: Vector2i, piece_data: Dictionary, tint: 
 	piece_root.add_child(label)
 
 	return piece_root
+
+func _add_preview_piece_path_visual(parent: Control, path_strokes: Array, origin: Vector2, extent: float, stroke_width: float, fill_color: Color, outline_color: Color, tint: Color) -> void:
+	for stroke_data in path_strokes:
+		if not (stroke_data is Array):
+			continue
+		var points := PackedVector2Array()
+		for point_data in stroke_data:
+			if not (point_data is Dictionary):
+				continue
+			var px = clampf(float(point_data.get("x", 0.0)), 0.0, 1.0)
+			var py = clampf(float(point_data.get("y", 0.0)), 0.0, 1.0)
+			points.append(Vector2(origin.x + px * extent, origin.y + py * extent))
+		if points.size() < 2:
+			continue
+
+		var outline_line = Line2D.new()
+		outline_line.points = points
+		outline_line.default_color = outline_color
+		outline_line.width = stroke_width + max(2.0, stroke_width * 0.4)
+		outline_line.joint_mode = Line2D.LINE_JOINT_ROUND
+		outline_line.begin_cap_mode = Line2D.LINE_CAP_ROUND
+		outline_line.end_cap_mode = Line2D.LINE_CAP_ROUND
+		outline_line.modulate = tint
+		parent.add_child(outline_line)
+
+		var fill_line = Line2D.new()
+		fill_line.points = points
+		fill_line.default_color = fill_color
+		fill_line.width = stroke_width
+		fill_line.joint_mode = Line2D.LINE_JOINT_ROUND
+		fill_line.begin_cap_mode = Line2D.LINE_CAP_ROUND
+		fill_line.end_cap_mode = Line2D.LINE_CAP_ROUND
+		fill_line.modulate = tint
+		parent.add_child(fill_line)
 
 func _scaled_item_icon(texture: Texture2D, target_size: int) -> Texture2D:
 	if texture == null or target_size <= 0:
