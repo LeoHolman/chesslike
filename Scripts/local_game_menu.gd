@@ -6,6 +6,7 @@ extends Control
 @onready var back_to_main_menu_button: Button = $BackToMainMenuButton
 @onready var start_game_button: Button = $StartGameButton
 @onready var board_preview: Control = $PreviewArea/BoardPreview
+@onready var options_content: Control = $OptionsScroll/OptionsContent
 @onready var preview_warning_label: Label = $PreviewWarningLabel
 @onready var piece_bank_list: ItemList = $OptionsScroll/OptionsContent/PieceBankList
 @onready var piece_color_option: OptionButton = $OptionsScroll/OptionsContent/PieceColorOption
@@ -43,6 +44,24 @@ extends Control
 @onready var promotion_pieces_title_background: ColorRect = $OptionsScroll/OptionsContent/PromotionPiecesTitleBackground
 @onready var promotion_pieces_title: Label = $OptionsScroll/OptionsContent/PromotionPiecesTitle
 @onready var promotion_pieces_list: VBoxContainer = $OptionsScroll/OptionsContent/PromotionPiecesScroll/PromotionPiecesList
+@onready var enable_spell_cards_check_box: CheckBox = $OptionsScroll/OptionsContent/EnableSpellCardsCheckBox
+@onready var spell_hand_size_label: Label = $OptionsScroll/OptionsContent/SpellHandSizeLabel
+@onready var spell_hand_size_spin_box: SpinBox = $OptionsScroll/OptionsContent/SpellHandSizeSpinBox
+@onready var spell_unbalanced_hand_sizes_check_box: CheckBox = $OptionsScroll/OptionsContent/SpellUnbalancedHandSizesCheckBox
+@onready var spell_hand_size_white_label: Label = $OptionsScroll/OptionsContent/SpellHandSizeWhiteLabel
+@onready var spell_hand_size_white_spin_box: SpinBox = $OptionsScroll/OptionsContent/SpellHandSizeWhiteSpinBox
+@onready var spell_hand_size_black_label: Label = $OptionsScroll/OptionsContent/SpellHandSizeBlackLabel
+@onready var spell_hand_size_black_spin_box: SpinBox = $OptionsScroll/OptionsContent/SpellHandSizeBlackSpinBox
+@onready var random_spell_cards_check_box: CheckBox = $OptionsScroll/OptionsContent/RandomSpellCardsCheckBox
+@onready var spell_allow_duplicates_check_box: CheckBox = $OptionsScroll/OptionsContent/SpellAllowDuplicatesCheckBox
+@onready var spell_draw_replacement_after_cast_check_box: CheckBox = $OptionsScroll/OptionsContent/SpellDrawReplacementAfterCastCheckBox
+@onready var spell_assign_card_label: Label = $OptionsScroll/OptionsContent/SpellAssignCardLabel
+@onready var spell_assign_card_option: OptionButton = $OptionsScroll/OptionsContent/SpellAssignCardOption
+@onready var spell_cards_hint_label: Label = $OptionsScroll/OptionsContent/SpellCardsHintLabel
+@onready var available_spell_cards_title_background: ColorRect = $OptionsScroll/OptionsContent/AvailableSpellCardsTitleBackground
+@onready var available_spell_cards_title: Label = $OptionsScroll/OptionsContent/AvailableSpellCardsTitle
+@onready var available_spell_cards_scroll: ScrollContainer = $OptionsScroll/OptionsContent/AvailableSpellCardsScroll
+@onready var available_spell_cards_list: VBoxContainer = $OptionsScroll/OptionsContent/AvailableSpellCardsScroll/AvailableSpellCardsList
 
 const INVALID_SQUARE = Vector2i(-1, -1)
 const PREVIEW_SELECTION_HIGHLIGHT = Color(0.2, 0.6, 1.0, 0.28)
@@ -52,9 +71,11 @@ const PREVIEW_BLACK_DROP_POOL_BACKGROUND = Color(0.34, 0.18, 0.18, 0.86)
 const PREVIEW_DROP_POOL_BORDER = Color(0.82, 0.85, 0.92, 0.95)
 const PREVIEW_WHITE_DROP_POOL_HOVER_BACKGROUND = Color(0.26, 0.36, 0.56, 0.92)
 const PREVIEW_BLACK_DROP_POOL_HOVER_BACKGROUND = Color(0.46, 0.24, 0.24, 0.92)
+const PREVIEW_SPELL_HAND_BORDER = Color(0.92, 0.95, 1.0, 0.95)
 const PRESETS = {
 	"Standard Chess": "standard_chess",
-	"Standard Shogi": "standard_shogi"
+	"Standard Shogi": "standard_shogi",
+	"Gungi": "gungi"
 }
 
 var selected_piece_id = ""
@@ -81,6 +102,24 @@ var preview_drop_pool_entry_rects = {
 	"white": [],
 	"black": []
 }
+var preview_spell_hands = {
+	"white": [],
+	"black": []
+}
+var preview_white_spell_hand_rect = Rect2()
+var preview_black_spell_hand_rect = Rect2()
+var preview_spell_hand_entry_rects = {
+	"white": [],
+	"black": []
+}
+var preview_spell_hand_scroll_offsets = {
+	"white": 0,
+	"black": 0
+}
+var preview_spell_hand_viewport_rects = {
+	"white": Rect2(),
+	"black": Rect2()
+}
 var dragging_preview_piece = false
 var drag_piece_origin_square = INVALID_SQUARE
 var dragging_piece_bank_piece = false
@@ -88,11 +127,28 @@ var piece_bank_drag_piece_id = ""
 var piece_bank_drag_piece_color = "white"
 var piece_bank_drag_preview_position = Vector2.ZERO
 var preview_drop_pool_hover_owner = ""
+var preview_drop_pool_scroll_offsets = {
+	"white": 0,
+	"black": 0
+}
+var preview_drop_pool_viewport_rects = {
+	"white": Rect2(),
+	"black": Rect2()
+}
 var is_updating_army_strength_cap = false
 var is_updating_unbalanced_army_strength_caps = false
+var is_updating_spell_hand_sizes = false
 var preview_warning_message_serial = 0
 var is_editing_preset_mode = false
 var editing_preset_name = ""
+var spell_card_checkboxes: Dictionary = {}
+var spell_assign_card_ids: Array[String] = []
+var selected_spell_card_id = ""
+var piece_stacking_check_box: CheckBox
+var enable_territory_check_box: CheckBox
+var enable_muster_check_box: CheckBox
+var territory_rows_label: Label
+var territory_rows_spin_box: SpinBox
 var player_side_colors = {
 	"white": Color(1.0, 1.0, 1.0, 1.0),
 	"black": Color(0.08, 0.08, 0.08, 1.0)
@@ -229,11 +285,29 @@ func _update_victory_condition_description() -> void:
 		victory_condition_description.text = "CHECKMATE\nWin by checkmating the king."
 
 func _setup_special_rules() -> void:
+	_ensure_piece_stacking_check_box()
+	_ensure_gungi_rule_controls()
 	castling_check_box.toggled.connect(_on_castling_rule_toggled)
 	promotion_check_box.toggled.connect(_on_promotion_rule_toggled)
+	enable_spell_cards_check_box.toggled.connect(_on_enable_spell_cards_toggled)
 	piece_dropping_check_box.toggled.connect(_on_piece_dropping_toggled)
+	if piece_stacking_check_box != null:
+		piece_stacking_check_box.toggled.connect(_on_piece_stacking_toggled)
+	if enable_territory_check_box != null:
+		enable_territory_check_box.toggled.connect(_on_territory_controls_toggled)
+	if enable_muster_check_box != null:
+		enable_muster_check_box.toggled.connect(_on_territory_controls_toggled)
+	if territory_rows_spin_box != null:
+		territory_rows_spin_box.value_changed.connect(_on_territory_rows_value_changed)
 	limit_army_strength_check_box.toggled.connect(_on_limit_army_strength_toggled)
 	unbalanced_armies_check_box.toggled.connect(_on_unbalanced_armies_toggled)
+	spell_unbalanced_hand_sizes_check_box.toggled.connect(_on_spell_unbalanced_hand_sizes_toggled)
+	random_spell_cards_check_box.toggled.connect(_on_random_spell_cards_toggled)
+	spell_allow_duplicates_check_box.toggled.connect(_on_spell_allow_duplicates_toggled)
+	spell_hand_size_spin_box.value_changed.connect(_on_spell_hand_size_value_changed)
+	spell_hand_size_white_spin_box.value_changed.connect(_on_spell_hand_size_value_changed)
+	spell_hand_size_black_spin_box.value_changed.connect(_on_spell_hand_size_value_changed)
+	spell_assign_card_option.item_selected.connect(_on_spell_assign_card_selected)
 	army_strength_cap_spin_box.value_changed.connect(_on_army_strength_cap_value_changed)
 	white_army_strength_cap_spin_box.value_changed.connect(_on_unbalanced_army_strength_cap_value_changed)
 	black_army_strength_cap_spin_box.value_changed.connect(_on_unbalanced_army_strength_cap_value_changed)
@@ -254,8 +328,24 @@ func _setup_special_rules() -> void:
 	player2_promotion_zone_spin_box.min_value = 1.0
 	player2_promotion_zone_spin_box.step = 1.0
 	player2_promotion_zone_spin_box.rounded = true
+	spell_hand_size_spin_box.min_value = 0.0
+	spell_hand_size_spin_box.step = 1.0
+	spell_hand_size_spin_box.rounded = true
+	spell_hand_size_white_spin_box.min_value = 0.0
+	spell_hand_size_white_spin_box.step = 1.0
+	spell_hand_size_white_spin_box.rounded = true
+	spell_hand_size_black_spin_box.min_value = 0.0
+	spell_hand_size_black_spin_box.step = 1.0
+	spell_hand_size_black_spin_box.rounded = true
+	if territory_rows_spin_box != null:
+		territory_rows_spin_box.min_value = 1.0
+		territory_rows_spin_box.step = 1.0
+		territory_rows_spin_box.rounded = true
 	_build_promotion_piece_checkboxes()
+	_build_spell_card_checkboxes()
 	_apply_special_rules($"/root/GameManager".SpecialRules)
+	_apply_territory_rows(int($"/root/GameManager".TerritoryRows))
+	_apply_spell_card_config($"/root/GameManager")
 	_apply_promotion_zones($"/root/GameManager".PromotionZones)
 	_update_promotion_zone_limits()
 	army_strength_cap_spin_box.value = float(max(int($"/root/GameManager".ArmyStrengthCap), 2))
@@ -263,7 +353,9 @@ func _setup_special_rules() -> void:
 	black_army_strength_cap_spin_box.value = float(max(int($"/root/GameManager".ArmyStrengthCapBlack), 2))
 	_apply_promotion_piece_pool($"/root/GameManager".PromotionPiecePool)
 	_update_promotion_piece_visibility()
+	_update_spell_card_visibility()
 	_update_piece_dropping_visibility()
+	_update_territory_controls_visibility()
 	_update_army_strength_limit_visibility()
 	_ensure_army_strength_cap_meets_current_position()
 	_update_castling_rule_availability()
@@ -274,11 +366,118 @@ func _build_special_rules() -> Dictionary:
 		"en_passant": en_passant_check_box.button_pressed,
 		"promotion": promotion_check_box.button_pressed,
 		"allow_undo": allow_undo_check_box.button_pressed,
+		"enable_spell_cards": enable_spell_cards_check_box.button_pressed,
 		"piece_dropping": piece_dropping_check_box.button_pressed,
+		"piece_stacking": piece_stacking_check_box != null and piece_stacking_check_box.button_pressed,
+		"enable_territory": enable_territory_check_box != null and enable_territory_check_box.button_pressed,
+		"enable_muster": enable_muster_check_box != null and enable_muster_check_box.button_pressed,
 		"capture_to_drop_pool": capture_to_drop_pool_check_box.button_pressed,
 		"limit_army_strength": limit_army_strength_check_box.button_pressed,
 		"unbalanced_armies": unbalanced_armies_check_box.button_pressed
 	}
+
+func _ensure_piece_stacking_check_box() -> void:
+	if piece_stacking_check_box != null:
+		return
+	var existing = options_content.get_node_or_null("PieceStackingCheckBox")
+	if existing is CheckBox:
+		piece_stacking_check_box = existing
+		return
+	var check_box = CheckBox.new()
+	check_box.name = "PieceStackingCheckBox"
+	check_box.layout_mode = 0
+	check_box.offset_left = 80.0
+	check_box.offset_top = 1576.0
+	check_box.offset_right = 332.0
+	check_box.offset_bottom = 1600.0
+	check_box.text = "Enable Piece Stacking (Gungi)"
+	options_content.add_child(check_box)
+	piece_stacking_check_box = check_box
+
+func _ensure_gungi_rule_controls() -> void:
+	if enable_territory_check_box == null:
+		var existing_territory = options_content.get_node_or_null("EnableTerritoryCheckBox")
+		if existing_territory is CheckBox:
+			enable_territory_check_box = existing_territory
+		else:
+			var territory_check = CheckBox.new()
+			territory_check.name = "EnableTerritoryCheckBox"
+			territory_check.layout_mode = 0
+			territory_check.offset_left = 80.0
+			territory_check.offset_top = 1604.0
+			territory_check.offset_right = 332.0
+			territory_check.offset_bottom = 1628.0
+			territory_check.text = "Enable Territory Rules"
+			options_content.add_child(territory_check)
+			enable_territory_check_box = territory_check
+
+	if enable_muster_check_box == null:
+		var existing_muster = options_content.get_node_or_null("EnableMusterCheckBox")
+		if existing_muster is CheckBox:
+			enable_muster_check_box = existing_muster
+		else:
+			var muster_check = CheckBox.new()
+			muster_check.name = "EnableMusterCheckBox"
+			muster_check.layout_mode = 0
+			muster_check.offset_left = 80.0
+			muster_check.offset_top = 1632.0
+			muster_check.offset_right = 332.0
+			muster_check.offset_bottom = 1656.0
+			muster_check.text = "Enable Muster Opening"
+			options_content.add_child(muster_check)
+			enable_muster_check_box = muster_check
+
+	if territory_rows_label == null:
+		var existing_label = options_content.get_node_or_null("TerritoryRowsLabel")
+		if existing_label is Label:
+			territory_rows_label = existing_label
+		else:
+			var rows_label = Label.new()
+			rows_label.name = "TerritoryRowsLabel"
+			rows_label.layout_mode = 0
+			rows_label.offset_left = 80.0
+			rows_label.offset_top = 1664.0
+			rows_label.offset_right = 212.0
+			rows_label.offset_bottom = 1688.0
+			rows_label.text = "Territory Rows"
+			options_content.add_child(rows_label)
+			territory_rows_label = rows_label
+
+	if territory_rows_spin_box == null:
+		var existing_spin = options_content.get_node_or_null("TerritoryRowsSpinBox")
+		if existing_spin is SpinBox:
+			territory_rows_spin_box = existing_spin
+		else:
+			var rows_spin = SpinBox.new()
+			rows_spin.name = "TerritoryRowsSpinBox"
+			rows_spin.layout_mode = 0
+			rows_spin.offset_left = 228.0
+			rows_spin.offset_top = 1664.0
+			rows_spin.offset_right = 332.0
+			rows_spin.offset_bottom = 1688.0
+			options_content.add_child(rows_spin)
+			territory_rows_spin_box = rows_spin
+
+func _territory_rows_value() -> int:
+	if territory_rows_spin_box == null:
+		return 3
+	return max(int(round(territory_rows_spin_box.value)), 1)
+
+func _apply_territory_rows(rows: int) -> void:
+	if territory_rows_spin_box == null:
+		return
+	territory_rows_spin_box.value = float(max(rows, 1))
+
+func _update_territory_controls_visibility() -> void:
+	if territory_rows_label == null or territory_rows_spin_box == null:
+		return
+	var enabled = false
+	if enable_territory_check_box != null and enable_territory_check_box.button_pressed:
+		enabled = true
+	if enable_muster_check_box != null and enable_muster_check_box.button_pressed:
+		enabled = true
+	territory_rows_label.visible = enabled
+	territory_rows_spin_box.visible = enabled
 
 func _build_promotion_piece_pool() -> Array:
 	var selected_piece_ids: Array = []
@@ -319,6 +518,226 @@ func _apply_promotion_piece_pool(piece_pool: Array) -> void:
 	if _build_promotion_piece_pool().is_empty() and promotion_piece_checkboxes.has("queen"):
 		var queen_check_box: CheckBox = promotion_piece_checkboxes["queen"]
 		queen_check_box.button_pressed = true
+
+func _build_spell_card_checkboxes() -> void:
+	for child in available_spell_cards_list.get_children():
+		child.queue_free()
+	spell_card_checkboxes.clear()
+
+	for card_data in $"/root/GameManager".get_spell_card_definitions():
+		var card_id = str(card_data.get("id", ""))
+		if card_id == "":
+			continue
+		var card_name = str(card_data.get("name", card_id.capitalize()))
+		var card_type = str(card_data.get("type", "regular"))
+		var card_description = str(card_data.get("description", ""))
+		var check_box = CheckBox.new()
+		check_box.text = "%s [%s]" % [card_name, "Power" if card_type == "power" else "Regular"]
+		check_box.tooltip_text = card_description
+		check_box.toggled.connect(_on_spell_card_toggled.bind(card_id))
+		available_spell_cards_list.add_child(check_box)
+		spell_card_checkboxes[card_id] = check_box
+
+func _build_enabled_spell_card_ids() -> Array:
+	var enabled_ids: Array = []
+	for card_data in $"/root/GameManager".get_spell_card_definitions():
+		var card_id = str(card_data.get("id", ""))
+		if card_id == "" or not spell_card_checkboxes.has(card_id):
+			continue
+		var check_box: CheckBox = spell_card_checkboxes[card_id]
+		if check_box.button_pressed:
+			enabled_ids.append(card_id)
+	return enabled_ids
+
+func _apply_available_spell_card_ids(source_ids: Variant) -> void:
+	var normalized_ids = $"/root/GameManager".normalize_spell_card_ids(source_ids)
+	for card_id in spell_card_checkboxes.keys():
+		var check_box: CheckBox = spell_card_checkboxes[card_id]
+		check_box.button_pressed = normalized_ids.has(str(card_id))
+	_refresh_spell_assign_option()
+	_clamp_preview_spell_hands_to_rules()
+
+func _build_spell_card_hands() -> Dictionary:
+	return {
+		"white": (preview_spell_hands.get("white", []) as Array).duplicate(true),
+		"black": (preview_spell_hands.get("black", []) as Array).duplicate(true)
+	}
+
+func _deserialize_spell_card_hands(source_hands: Variant) -> Dictionary:
+	return $"/root/GameManager".normalize_spell_card_hands(source_hands)
+
+func _apply_spell_card_config(game_manager: Node) -> void:
+	is_updating_spell_hand_sizes = true
+	spell_hand_size_spin_box.value = float(max(int(game_manager.SpellCardHandSize), 0))
+	spell_hand_size_white_spin_box.value = float(max(int(game_manager.SpellCardHandSizeWhite), 0))
+	spell_hand_size_black_spin_box.value = float(max(int(game_manager.SpellCardHandSizeBlack), 0))
+	random_spell_cards_check_box.button_pressed = bool(game_manager.SpellCardsRandom)
+	spell_allow_duplicates_check_box.button_pressed = bool(game_manager.SpellCardAllowDuplicates)
+	spell_draw_replacement_after_cast_check_box.button_pressed = bool(game_manager.SpellCardDrawReplacementAfterCast)
+	spell_unbalanced_hand_sizes_check_box.button_pressed = int(game_manager.SpellCardHandSizeWhite) != int(game_manager.SpellCardHandSizeBlack)
+	is_updating_spell_hand_sizes = false
+	_apply_available_spell_card_ids(game_manager.SpellCardAvailableIds)
+	preview_spell_hands = _deserialize_spell_card_hands(game_manager.StartingSpellHands)
+	_update_spell_card_visibility()
+	_clamp_preview_spell_hands_to_rules()
+
+func _build_spell_card_config() -> Dictionary:
+	return {
+		"hand_size": _get_spell_hand_size_value(),
+		"unbalanced_hand_sizes": spell_unbalanced_hand_sizes_check_box.button_pressed,
+		"hand_size_white": _get_spell_hand_size_for_owner("white"),
+		"hand_size_black": _get_spell_hand_size_for_owner("black"),
+		"random_cards": random_spell_cards_check_box.button_pressed,
+		"allow_duplicates": _is_spell_card_duplicates_allowed(),
+		"draw_replacement_after_cast": _is_draw_replacement_after_cast_enabled(),
+		"available_cards": _build_enabled_spell_card_ids(),
+		"starting_hands": _build_spell_card_hands()
+	}
+
+func _apply_spell_card_config_from_preset(spell_config: Variant) -> void:
+	if not (spell_config is Dictionary):
+		spell_config = {
+			"hand_size": 3,
+			"unbalanced_hand_sizes": false,
+			"hand_size_white": 3,
+			"hand_size_black": 3,
+			"random_cards": true,
+			"allow_duplicates": true,
+			"draw_replacement_after_cast": false,
+			"available_cards": $"/root/GameManager".normalize_spell_card_ids([]),
+			"starting_hands": {"white": [], "black": []}
+		}
+	is_updating_spell_hand_sizes = true
+	spell_hand_size_spin_box.value = float(max(int(spell_config.get("hand_size", 3)), 0))
+	spell_unbalanced_hand_sizes_check_box.button_pressed = bool(spell_config.get("unbalanced_hand_sizes", false))
+	spell_hand_size_white_spin_box.value = float(max(int(spell_config.get("hand_size_white", spell_config.get("hand_size", 3))), 0))
+	spell_hand_size_black_spin_box.value = float(max(int(spell_config.get("hand_size_black", spell_config.get("hand_size", 3))), 0))
+	random_spell_cards_check_box.button_pressed = bool(spell_config.get("random_cards", true))
+	spell_allow_duplicates_check_box.button_pressed = bool(spell_config.get("allow_duplicates", true))
+	spell_draw_replacement_after_cast_check_box.button_pressed = bool(spell_config.get("draw_replacement_after_cast", false))
+	is_updating_spell_hand_sizes = false
+	_apply_available_spell_card_ids(spell_config.get("available_cards", []))
+	preview_spell_hands = _deserialize_spell_card_hands(spell_config.get("starting_hands", {}))
+	_update_spell_card_visibility()
+	_clamp_preview_spell_hands_to_rules()
+
+func _refresh_spell_assign_option() -> void:
+	spell_assign_card_option.clear()
+	spell_assign_card_ids.clear()
+	for card_data in $"/root/GameManager".get_spell_card_definitions():
+		var card_id = str(card_data.get("id", ""))
+		if card_id == "":
+			continue
+		if not spell_card_checkboxes.has(card_id):
+			continue
+		var check_box: CheckBox = spell_card_checkboxes[card_id]
+		if not check_box.button_pressed:
+			continue
+		var card_name = str(card_data.get("name", card_id.capitalize()))
+		var card_type = str(card_data.get("type", "regular"))
+		spell_assign_card_option.add_item("%s [%s]" % [card_name, "Power" if card_type == "power" else "Regular"])
+		spell_assign_card_ids.append(card_id)
+
+	if spell_assign_card_ids.is_empty():
+		selected_spell_card_id = ""
+		spell_assign_card_option.disabled = true
+	else:
+		spell_assign_card_option.disabled = false
+		spell_assign_card_option.select(0)
+		selected_spell_card_id = spell_assign_card_ids[0]
+
+func _get_spell_hand_size_value() -> int:
+	return max(int(round(spell_hand_size_spin_box.value)), 0)
+
+func _get_spell_hand_size_for_owner(owner: String) -> int:
+	if spell_unbalanced_hand_sizes_check_box.button_pressed:
+		if owner == "white":
+			return max(int(round(spell_hand_size_white_spin_box.value)), 0)
+		return max(int(round(spell_hand_size_black_spin_box.value)), 0)
+	return _get_spell_hand_size_value()
+
+func _is_spell_cards_enabled() -> bool:
+	return enable_spell_cards_check_box.button_pressed
+
+func _is_random_spell_cards_enabled() -> bool:
+	return random_spell_cards_check_box.button_pressed
+
+func _is_spell_card_duplicates_allowed() -> bool:
+	return spell_allow_duplicates_check_box.button_pressed
+
+func _is_draw_replacement_after_cast_enabled() -> bool:
+	return random_spell_cards_check_box.button_pressed and spell_draw_replacement_after_cast_check_box.button_pressed
+
+func _clamp_preview_spell_hands_to_rules() -> void:
+	for owner in ["white", "black"]:
+		var clamped: Array = []
+		var seen = {}
+		var cap = _get_spell_hand_size_for_owner(owner)
+		var current_hand: Array = preview_spell_hands.get(owner, [])
+		for card_id in current_hand:
+			var key = str(card_id)
+			if not _is_spell_card_enabled_in_list(key):
+				continue
+			if not _is_spell_card_duplicates_allowed() and seen.has(key):
+				continue
+			if clamped.size() >= cap:
+				break
+			seen[key] = true
+			clamped.append(key)
+		preview_spell_hands[owner] = clamped
+
+func _is_spell_card_enabled_in_list(card_id: String) -> bool:
+	if not spell_card_checkboxes.has(card_id):
+		return false
+	var check_box: CheckBox = spell_card_checkboxes[card_id]
+	return check_box.button_pressed
+
+func _spell_card_name(card_id: String) -> String:
+	for card_data in $"/root/GameManager".get_spell_card_definitions():
+		if str(card_data.get("id", "")) == card_id:
+			return str(card_data.get("name", card_id.capitalize()))
+	return card_id.capitalize()
+
+func _on_spell_card_toggled(is_checked: bool, card_id: String) -> void:
+	if not is_checked and _build_enabled_spell_card_ids().is_empty() and spell_card_checkboxes.has(card_id):
+		var check_box: CheckBox = spell_card_checkboxes[card_id]
+		check_box.button_pressed = true
+		return
+	_refresh_spell_assign_option()
+	_clamp_preview_spell_hands_to_rules()
+	_refresh_preview()
+
+func _on_spell_assign_card_selected(index: int) -> void:
+	if index < 0 or index >= spell_assign_card_ids.size():
+		selected_spell_card_id = ""
+		return
+	selected_spell_card_id = spell_assign_card_ids[index]
+
+func _on_enable_spell_cards_toggled(_is_enabled: bool) -> void:
+	_update_spell_card_visibility()
+	_clamp_preview_spell_hands_to_rules()
+	_refresh_preview()
+
+func _on_spell_unbalanced_hand_sizes_toggled(_is_enabled: bool) -> void:
+	_update_spell_card_visibility()
+	_clamp_preview_spell_hands_to_rules()
+	_refresh_preview()
+
+func _on_random_spell_cards_toggled(_is_enabled: bool) -> void:
+	if not _is_random_spell_cards_enabled():
+		spell_draw_replacement_after_cast_check_box.button_pressed = false
+	_update_spell_card_visibility()
+	_refresh_preview()
+
+func _on_spell_allow_duplicates_toggled(_is_enabled: bool) -> void:
+	_clamp_preview_spell_hands_to_rules()
+	_refresh_preview()
+
+func _on_spell_hand_size_value_changed(_value: float) -> void:
+	if is_updating_spell_hand_sizes:
+		return
+	_clamp_preview_spell_hands_to_rules()
+	_refresh_preview()
 
 func _update_promotion_piece_visibility() -> void:
 	var show_promotion_piece_pool = promotion_check_box.button_pressed
@@ -365,6 +784,29 @@ func _update_piece_dropping_visibility() -> void:
 	if not show_capture_rule:
 		capture_to_drop_pool_check_box.button_pressed = false
 
+func _update_spell_card_visibility() -> void:
+	var enabled = _is_spell_cards_enabled()
+	spell_hand_size_label.visible = enabled
+	spell_hand_size_spin_box.visible = enabled
+	spell_unbalanced_hand_sizes_check_box.visible = enabled
+	random_spell_cards_check_box.visible = enabled
+	spell_allow_duplicates_check_box.visible = enabled
+	spell_draw_replacement_after_cast_check_box.visible = enabled and _is_random_spell_cards_enabled()
+	available_spell_cards_title_background.visible = enabled
+	available_spell_cards_title.visible = enabled
+	available_spell_cards_scroll.visible = enabled
+
+	var unbalanced = enabled and spell_unbalanced_hand_sizes_check_box.button_pressed
+	spell_hand_size_white_label.visible = unbalanced
+	spell_hand_size_white_spin_box.visible = unbalanced
+	spell_hand_size_black_label.visible = unbalanced
+	spell_hand_size_black_spin_box.visible = unbalanced
+
+	var manual_assign = enabled and not _is_random_spell_cards_enabled()
+	spell_assign_card_label.visible = manual_assign
+	spell_assign_card_option.visible = manual_assign
+	spell_cards_hint_label.visible = manual_assign
+
 func _update_castling_rule_availability() -> void:
 	var supports_castling = _preview_supports_castling()
 	is_updating_castling_availability = true
@@ -406,6 +848,16 @@ func _on_promotion_zone_value_changed(_value: float) -> void:
 
 func _on_piece_dropping_toggled(_is_enabled: bool) -> void:
 	_update_piece_dropping_visibility()
+	_refresh_preview()
+
+func _on_piece_stacking_toggled(_is_enabled: bool) -> void:
+	_refresh_preview()
+
+func _on_territory_controls_toggled(_is_enabled: bool) -> void:
+	_update_territory_controls_visibility()
+	_refresh_preview()
+
+func _on_territory_rows_value_changed(_value: float) -> void:
 	_refresh_preview()
 
 func _on_limit_army_strength_toggled(is_enabled: bool) -> void:
@@ -459,12 +911,21 @@ func _apply_special_rules(special_rules: Dictionary) -> void:
 	en_passant_check_box.button_pressed = bool(special_rules.get("en_passant", true))
 	promotion_check_box.button_pressed = bool(special_rules.get("promotion", true))
 	allow_undo_check_box.button_pressed = bool(special_rules.get("allow_undo", false))
+	enable_spell_cards_check_box.button_pressed = bool(special_rules.get("enable_spell_cards", false))
 	piece_dropping_check_box.button_pressed = bool(special_rules.get("piece_dropping", false))
+	if piece_stacking_check_box != null:
+		piece_stacking_check_box.button_pressed = bool(special_rules.get("piece_stacking", false))
+	if enable_territory_check_box != null:
+		enable_territory_check_box.button_pressed = bool(special_rules.get("enable_territory", false))
+	if enable_muster_check_box != null:
+		enable_muster_check_box.button_pressed = bool(special_rules.get("enable_muster", false))
 	capture_to_drop_pool_check_box.button_pressed = bool(special_rules.get("capture_to_drop_pool", false))
 	limit_army_strength_check_box.button_pressed = bool(special_rules.get("limit_army_strength", false))
 	unbalanced_armies_check_box.button_pressed = bool(special_rules.get("unbalanced_armies", false))
 	_update_castling_rule_availability()
+	_update_spell_card_visibility()
 	_update_piece_dropping_visibility()
+	_update_territory_controls_visibility()
 	_update_army_strength_limit_visibility()
 
 func _update_army_strength_limit_visibility() -> void:
@@ -623,6 +1084,10 @@ func _reset_preview_to_default(should_refresh: bool = true, use_standard_layout:
 		"white": [],
 		"black": []
 	}
+	preview_spell_hands = {
+		"white": [],
+		"black": []
+	}
 	if use_standard_layout:
 		_apply_standard_chess_layout()
 	_apply_special_rules({
@@ -630,10 +1095,26 @@ func _reset_preview_to_default(should_refresh: bool = true, use_standard_layout:
 		"en_passant": true,
 		"promotion": true,
 		"allow_undo": false,
+		"enable_spell_cards": false,
 		"piece_dropping": false,
+		"piece_stacking": false,
+		"enable_territory": false,
+		"enable_muster": false,
 		"capture_to_drop_pool": false,
 		"limit_army_strength": false,
 		"unbalanced_armies": false
+	})
+	_apply_territory_rows(3)
+	_apply_spell_card_config_from_preset({
+		"hand_size": 3,
+		"unbalanced_hand_sizes": false,
+		"hand_size_white": 3,
+		"hand_size_black": 3,
+		"random_cards": true,
+		"allow_duplicates": true,
+		"draw_replacement_after_cast": false,
+		"available_cards": $"/root/GameManager".normalize_spell_card_ids([]),
+		"starting_hands": {"white": [], "black": []}
 	})
 	_set_army_strength_cap_value(32)
 	_set_unbalanced_army_strength_cap_value("white", 32)
@@ -675,10 +1156,26 @@ func _apply_preset(preset_id: String) -> void:
 				"en_passant": true,
 				"promotion": true,
 				"allow_undo": false,
+				"enable_spell_cards": false,
 				"piece_dropping": false,
+				"piece_stacking": false,
+				"enable_territory": false,
+				"enable_muster": false,
 				"capture_to_drop_pool": false,
 				"limit_army_strength": false,
 				"unbalanced_armies": false
+			})
+			_apply_territory_rows(2)
+			_apply_spell_card_config_from_preset({
+				"hand_size": 3,
+				"unbalanced_hand_sizes": false,
+				"hand_size_white": 3,
+				"hand_size_black": 3,
+				"random_cards": true,
+				"allow_duplicates": true,
+				"draw_replacement_after_cast": false,
+				"available_cards": $"/root/GameManager".normalize_spell_card_ids([]),
+				"starting_hands": {"white": [], "black": []}
 			})
 			_set_army_strength_cap_value(32)
 			_set_unbalanced_army_strength_cap_value("white", 32)
@@ -703,10 +1200,26 @@ func _apply_preset(preset_id: String) -> void:
 				"en_passant": false,
 				"promotion": false,
 				"allow_undo": false,
+				"enable_spell_cards": false,
 				"piece_dropping": true,
+				"piece_stacking": false,
+				"enable_territory": false,
+				"enable_muster": false,
 				"capture_to_drop_pool": true,
 				"limit_army_strength": false,
 				"unbalanced_armies": false
+			})
+			_apply_territory_rows(3)
+			_apply_spell_card_config_from_preset({
+				"hand_size": 3,
+				"unbalanced_hand_sizes": false,
+				"hand_size_white": 3,
+				"hand_size_black": 3,
+				"random_cards": true,
+				"allow_duplicates": true,
+				"draw_replacement_after_cast": false,
+				"available_cards": $"/root/GameManager".normalize_spell_card_ids([]),
+				"starting_hands": {"white": [], "black": []}
 			})
 			_set_army_strength_cap_value(32)
 			_set_unbalanced_army_strength_cap_value("white", 32)
@@ -719,6 +1232,50 @@ func _apply_preset(preset_id: String) -> void:
 			preview_drop_pools = {
 				"white": [],
 				"black": []
+			}
+			_refresh_preview()
+		"gungi":
+			_reset_preview_to_default(false, false)
+			width_spin_box.value = 9
+			height_spin_box.value = 9
+			preview_pieces.clear()
+			_apply_special_rules({
+				"castling": false,
+				"en_passant": false,
+				"promotion": false,
+				"allow_undo": false,
+				"enable_spell_cards": false,
+				"piece_dropping": true,
+				"piece_stacking": true,
+				"enable_territory": true,
+				"enable_muster": true,
+				"capture_to_drop_pool": true,
+				"limit_army_strength": false,
+				"unbalanced_armies": false
+			})
+			_apply_territory_rows(3)
+			_apply_spell_card_config_from_preset({
+				"hand_size": 0,
+				"unbalanced_hand_sizes": false,
+				"hand_size_white": 0,
+				"hand_size_black": 0,
+				"random_cards": true,
+				"allow_duplicates": true,
+				"draw_replacement_after_cast": false,
+				"available_cards": $"/root/GameManager".normalize_spell_card_ids([]),
+				"starting_hands": {"white": [], "black": []}
+			})
+			_set_army_strength_cap_value(32)
+			_set_unbalanced_army_strength_cap_value("white", 32)
+			_set_unbalanced_army_strength_cap_value("black", 32)
+			_apply_promotion_piece_pool(["rook", "bishop", "silver_general", "gold_general", "lance", "shogi_knight", "shogi_pawn"])
+			_apply_promotion_zones({"white_rows": 3, "black_rows": 3})
+			_apply_victory_condition("checkmate")
+			_apply_player_colors_from_serialized({})
+			_apply_tile_colors_from_serialized({})
+			preview_drop_pools = {
+				"white": ["lance", "shogi_knight", "silver_general", "gold_general", "king", "gold_general", "silver_general", "shogi_knight", "lance", "rook", "bishop", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn"],
+				"black": ["lance", "shogi_knight", "silver_general", "gold_general", "king", "gold_general", "silver_general", "shogi_knight", "lance", "rook", "bishop", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn", "shogi_pawn"]
 			}
 			_refresh_preview()
 		_:
@@ -744,10 +1301,13 @@ func _apply_saved_preset_config(preset_config: Dictionary) -> void:
 		_set_unbalanced_army_strength_cap_value("black", int(preset_config.get("army_strength_cap", 32)))
 	_apply_promotion_piece_pool(preset_config.get("promotion_pieces", ["queen", "rook", "bishop", "knight"]))
 	_apply_promotion_zones(preset_config.get("promotion_zones", {}))
+	_apply_spell_card_config_from_preset(preset_config.get("spell_cards", {}))
+	_apply_territory_rows(int(preset_config.get("territory_rows", 3)))
 	_update_promotion_zone_limits()
 	_apply_player_colors_from_serialized(preset_config.get("player_colors", {}))
 	_apply_tile_colors_from_serialized(preset_config.get("tile_colors", {}))
 	_update_promotion_piece_visibility()
+	_update_spell_card_visibility()
 	_update_piece_dropping_visibility()
 	_ensure_army_strength_cap_meets_current_position()
 	last_drag_square = INVALID_SQUARE
@@ -820,14 +1380,18 @@ func _refresh_preview(_value: float = 0.0) -> void:
 	var width = _get_dimension(width_spin_box.value, 8)
 	var height = _get_dimension(height_spin_box.value, 8)
 	_prune_preview_pieces(width, height)
-	var pool_width_estimate = 0.0
+	var side_panel_width_estimate = 0.0
 	if piece_dropping_check_box.button_pressed:
-		pool_width_estimate = clampf(board_preview.size.x * 0.18, 92.0, 150.0) + 16.0
-	var usable_width = max(board_preview.size.x - pool_width_estimate * 2.0, 80.0)
+		side_panel_width_estimate = _preview_side_panel_width() + 16.0
+	var top_bottom_spell_reserve = 0.0
+	if _shows_preview_spell_hands():
+		top_bottom_spell_reserve = _preview_spell_hand_panel_height_estimate() * 2.0 + 24.0
+	var usable_width = max(board_preview.size.x - side_panel_width_estimate * 2.0, 80.0)
+	var usable_height = max(board_preview.size.y - top_bottom_spell_reserve, 80.0)
 
 	preview_tile_size = min(
 		floor(usable_width / max(width, 1)),
-		floor(board_preview.size.y / max(height, 1))
+		floor(usable_height / max(height, 1))
 	)
 	if preview_tile_size < 1:
 		preview_tile_size = 1
@@ -858,7 +1422,130 @@ func _refresh_preview(_value: float = 0.0) -> void:
 	_draw_preview_ghost()
 	_draw_piece_bank_drag_preview()
 	_draw_preview_drop_pools(board_pixel_size)
+	_clamp_preview_spell_hands_to_rules()
+	_draw_preview_spell_hands(board_pixel_size)
 	_update_castling_rule_availability()
+
+func _preview_side_panel_width() -> float:
+	return clampf(board_preview.size.x * 0.18, 92.0, 150.0)
+
+func _shows_preview_spell_hands() -> bool:
+	return _is_spell_cards_enabled() and not _is_random_spell_cards_enabled()
+
+func _preview_spell_hand_panel_height_estimate() -> float:
+	return clampf(board_preview.size.y * 0.16, 80.0, 132.0)
+
+func _draw_preview_spell_hands(board_pixel_size: Vector2) -> void:
+	preview_white_spell_hand_rect = Rect2()
+	preview_black_spell_hand_rect = Rect2()
+	preview_spell_hand_entry_rects["white"] = []
+	preview_spell_hand_entry_rects["black"] = []
+	if not _shows_preview_spell_hands():
+		return
+
+	var hand_height = _preview_spell_hand_panel_height_estimate()
+	var hand_width = max(board_pixel_size.x, 120.0)
+	var hand_x = preview_board_origin.x
+	var top_y = max(8.0, preview_board_origin.y - hand_height - 8.0)
+	var bottom_y = min(board_preview.size.y - hand_height - 8.0, preview_board_origin.y + board_pixel_size.y + 8.0)
+
+	preview_white_spell_hand_rect = Rect2(hand_x, top_y, hand_width, hand_height)
+	preview_black_spell_hand_rect = Rect2(hand_x, bottom_y, hand_width, hand_height)
+
+	_draw_single_preview_spell_hand(preview_white_spell_hand_rect, "Player 1 Hand", "white")
+	_draw_single_preview_spell_hand(preview_black_spell_hand_rect, "Player 2 Hand", "black")
+
+func _draw_single_preview_spell_hand(hand_rect: Rect2, title: String, owner: String) -> void:
+	var background = ColorRect.new()
+	background.position = hand_rect.position
+	background.size = hand_rect.size
+	background.color = _preview_drop_pool_color(owner, false)
+	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	board_preview.add_child(background)
+
+	var border = Line2D.new()
+	border.position = hand_rect.position
+	border.width = 2.0
+	border.default_color = PREVIEW_SPELL_HAND_BORDER
+	border.closed = true
+	border.points = PackedVector2Array([
+		Vector2(0.0, 0.0),
+		Vector2(hand_rect.size.x, 0.0),
+		Vector2(hand_rect.size.x, hand_rect.size.y),
+		Vector2(0.0, hand_rect.size.y)
+	])
+	board_preview.add_child(border)
+
+	var title_label = Label.new()
+	title_label.position = hand_rect.position + Vector2(8.0, 4.0)
+	title_label.size = Vector2(max(hand_rect.size.x - 16.0, 20.0), 22.0)
+	title_label.text = "%s (%d/%d)" % [title, (preview_spell_hands.get(owner, []) as Array).size(), _get_spell_hand_size_for_owner(owner)]
+	title_label.add_theme_font_size_override("font_size", 12)
+	title_label.add_theme_color_override("font_color", _preview_drop_pool_text_color(owner))
+	title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	board_preview.add_child(title_label)
+
+	var entries: Array = preview_spell_hands.get(owner, [])
+	var row_height = max(preview_tile_size * 0.34, 16.0)
+	var row_spacing = 2
+	var content_x = hand_rect.position.x + 8.0
+	var content_y = hand_rect.position.y + 24.0
+	var content_width = max(hand_rect.size.x - 16.0, 24.0)
+	var body_height = max(hand_rect.size.y - 30.0, row_height)
+	preview_spell_hand_viewport_rects[owner] = Rect2(content_x, content_y, content_width, body_height)
+	var entry_rects: Array = []
+
+	if entries.is_empty():
+		preview_spell_hand_scroll_offsets[owner] = 0
+		var empty_label = Label.new()
+		empty_label.position = Vector2(content_x, content_y)
+		empty_label.size = Vector2(content_width, body_height)
+		empty_label.text = "(click to add selected card)"
+		empty_label.add_theme_font_size_override("font_size", 12)
+		empty_label.add_theme_color_override("font_color", _preview_drop_pool_text_color(owner))
+		empty_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		board_preview.add_child(empty_label)
+		preview_spell_hand_entry_rects[owner] = entry_rects
+		return
+
+	var scroll = ScrollContainer.new()
+	scroll.position = Vector2(content_x, content_y)
+	scroll.size = Vector2(content_width, body_height)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.mouse_filter = Control.MOUSE_FILTER_STOP
+	board_preview.add_child(scroll)
+
+	var rows = VBoxContainer.new()
+	rows.custom_minimum_size = Vector2(content_width, 0.0)
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rows.add_theme_constant_override("separation", row_spacing)
+	scroll.add_child(rows)
+
+	var total_rows_height = entries.size() * row_height + max(entries.size() - 1, 0) * row_spacing
+	rows.custom_minimum_size = Vector2(content_width, max(body_height, total_rows_height))
+
+	var y_offset = 0.0
+	for index in range(entries.size()):
+		var card_id = str(entries[index])
+		var row_rect = Rect2(Vector2(0.0, y_offset), Vector2(content_width, row_height))
+		var row_label = Label.new()
+		row_label.custom_minimum_size = Vector2(content_width, row_height)
+		row_label.clip_text = true
+		row_label.text = _spell_card_name(card_id)
+		row_label.tooltip_text = _spell_card_name(card_id)
+		row_label.add_theme_font_size_override("font_size", 12)
+		row_label.add_theme_color_override("font_color", _preview_drop_pool_text_color(owner))
+		row_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		rows.add_child(row_label)
+		entry_rects.append({"card_id": card_id, "rect": row_rect})
+		y_offset += row_height + row_spacing
+
+	var saved_scroll = int(preview_spell_hand_scroll_offsets.get(owner, 0))
+	scroll.scroll_vertical = saved_scroll
+	preview_spell_hand_scroll_offsets[owner] = scroll.scroll_vertical
+
+	preview_spell_hand_entry_rects[owner] = entry_rects
 
 func _draw_preview_promotion_zone_tints(width: int, height: int) -> void:
 	if not promotion_check_box.button_pressed:
@@ -958,7 +1645,7 @@ func _draw_preview_drop_pools(board_pixel_size: Vector2) -> void:
 	if not piece_dropping_check_box.button_pressed:
 		return
 
-	var pool_width = clampf(board_preview.size.x * 0.18, 92.0, 150.0)
+	var pool_width = _preview_side_panel_width()
 	var pool_height = clampf(board_pixel_size.y * 0.68, 120.0, board_preview.size.y - 24.0)
 	var pool_y = clampf(preview_board_origin.y + (board_pixel_size.y - pool_height) * 0.5, 8.0, board_preview.size.y - pool_height - 8.0)
 
@@ -1009,12 +1696,13 @@ func _draw_single_preview_drop_pool(pool_rect: Rect2, title: String, pool_owner:
 	var content_x = pool_rect.position.x + 8.0
 	var current_y = pool_rect.position.y + 48.0
 	var row_height = max(preview_tile_size * 0.42, 18.0)
-	var row_spacing = 2.0
+	var row_spacing = 2
 	var content_width = max(pool_rect.size.x - 16.0, 24.0)
 	var body_height = max(pool_rect.size.y - 58.0, row_height)
-	var max_rows = max(int(floor((body_height + row_spacing) / (row_height + row_spacing))), 1)
+	preview_drop_pool_viewport_rects[pool_owner] = Rect2(content_x, current_y, content_width, body_height)
 	var row_font_size = int(clampf(preview_tile_size * 0.34, 10.0, 13.0))
 	if entries.is_empty():
+		preview_drop_pool_scroll_offsets[pool_owner] = 0
 		var empty_label = Label.new()
 		empty_label.position = Vector2(content_x, current_y)
 		empty_label.size = Vector2(content_width, body_height)
@@ -1028,39 +1716,43 @@ func _draw_single_preview_drop_pool(pool_rect: Rect2, title: String, pool_owner:
 		preview_drop_pool_entry_rects[pool_owner] = entry_rects
 		return
 
-	var rows_to_draw = min(entries.size(), max_rows)
-	var hidden_entries = max(entries.size() - rows_to_draw, 0)
-	if hidden_entries > 0 and rows_to_draw > 1:
-		rows_to_draw -= 1
+	var scroll = ScrollContainer.new()
+	scroll.position = Vector2(content_x, current_y)
+	scroll.size = Vector2(content_width, body_height)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.mouse_filter = Control.MOUSE_FILTER_STOP
+	board_preview.add_child(scroll)
 
-	for index in range(rows_to_draw):
+	var rows = VBoxContainer.new()
+	rows.custom_minimum_size = Vector2(content_width, 0.0)
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rows.add_theme_constant_override("separation", row_spacing)
+	scroll.add_child(rows)
+
+	var total_rows_height = entries.size() * row_height + max(entries.size() - 1, 0) * row_spacing
+	rows.custom_minimum_size = Vector2(content_width, max(body_height, total_rows_height))
+
+	var y_offset = 0.0
+	for index in range(entries.size()):
 		var entry = entries[index]
 		var piece_id = str(entry.get("piece_id", ""))
 		var count = int(entry.get("count", 0))
-		var row_rect = Rect2(Vector2(content_x, current_y), Vector2(content_width, row_height))
+		var row_rect = Rect2(Vector2(0.0, y_offset), Vector2(content_width, row_height))
 		var row_label = Label.new()
-		row_label.position = row_rect.position
-		row_label.size = row_rect.size
+		row_label.custom_minimum_size = Vector2(content_width, row_height)
 		row_label.clip_text = true
 		row_label.text = "%s x%d" % [_get_piece_symbol(piece_id), count]
 		row_label.add_theme_font_size_override("font_size", row_font_size)
 		row_label.add_theme_color_override("font_color", _preview_drop_pool_text_color(pool_owner))
 		row_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		board_preview.add_child(row_label)
+		rows.add_child(row_label)
 		entry_rects.append({"piece_id": piece_id, "rect": row_rect})
-		current_y += row_height + row_spacing
+		y_offset += row_height + row_spacing
 
-	if hidden_entries > 0:
-		var overflow_rect = Rect2(Vector2(content_x, current_y), Vector2(content_width, row_height))
-		var overflow_label = Label.new()
-		overflow_label.position = overflow_rect.position
-		overflow_label.size = overflow_rect.size
-		overflow_label.clip_text = true
-		overflow_label.text = "+%d more" % hidden_entries
-		overflow_label.add_theme_font_size_override("font_size", row_font_size)
-		overflow_label.add_theme_color_override("font_color", Color(0.82, 0.88, 0.98, 1.0))
-		overflow_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		board_preview.add_child(overflow_label)
+	var saved_scroll = int(preview_drop_pool_scroll_offsets.get(pool_owner, 0))
+	scroll.scroll_vertical = saved_scroll
+	preview_drop_pool_scroll_offsets[pool_owner] = scroll.scroll_vertical
 
 	preview_drop_pool_entry_rects[pool_owner] = entry_rects
 
@@ -1271,9 +1963,19 @@ func _on_board_preview_gui_input(event: InputEvent) -> void:
 			_refresh_preview()
 		return
 
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			if _update_preview_panel_scroll(event.position, -1):
+				return
+		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			if _update_preview_panel_scroll(event.position, 1):
+				return
+
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
+				if _try_add_preview_spell_hand_card(event.position):
+					return
 				is_left_dragging = true
 				is_right_dragging = false
 				drag_changed_any = false
@@ -1301,6 +2003,8 @@ func _on_board_preview_gui_input(event: InputEvent) -> void:
 
 		if event.button_index == MOUSE_BUTTON_RIGHT:
 			if event.pressed:
+				if _try_remove_preview_spell_hand_card(event.position):
+					return
 				if _try_remove_preview_drop_pool_piece(event.position):
 					return
 				is_right_dragging = true
@@ -1329,6 +2033,69 @@ func _on_board_preview_gui_input(event: InputEvent) -> void:
 			preview_drop_pool_hover_owner = ""
 			_refresh_preview()
 
+func _try_add_preview_spell_hand_card(position: Vector2) -> bool:
+	if not _is_spell_cards_enabled() or _is_random_spell_cards_enabled():
+		return false
+	var owner = _preview_spell_hand_side_at_position(position)
+	if owner == "":
+		return false
+	if selected_spell_card_id == "":
+		_show_preview_warning("Select a card in Assign Card before adding to Player Hand.")
+		return true
+	if not _is_spell_card_enabled_in_list(selected_spell_card_id):
+		_show_preview_warning("Selected card is not enabled in Available Cards.")
+		return true
+	var hand: Array = preview_spell_hands.get(owner, [])
+	if hand.size() >= _get_spell_hand_size_for_owner(owner):
+		_show_preview_warning("%s hand is full (%d)." % [_format_owner_name(owner), _get_spell_hand_size_for_owner(owner)])
+		return true
+	if not _is_spell_card_duplicates_allowed() and hand.has(selected_spell_card_id):
+		_show_preview_warning("%s hand cannot contain duplicate cards." % _format_owner_name(owner))
+		return true
+	hand.append(selected_spell_card_id)
+	preview_spell_hands[owner] = hand
+	_refresh_preview()
+	return true
+
+func _try_remove_preview_spell_hand_card(position: Vector2) -> bool:
+	if not _is_spell_cards_enabled() or _is_random_spell_cards_enabled():
+		return false
+	var owner = _preview_spell_hand_side_at_position(position)
+	if owner == "":
+		return false
+	var entry = _get_preview_spell_hand_entry_at_position(owner, position)
+	if entry.is_empty():
+		return true
+	var card_id = str(entry.get("card_id", ""))
+	var hand: Array = preview_spell_hands.get(owner, [])
+	var remove_index = hand.find(card_id)
+	if remove_index >= 0:
+		hand.remove_at(remove_index)
+		preview_spell_hands[owner] = hand
+	_refresh_preview()
+	return true
+
+func _preview_spell_hand_side_at_position(position: Vector2) -> String:
+	if preview_white_spell_hand_rect.has_point(position):
+		return "white"
+	if preview_black_spell_hand_rect.has_point(position):
+		return "black"
+	return ""
+
+func _get_preview_spell_hand_entry_at_position(owner: String, position: Vector2) -> Dictionary:
+	var viewport_rect: Rect2 = preview_spell_hand_viewport_rects.get(owner, Rect2())
+	if not viewport_rect.has_point(position):
+		return {}
+	var local_position = Vector2(
+		position.x - viewport_rect.position.x,
+		position.y - viewport_rect.position.y + int(preview_spell_hand_scroll_offsets.get(owner, 0))
+	)
+	var entries: Array = preview_spell_hand_entry_rects.get(owner, [])
+	for entry in entries:
+		if entry is Dictionary and Rect2(entry.get("rect", Rect2())).has_point(local_position):
+			return entry
+	return {}
+
 func _try_remove_preview_drop_pool_piece(position: Vector2) -> bool:
 	var pool_owner = _preview_drop_pool_side_at_position(position)
 	if pool_owner == "":
@@ -1348,11 +2115,47 @@ func _try_remove_preview_drop_pool_piece(position: Vector2) -> bool:
 	return true
 
 func _get_preview_drop_pool_entry_at_position(pool_owner: String, position: Vector2) -> Dictionary:
+	var viewport_rect: Rect2 = preview_drop_pool_viewport_rects.get(pool_owner, Rect2())
+	if not viewport_rect.has_point(position):
+		return {}
+	var local_position = Vector2(
+		position.x - viewport_rect.position.x,
+		position.y - viewport_rect.position.y + int(preview_drop_pool_scroll_offsets.get(pool_owner, 0))
+	)
 	var entries: Array = preview_drop_pool_entry_rects.get(pool_owner, [])
 	for entry in entries:
-		if entry is Dictionary and Rect2(entry.get("rect", Rect2())).has_point(position):
+		if entry is Dictionary and Rect2(entry.get("rect", Rect2())).has_point(local_position):
 			return entry
 	return {}
+
+func _update_preview_panel_scroll(position: Vector2, direction: int) -> bool:
+	if direction == 0:
+		return false
+	for owner in ["white", "black"]:
+		var hand_view: Rect2 = preview_spell_hand_viewport_rects.get(owner, Rect2())
+		if hand_view.has_point(position):
+			var total_height = 0.0
+			for entry in preview_spell_hand_entry_rects.get(owner, []):
+				total_height = max(total_height, Rect2(entry.get("rect", Rect2())).end.y)
+			var max_scroll = max(int(ceil(total_height - hand_view.size.y)), 0)
+			var next_scroll = clamp(int(preview_spell_hand_scroll_offsets.get(owner, 0)) + direction * 24, 0, max_scroll)
+			preview_spell_hand_scroll_offsets[owner] = next_scroll
+			_refresh_preview()
+			return true
+
+	for owner in ["white", "black"]:
+		var pool_view: Rect2 = preview_drop_pool_viewport_rects.get(owner, Rect2())
+		if pool_view.has_point(position):
+			var total_height = 0.0
+			for entry in preview_drop_pool_entry_rects.get(owner, []):
+				total_height = max(total_height, Rect2(entry.get("rect", Rect2())).end.y)
+			var max_scroll = max(int(ceil(total_height - pool_view.size.y)), 0)
+			var next_scroll = clamp(int(preview_drop_pool_scroll_offsets.get(owner, 0)) + direction * 24, 0, max_scroll)
+			preview_drop_pool_scroll_offsets[owner] = next_scroll
+			_refresh_preview()
+			return true
+
+	return false
 
 func _on_piece_bank_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
@@ -1601,6 +2404,7 @@ func _build_preset_config() -> Dictionary:
 		"drop_pools": _serialize_drop_pools(),
 		"victory_condition": _build_victory_condition(),
 		"special_rules": _build_special_rules(),
+		"spell_cards": _build_spell_card_config(),
 		"army_strength_cap": _get_army_strength_cap_value(),
 		"army_strength_caps": {
 			"white": _get_unbalanced_army_strength_cap_value("white"),
@@ -1608,6 +2412,7 @@ func _build_preset_config() -> Dictionary:
 		},
 		"promotion_pieces": _build_promotion_piece_pool(),
 		"promotion_zones": _build_promotion_zones(),
+		"territory_rows": _territory_rows_value(),
 		"player_colors": _serialize_player_colors(),
 		"tile_colors": _serialize_tile_colors()
 	}
@@ -1651,6 +2456,10 @@ func _on_clear_board_button_pressed() -> void:
 		"white": [],
 		"black": []
 	}
+	preview_spell_hands = {
+		"white": [],
+		"black": []
+	}
 	last_drag_square = INVALID_SQUARE
 	selected_preview_square = INVALID_SQUARE
 	_clear_army_strength_warning(true)
@@ -1681,11 +2490,20 @@ func _on_start_game_button_pressed() -> void:
 	$"/root/GameManager".StartingDropPools = _serialize_drop_pools()
 	$"/root/GameManager".VictoryCondition = _build_victory_condition()
 	$"/root/GameManager".SpecialRules = _build_special_rules()
+	$"/root/GameManager".SpellCardHandSize = _get_spell_hand_size_value()
+	$"/root/GameManager".SpellCardHandSizeWhite = _get_spell_hand_size_for_owner("white")
+	$"/root/GameManager".SpellCardHandSizeBlack = _get_spell_hand_size_for_owner("black")
+	$"/root/GameManager".SpellCardsRandom = _is_random_spell_cards_enabled()
+	$"/root/GameManager".SpellCardAllowDuplicates = _is_spell_card_duplicates_allowed()
+	$"/root/GameManager".SpellCardDrawReplacementAfterCast = _is_draw_replacement_after_cast_enabled()
+	$"/root/GameManager".SpellCardAvailableIds = _build_enabled_spell_card_ids()
+	$"/root/GameManager".StartingSpellHands = _build_spell_card_hands()
 	$"/root/GameManager".ArmyStrengthCap = _get_army_strength_cap_value()
 	$"/root/GameManager".ArmyStrengthCapWhite = _get_unbalanced_army_strength_cap_value("white")
 	$"/root/GameManager".ArmyStrengthCapBlack = _get_unbalanced_army_strength_cap_value("black")
 	$"/root/GameManager".PromotionPiecePool = _build_promotion_piece_pool()
 	$"/root/GameManager".PromotionZones = _build_promotion_zones()
+	$"/root/GameManager".TerritoryRows = _territory_rows_value()
 	$"/root/GameManager".PlayerColors = _serialize_player_colors()
 	$"/root/GameManager".TileColors = _serialize_tile_colors()
 

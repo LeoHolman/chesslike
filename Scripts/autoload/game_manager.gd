@@ -10,6 +10,13 @@ const CUSTOM_CAPTURE_MODE_NON_CAPTURE = "non_capture"
 const CUSTOM_CAPTURE_MODE_CAPTURE_ONLY = "capture_only"
 const CUSTOM_SLIDE_SCOPE_INFINITE = "infinite"
 const CUSTOM_SLIDE_SCOPE_HALTING = "halting"
+const DEFAULT_SPELL_CARDS: Array[Dictionary] = [
+	{"id": "haste", "name": "Haste", "type": "regular", "description": "Target piece moves twice this turn."},
+	{"id": "assassinate", "name": "Assassinate", "type": "power", "description": "Target non-king piece is captured."},
+	{"id": "fortify", "name": "Fortify", "type": "regular", "description": "Target allied piece cannot be captured until your next turn."},
+	{"id": "teleport", "name": "Teleport", "type": "power", "description": "Move target allied piece to any empty square."},
+	{"id": "barrier", "name": "Barrier", "type": "regular", "description": "Target square is blocked to movement this turn."}
+]
 
 var BoardHeight;
 var BoardWidth;
@@ -19,7 +26,11 @@ var SpecialRules = {
 	"en_passant": true,
 	"promotion": true,
 	"allow_undo": false,
+	"enable_spell_cards": false,
 	"piece_dropping": false,
+	"piece_stacking": false,
+	"enable_territory": false,
+	"enable_muster": false,
 	"capture_to_drop_pool": false,
 	"limit_army_strength": false,
 	"unbalanced_armies": false
@@ -29,6 +40,7 @@ var PromotionZones = {
 	"white_rows": 1,
 	"black_rows": 1
 }
+var TerritoryRows = 3
 var VictoryCondition = "checkmate"
 var ArmyStrengthCap = 32
 var ArmyStrengthCapWhite = 32
@@ -44,6 +56,17 @@ var PlayerColors = {
 var TileColors = {
 	"light": {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0},
 	"dark": {"r": 0.41, "g": 0.41, "b": 0.41, "a": 1.0}
+}
+var SpellCardHandSize = 3
+var SpellCardHandSizeWhite = 3
+var SpellCardHandSizeBlack = 3
+var SpellCardsRandom = true
+var SpellCardAllowDuplicates = true
+var SpellCardDrawReplacementAfterCast = false
+var SpellCardAvailableIds = ["haste", "assassinate", "fortify", "teleport", "barrier"]
+var StartingSpellHands = {
+	"white": [],
+	"black": []
 }
 var PendingPresetName = ""
 var PendingCustomPieceEditId = ""
@@ -66,57 +89,68 @@ var PieceDefinitions = {
 	"pawn": {
 		"name": "Pawn",
 		"symbol": "P",
-		"move_type": "pawn"
+		"move_type": "pawn",
+		"stack_growth": ["pawn", "gold_general_step", "king_step"]
 	},
 	"knight": {
 		"name": "Knight",
 		"symbol": "N",
-		"move_type": "knight_jump"
+		"move_type": "knight_jump",
+		"stack_growth": ["knight_jump", "silver_general_step", "gold_general_step"]
 	},
 	"bishop": {
 		"name": "Bishop",
 		"symbol": "B",
-		"move_type": "diagonal_slide"
+		"move_type": "diagonal_slide",
+		"stack_growth": ["diagonal_slide", "omni_slide", "omni_slide"]
 	},
 	"rook": {
 		"name": "Rook",
 		"symbol": "R",
-		"move_type": "cardinal_slide"
+		"move_type": "cardinal_slide",
+		"stack_growth": ["cardinal_slide", "omni_slide", "omni_slide"]
 	},
 	"queen": {
 		"name": "Queen",
 		"symbol": "Q",
-		"move_type": "omni_slide"
+		"move_type": "omni_slide",
+		"stack_growth": ["omni_slide", "omni_slide", "omni_slide"]
 	},
 	"king": {
 		"name": "King",
 		"symbol": "K",
-		"move_type": "king_step"
+		"move_type": "king_step",
+		"stack_growth": ["king_step", "king_step", "king_step"]
 	},
 	"shogi_pawn": {
 		"name": "Shogi Pawn",
 		"symbol": "歩",
-		"move_type": "shogi_pawn"
+		"move_type": "shogi_pawn",
+		"stack_growth": ["shogi_pawn", "gold_general_step", "king_step"]
 	},
 	"lance": {
 		"name": "Lance",
 		"symbol": "香",
-		"move_type": "lance_forward_slide"
+		"move_type": "lance_forward_slide",
+		"stack_growth": ["lance_forward_slide", "cardinal_slide", "omni_slide"]
 	},
 	"shogi_knight": {
 		"name": "Shogi Knight",
 		"symbol": "桂",
-		"move_type": "shogi_knight_jump"
+		"move_type": "shogi_knight_jump",
+		"stack_growth": ["shogi_knight_jump", "silver_general_step", "gold_general_step"]
 	},
 	"silver_general": {
 		"name": "Silver General",
 		"symbol": "銀",
-		"move_type": "silver_general_step"
+		"move_type": "silver_general_step",
+		"stack_growth": ["silver_general_step", "gold_general_step", "king_step"]
 	},
 	"gold_general": {
 		"name": "Gold General",
 		"symbol": "金",
-		"move_type": "gold_general_step"
+		"move_type": "gold_general_step",
+		"stack_growth": ["gold_general_step", "king_step", "omni_slide"]
 	}
 }
 var _base_piece_definitions = {}
@@ -169,6 +203,54 @@ func consume_pending_preset_for_edit() -> String:
 	var pending = PendingPresetName
 	PendingPresetName = ""
 	return pending
+
+func get_spell_card_definitions() -> Array[Dictionary]:
+	return DEFAULT_SPELL_CARDS.duplicate(true)
+
+func is_valid_spell_card_id(card_id: String) -> bool:
+	for card in DEFAULT_SPELL_CARDS:
+		if str(card.get("id", "")) == card_id:
+			return true
+	return false
+
+func normalize_spell_card_ids(source_ids: Variant) -> Array:
+	var by_id = {}
+	for card in DEFAULT_SPELL_CARDS:
+		var id = str(card.get("id", ""))
+		if id != "":
+			by_id[id] = true
+
+	var seen = {}
+	var normalized: Array = []
+	if source_ids is Array:
+		for raw in source_ids:
+			var card_id = str(raw)
+			if card_id == "" or not by_id.has(card_id) or seen.has(card_id):
+				continue
+			seen[card_id] = true
+			normalized.append(card_id)
+
+	if normalized.is_empty():
+		for card in DEFAULT_SPELL_CARDS:
+			normalized.append(str(card.get("id", "")))
+
+	return normalized
+
+func normalize_spell_card_hands(source_hands: Variant) -> Dictionary:
+	var parsed = {
+		"white": [],
+		"black": []
+	}
+	if source_hands is Dictionary:
+		for owner in ["white", "black"]:
+			var values = source_hands.get(owner, [])
+			if not (values is Array):
+				continue
+			for raw in values:
+				var card_id = str(raw)
+				if is_valid_spell_card_id(card_id):
+					parsed[owner].append(card_id)
+	return parsed
 
 func queue_custom_piece_for_edit(piece_id: String) -> void:
 	PendingCustomPieceEditId = piece_id.strip_edges()

@@ -7,6 +7,7 @@ const BASE_TILE_SIZE = 100.0
 const INVALID_SQUARE = Vector2i(-1, -1)
 const SELECTED_HIGHLIGHT = Color(1.0, 0.84, 0.0, 0.38)
 const LEGAL_MOVE_HIGHLIGHT = Color(0.18, 0.75, 0.3, 0.35)
+const SPELL_TARGET_HIGHLIGHT = Color(0.2, 0.67, 0.95, 0.35)
 const TURN_INDICATOR_PADDING = 12.0
 const TURN_INDICATOR_BACKGROUND = Color(0.95, 0.93, 0.86, 0.94)
 const TURN_INDICATOR_BORDER = Color(0.2, 0.2, 0.2, 1.0)
@@ -15,6 +16,7 @@ const WHITE_POOL_PANEL_HOVER_BACKGROUND = Color(0.36, 0.46, 0.66, 0.96)
 const BLACK_POOL_PANEL_BACKGROUND = Color(0.43, 0.25, 0.24, 0.92)
 const BLACK_POOL_PANEL_HOVER_BACKGROUND = Color(0.57, 0.33, 0.31, 0.96)
 const DROP_POOL_PANEL_BORDER = Color(0.9, 0.92, 0.98, 1.0)
+const SPELL_PANEL_BORDER = Color(0.9, 0.92, 0.98, 1.0)
 const HUD_PANEL_SPACING = 12.0
 const FILE_NAMES = "abcdefghijklmnopqrstuvwxyz"
 const DEFAULT_PROMOTION_PIECE_IDS = ["queen", "rook", "bishop", "knight"]
@@ -58,6 +60,17 @@ var pending_promotion_move: Dictionary = {}
 var promotion_piece_options: Array[String] = []
 var victory_condition = "checkmate"
 var piece_dropping_enabled = false
+var piece_stacking_enabled = false
+var territory_enabled = false
+var muster_enabled = false
+var territory_rows = 3
+var muster_phase_active = false
+var muster_consecutive_passes = 0
+var muster_black_placements_this_turn = 0
+var muster_kings_placed = {
+	"white": false,
+	"black": false
+}
 var capture_to_drop_pool_enabled = false
 var limit_army_strength_enabled = false
 var unbalanced_armies_enabled = false
@@ -81,6 +94,14 @@ var drop_pool_entry_rects = {
 	"white": [],
 	"black": []
 }
+var drop_pool_scroll_offsets = {
+	"white": 0,
+	"black": 0
+}
+var drop_pool_viewport_rects = {
+	"white": Rect2(),
+	"black": Rect2()
+}
 var player_side_colors = {
 	"white": DEFAULT_PLAYER1_COLOR,
 	"black": DEFAULT_PLAYER2_COLOR
@@ -98,6 +119,54 @@ var undo_snapshots: Array[Dictionary] = []
 var drop_piece_drag_active = false
 var drop_piece_drag_position = Vector2.ZERO
 var drop_pool_hover_owner = ""
+var spell_cards_enabled = false
+var spell_cards_random = true
+var spell_card_allow_duplicates = true
+var spell_draw_replacement_after_cast = false
+var spell_card_available_ids: Array[String] = []
+var spell_card_definitions_by_id: Dictionary = {}
+var spell_card_hands = {
+	"white": [],
+	"black": []
+}
+var spell_card_hand_size_white = 0
+var spell_card_hand_size_black = 0
+var selected_spell_card_id = ""
+var selected_spell_card_owner = ""
+var pending_spell_card_id = ""
+var pending_spell_card_owner = ""
+var spell_cast_this_turn = false
+var spell_haste_active = false
+var spell_haste_owner = ""
+var spell_haste_piece_square = INVALID_SQUARE
+var spell_haste_moves_remaining = 0
+var spell_fortify_active = false
+var spell_fortify_owner = ""
+var spell_fortify_piece_square = INVALID_SQUARE
+var spell_barrier_active = false
+var spell_barrier_owner = ""
+var spell_barrier_square = INVALID_SQUARE
+var spell_teleport_source_square = INVALID_SQUARE
+var spell_keep_selection_after_cast = false
+var white_spell_panel_rect = Rect2()
+var black_spell_panel_rect = Rect2()
+var spell_panel_entry_rects = {
+	"white": [],
+	"black": []
+}
+var spell_panel_scroll_offsets = {
+	"white": 0,
+	"black": 0
+}
+var spell_panel_viewport_rects = {
+	"white": Rect2(),
+	"black": Rect2()
+}
+var hud_scroll_drag_active = false
+var hud_scroll_drag_kind = ""
+var hud_scroll_drag_owner = ""
+var hud_scroll_drag_last_mouse_position = Vector2.ZERO
+var last_piece_move_should_end_turn = true
 var online_mode = false
 var local_player_side = "white"
 var export_feedback_serial = 0
@@ -138,6 +207,14 @@ func _setup_online_match_state() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if promotion_pending:
 		return
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP and _update_hud_panel_scroll(event.position, -1):
+			return
+		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN and _update_hud_panel_scroll(event.position, 1):
+			return
+	if event is InputEventMouseMotion and hud_scroll_drag_active:
+		_update_hud_scroll_drag(event.position)
+		return
 	if event is InputEventMouseMotion and drop_piece_drag_active:
 		drop_piece_drag_position = event.position
 		drop_pool_hover_owner = _drop_pool_side_at_position(event.position)
@@ -145,11 +222,18 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
+			if _begin_hud_scroll_drag(event.position):
+				return
 			_handle_pointer_press(event.position)
 		else:
+			if hud_scroll_drag_active:
+				_end_hud_scroll_drag()
+				return
 			_handle_pointer_release(event.position)
 
 func _handle_pointer_press(mouse_position: Vector2) -> void:
+	if _try_handle_spell_card_click(mouse_position):
+		return
 	if piece_dropping_enabled and _try_begin_drop_pool_drag(mouse_position):
 		return
 	_handle_board_click(mouse_position)
@@ -288,6 +372,129 @@ func _get_starting_drop_pools() -> Dictionary:
 				parsed[pool_owner] = normalized
 	return parsed
 
+func _spell_initialize_state_from_game_manager() -> void:
+	spell_card_definitions_by_id.clear()
+	for card in $"/root/GameManager".get_spell_card_definitions():
+		var card_id = str(card.get("id", "")).strip_edges()
+		if card_id == "":
+			continue
+		spell_card_definitions_by_id[card_id] = card.duplicate(true)
+
+	spell_cards_random = bool($"/root/GameManager".SpellCardsRandom)
+	spell_card_allow_duplicates = bool($"/root/GameManager".SpellCardAllowDuplicates)
+	spell_draw_replacement_after_cast = bool($"/root/GameManager".SpellCardDrawReplacementAfterCast)
+	spell_card_available_ids.clear()
+	for card_id in $"/root/GameManager".normalize_spell_card_ids($"/root/GameManager".SpellCardAvailableIds):
+		var key = str(card_id)
+		if not spell_card_definitions_by_id.has(key):
+			continue
+		spell_card_available_ids.append(key)
+
+	spell_card_hand_size_white = max(int($"/root/GameManager".SpellCardHandSizeWhite), 0)
+	spell_card_hand_size_black = max(int($"/root/GameManager".SpellCardHandSizeBlack), 0)
+	if spell_card_hand_size_white == 0 and spell_card_hand_size_black == 0:
+		var fallback_size = max(int($"/root/GameManager".SpellCardHandSize), 0)
+		spell_card_hand_size_white = fallback_size
+		spell_card_hand_size_black = fallback_size
+
+	spell_card_hands = {
+		"white": [],
+		"black": []
+	}
+	if spell_cards_enabled:
+		if spell_cards_random:
+			_spell_fill_hand_randomly("white", spell_card_hand_size_white)
+			_spell_fill_hand_randomly("black", spell_card_hand_size_black)
+		else:
+			spell_card_hands = $"/root/GameManager".normalize_spell_card_hands($"/root/GameManager".StartingSpellHands)
+			_spell_clamp_hand_to_rules("white")
+			_spell_clamp_hand_to_rules("black")
+
+	selected_spell_card_id = ""
+	selected_spell_card_owner = ""
+	pending_spell_card_id = ""
+	pending_spell_card_owner = ""
+	spell_cast_this_turn = false
+	spell_haste_active = false
+	spell_haste_owner = ""
+	spell_haste_piece_square = INVALID_SQUARE
+	spell_haste_moves_remaining = 0
+	spell_fortify_active = false
+	spell_fortify_owner = ""
+	spell_fortify_piece_square = INVALID_SQUARE
+	spell_barrier_active = false
+	spell_barrier_owner = ""
+	spell_barrier_square = INVALID_SQUARE
+	spell_teleport_source_square = INVALID_SQUARE
+	spell_keep_selection_after_cast = false
+	white_spell_panel_rect = Rect2()
+	black_spell_panel_rect = Rect2()
+	spell_panel_entry_rects["white"] = []
+	spell_panel_entry_rects["black"] = []
+	last_piece_move_should_end_turn = true
+
+func _spell_hand_size_for_owner(owner: String) -> int:
+	if owner == "black":
+		return spell_card_hand_size_black
+	return spell_card_hand_size_white
+
+func _spell_fill_hand_randomly(owner: String, target_size: int) -> void:
+	var hand: Array = spell_card_hands.get(owner, [])
+	while hand.size() < max(target_size, 0):
+		if spell_card_available_ids.is_empty():
+			break
+		if spell_card_allow_duplicates:
+			hand.append(spell_card_available_ids[randi_range(0, spell_card_available_ids.size() - 1)])
+			continue
+		var candidates: Array = []
+		for candidate in spell_card_available_ids:
+			if not hand.has(candidate):
+				candidates.append(candidate)
+		if candidates.is_empty():
+			break
+		hand.append(candidates[randi_range(0, candidates.size() - 1)])
+	spell_card_hands[owner] = hand
+
+func _spell_clamp_hand_to_rules(owner: String) -> void:
+	var hand: Array = spell_card_hands.get(owner, [])
+	var clamped: Array = []
+	var seen = {}
+	var cap = _spell_hand_size_for_owner(owner)
+	for card_id in hand:
+		var key = str(card_id)
+		if not spell_card_definitions_by_id.has(key):
+			continue
+		if not spell_card_available_ids.has(key):
+			continue
+		if not spell_card_allow_duplicates and seen.has(key):
+			continue
+		if clamped.size() >= cap:
+			break
+		seen[key] = true
+		clamped.append(key)
+	spell_card_hands[owner] = clamped
+
+func _spell_card_definition(card_id: String) -> Dictionary:
+	if spell_card_definitions_by_id.has(card_id):
+		return spell_card_definitions_by_id[card_id]
+	return {}
+
+func _spell_card_name(card_id: String) -> String:
+	var definition = _spell_card_definition(card_id)
+	var fallback = card_id.capitalize()
+	return str(definition.get("name", fallback))
+
+func _spell_card_description(card_id: String) -> String:
+	var definition = _spell_card_definition(card_id)
+	return str(definition.get("description", ""))
+
+func _spell_card_type(card_id: String) -> String:
+	var definition = _spell_card_definition(card_id)
+	var kind = str(definition.get("type", "regular")).to_lower()
+	if kind != "power":
+		return "regular"
+	return "power"
+
 func _hide_promotion_picker() -> void:
 	if promotion_picker_root != null:
 		promotion_picker_root.visible = false
@@ -314,13 +521,22 @@ func _on_promotion_option_selected(piece_id: String) -> void:
 		return
 
 	move_info["promotion_piece_id"] = piece_id
-	var moving_piece: Dictionary = pieces[from_square]
+	var moving_piece = _get_top_piece_on_state(pieces, from_square)
+	if moving_piece.is_empty():
+		_hide_promotion_picker()
+		promotion_pending = false
+		pending_promotion_move.clear()
+		_build_board()
+		return
 	var committed = _commit_move(from_square, to_square, moving_piece, move_info)
 	_hide_promotion_picker()
 	promotion_pending = false
 	pending_promotion_move.clear()
 	if committed:
-		_finalize_turn_after_move()
+		if last_piece_move_should_end_turn:
+			_finalize_turn_after_move()
+		else:
+			_build_board()
 	else:
 		_build_board()
 
@@ -354,7 +570,19 @@ func _initialize_board_state() -> void:
 	if online_mode:
 		allow_undo_enabled = false
 	piece_dropping_enabled = bool(special_rules.get("piece_dropping", false))
+	piece_stacking_enabled = bool(special_rules.get("piece_stacking", false))
+	territory_enabled = bool(special_rules.get("enable_territory", false))
+	muster_enabled = bool(special_rules.get("enable_muster", false))
+	territory_rows = max(int($"/root/GameManager".TerritoryRows), 1)
+	muster_phase_active = false
+	muster_consecutive_passes = 0
+	muster_black_placements_this_turn = 0
+	muster_kings_placed = {
+		"white": false,
+		"black": false
+	}
 	capture_to_drop_pool_enabled = bool(special_rules.get("capture_to_drop_pool", false)) and piece_dropping_enabled
+	spell_cards_enabled = bool(special_rules.get("enable_spell_cards", false))
 	limit_army_strength_enabled = bool(special_rules.get("limit_army_strength", false))
 	unbalanced_armies_enabled = bool(special_rules.get("unbalanced_armies", false))
 	army_strength_cap = max(int($"/root/GameManager".ArmyStrengthCap), 2)
@@ -373,19 +601,110 @@ func _initialize_board_state() -> void:
 	drop_pool_hover_owner = ""
 	drop_pool_selection_index["white"] = 0
 	drop_pool_selection_index["black"] = 0
+	_spell_initialize_state_from_game_manager()
 	pieces.clear()
 	if board_width < 1 or board_height < 1:
 		return
 	_load_starting_pieces()
+	if muster_enabled:
+		# Muster starts from an empty board and uses drop pools for setup.
+		pieces.clear()
+		muster_phase_active = true
+		piece_dropping_enabled = true
 	castling_enabled = castling_enabled and _board_supports_castling()
 	_update_game_state(false)
 
 func _add_piece(square: Vector2i, piece_id: String, piece_color: String) -> void:
-	pieces[square] = {
+	var new_piece = {
 		"piece_id": piece_id,
 		"color": piece_color,
 		"has_moved": false
 	}
+	if not piece_stacking_enabled or not pieces.has(square):
+		_set_piece_stack_on_state(pieces, square, [new_piece])
+		return
+	var stack = _get_piece_stack_on_state(pieces, square)
+	stack.append(new_piece)
+	_set_piece_stack_on_state(pieces, square, stack)
+
+func _normalize_piece_layer(piece_data: Dictionary) -> Dictionary:
+	return {
+		"piece_id": str(piece_data.get("piece_id", "")),
+		"color": str(piece_data.get("color", "white")),
+		"has_moved": bool(piece_data.get("has_moved", false))
+	}
+
+func _get_piece_stack_on_state(board_state: Dictionary, square: Vector2i) -> Array:
+	if not board_state.has(square):
+		return []
+	var entry = board_state[square]
+	if entry is Dictionary:
+		var stack_value = entry.get("stack", [])
+		if stack_value is Array and not stack_value.is_empty():
+			var normalized_stack: Array = []
+			for layer in stack_value:
+				if layer is Dictionary:
+					normalized_stack.append(_normalize_piece_layer(layer))
+			if not normalized_stack.is_empty():
+				return normalized_stack
+		if entry.has("piece_id"):
+			return [_normalize_piece_layer(entry)]
+	return []
+
+func _get_top_piece_on_state(board_state: Dictionary, square: Vector2i) -> Dictionary:
+	var stack = _get_piece_stack_on_state(board_state, square)
+	if stack.is_empty():
+		return {}
+	return stack[stack.size() - 1].duplicate(true)
+
+func _set_piece_stack_on_state(board_state: Dictionary, square: Vector2i, stack: Array) -> void:
+	if stack.is_empty():
+		board_state.erase(square)
+		return
+	var normalized_stack: Array = []
+	for layer in stack:
+		if layer is Dictionary:
+			normalized_stack.append(_normalize_piece_layer(layer))
+	if normalized_stack.is_empty():
+		board_state.erase(square)
+		return
+	var top_piece: Dictionary = normalized_stack[normalized_stack.size() - 1]
+	board_state[square] = {
+		"piece_id": str(top_piece.get("piece_id", "")),
+		"color": str(top_piece.get("color", "white")),
+		"has_moved": bool(top_piece.get("has_moved", false)),
+		"stack": normalized_stack
+	}
+
+func _get_stack_level_on_state(board_state: Dictionary, square: Vector2i) -> int:
+	return _get_piece_stack_on_state(board_state, square).size()
+
+func _movement_scale_on_state(board_state: Dictionary, square: Vector2i) -> int:
+	if not piece_stacking_enabled:
+		return 1
+	return max(_get_stack_level_on_state(board_state, square), 1)
+
+func _effective_move_type(piece_data: Dictionary, board_state: Dictionary, square: Vector2i) -> String:
+	var piece_definition = _get_piece_definition(str(piece_data.get("piece_id", "")))
+	var base_move_type = str(piece_definition.get("move_type", ""))
+	if not piece_stacking_enabled:
+		return base_move_type
+	var growth = piece_definition.get("stack_growth", [])
+	if not (growth is Array) or growth.is_empty():
+		return base_move_type
+	var level_index = max(_get_stack_level_on_state(board_state, square) - 1, 0)
+	var clamped_index = min(level_index, growth.size() - 1)
+	var grown_move_type = str(growth[clamped_index])
+	if grown_move_type == "":
+		return base_move_type
+	return grown_move_type
+
+func _effective_move_scale(piece_data: Dictionary, board_state: Dictionary, square: Vector2i) -> int:
+	var piece_definition = _get_piece_definition(str(piece_data.get("piece_id", "")))
+	var growth = piece_definition.get("stack_growth", [])
+	if piece_stacking_enabled and growth is Array and not growth.is_empty():
+		return 1
+	return _movement_scale_on_state(board_state, square)
 
 func _get_dimension(value: Variant, fallback: int) -> int:
 	if value is int:
@@ -477,7 +796,9 @@ func _build_board() -> void:
 	_draw_turn_indicator()
 	_draw_back_to_main_menu_button()
 	_draw_undo_button()
+	_draw_muster_pass_button()
 	_draw_status_feedback_banner()
+	_draw_spell_card_panels()
 	if piece_dropping_enabled:
 		_draw_drop_pool_panels()
 	else:
@@ -487,6 +808,7 @@ func _build_board() -> void:
 
 func _draw_turn_indicator() -> void:
 	var font_size = _hud_font_size(0.22, 13, 24)
+	var info_font_size = _hud_font_size(0.14, 10, 14)
 	var swatch_size = clampf(tile_size * 0.24, 14.0, 24.0)
 	var indicator_position = Vector2(
 		TURN_INDICATOR_PADDING,
@@ -494,7 +816,7 @@ func _draw_turn_indicator() -> void:
 	)
 	var viewport_size = get_viewport_rect().size
 	var indicator_width = clampf(tile_size * 2.2, 150.0, min(viewport_size.x * 0.30, 260.0))
-	var indicator_height = clampf(swatch_size + TURN_INDICATOR_PADDING * 2.0, 40.0, 56.0)
+	var indicator_height = _turn_indicator_height()
 	var indicator_size = Vector2(indicator_width, indicator_height)
 
 	var background = ColorRect.new()
@@ -518,15 +840,33 @@ func _draw_turn_indicator() -> void:
 
 	var turn_label = Label.new()
 	turn_label.text = "Turn: %s" % _display_color(current_turn)
-	turn_label.position = indicator_position + Vector2(TURN_INDICATOR_PADDING + swatch_size + 10.0, (indicator_size.y - font_size) / 2.0 - 2.0)
+	var turn_label_y = indicator_position.y + ((indicator_size.y - font_size) * 0.5) - 2.0
+	if spell_cards_enabled:
+		turn_label_y = indicator_position.y + TURN_INDICATOR_PADDING - 1.0
+	turn_label.position = Vector2(indicator_position.x + TURN_INDICATOR_PADDING + swatch_size + 10.0, turn_label_y)
 	turn_label.add_theme_font_size_override("font_size", font_size)
 	turn_label.add_theme_color_override("font_color", Color(0.1, 0.1, 0.1))
 	turn_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(turn_label)
 
+	if spell_cards_enabled:
+		var cast_status_label = Label.new()
+		cast_status_label.text = "Spell: Used" if spell_cast_this_turn else "Spell: Ready"
+		cast_status_label.position = Vector2(
+			indicator_position.x + TURN_INDICATOR_PADDING + swatch_size + 10.0,
+			turn_label.position.y + font_size - 1.0
+		)
+		cast_status_label.add_theme_font_size_override("font_size", info_font_size)
+		cast_status_label.add_theme_color_override("font_color", Color(0.64, 0.12, 0.12, 1.0) if spell_cast_this_turn else Color(0.11, 0.43, 0.12, 1.0))
+		cast_status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(cast_status_label)
+
 func _turn_indicator_height() -> float:
 	var swatch_size = clampf(tile_size * 0.24, 14.0, 24.0)
-	return clampf(swatch_size + TURN_INDICATOR_PADDING * 2.0, 40.0, 56.0)
+	var base_height = clampf(swatch_size + TURN_INDICATOR_PADDING * 2.0, 40.0, 56.0)
+	if spell_cards_enabled:
+		return max(base_height + _hud_font_size(0.14, 10, 14) + 4.0, 56.0)
+	return base_height
 
 func _hud_top_action_button_size() -> Vector2:
 	var viewport_size = get_viewport_rect().size
@@ -557,6 +897,40 @@ func _draw_undo_button() -> void:
 	button.pressed.connect(_on_undo_button_pressed)
 	add_child(button)
 
+func _draw_muster_pass_button() -> void:
+	if not muster_phase_active:
+		return
+	if online_mode and not _is_local_turn():
+		return
+	var indicator_height = _turn_indicator_height()
+	var action_button_size = _hud_top_action_button_size()
+	var y_offset = TURN_INDICATOR_PADDING + indicator_height + 8.0 + action_button_size.y + 8.0
+	if allow_undo_enabled:
+		y_offset += action_button_size.y + 8.0
+	var button = Button.new()
+	button.position = Vector2(TURN_INDICATOR_PADDING, y_offset)
+	button.size = action_button_size
+	button.text = "Pass (Muster)"
+	button.pressed.connect(_on_muster_pass_pressed)
+	add_child(button)
+
+func _on_muster_pass_pressed() -> void:
+	if not muster_phase_active:
+		return
+	if game_over or promotion_pending:
+		return
+	if online_mode and not _is_local_turn():
+		return
+	muster_consecutive_passes += 1
+	if _should_end_muster_phase():
+		_end_muster_phase()
+		_build_board()
+		_publish_turn_state_to_peer()
+		return
+	_advance_muster_turn_after_pass()
+	_build_board()
+	_publish_turn_state_to_peer()
+
 func _on_back_to_main_menu_pressed() -> void:
 	if online_mode:
 		var network_manager = get_node_or_null("/root/NetworkManager")
@@ -578,22 +952,77 @@ func _capture_undo_snapshot() -> Dictionary:
 		"pieces": pieces.duplicate(true),
 		"captured_pieces": captured_pieces.duplicate(true),
 		"drop_pools": _duplicate_drop_pools(drop_pools),
+		"spell_card_hands": $"/root/GameManager".normalize_spell_card_hands(spell_card_hands),
+		"spell_cast_this_turn": spell_cast_this_turn,
+		"spell_haste_active": spell_haste_active,
+		"spell_haste_owner": spell_haste_owner,
+		"spell_haste_piece_square": spell_haste_piece_square,
+		"spell_haste_moves_remaining": spell_haste_moves_remaining,
+		"spell_fortify_active": spell_fortify_active,
+		"spell_fortify_owner": spell_fortify_owner,
+		"spell_fortify_piece_square": spell_fortify_piece_square,
+		"spell_barrier_active": spell_barrier_active,
+		"spell_barrier_owner": spell_barrier_owner,
+		"spell_barrier_square": spell_barrier_square,
+		"spell_teleport_source_square": spell_teleport_source_square,
+		"pending_spell_card_id": pending_spell_card_id,
+		"pending_spell_card_owner": pending_spell_card_owner,
 		"move_history": move_history.duplicate(true),
 		"current_turn": current_turn,
 		"status_message": status_message,
 		"game_over": game_over,
-		"en_passant_target": en_passant_target_square
+		"en_passant_target": en_passant_target_square,
+		"muster_phase_active": muster_phase_active,
+		"muster_consecutive_passes": muster_consecutive_passes,
+		"muster_black_placements_this_turn": muster_black_placements_this_turn,
+		"muster_kings_placed": muster_kings_placed.duplicate(true)
 	}
 
 func _restore_from_undo_snapshot(snapshot: Dictionary) -> void:
 	pieces = snapshot.get("pieces", {}).duplicate(true)
 	captured_pieces = snapshot.get("captured_pieces", {"white": [], "black": []}).duplicate(true)
 	drop_pools = _duplicate_drop_pools(snapshot.get("drop_pools", {}))
+	spell_card_hands = $"/root/GameManager".normalize_spell_card_hands(snapshot.get("spell_card_hands", {"white": [], "black": []}))
+	spell_cast_this_turn = bool(snapshot.get("spell_cast_this_turn", false))
+	spell_haste_active = bool(snapshot.get("spell_haste_active", false))
+	spell_haste_owner = str(snapshot.get("spell_haste_owner", ""))
+	spell_haste_piece_square = snapshot.get("spell_haste_piece_square", INVALID_SQUARE)
+	spell_haste_moves_remaining = int(snapshot.get("spell_haste_moves_remaining", 0))
+	spell_fortify_active = bool(snapshot.get("spell_fortify_active", false))
+	spell_fortify_owner = str(snapshot.get("spell_fortify_owner", ""))
+	spell_fortify_piece_square = snapshot.get("spell_fortify_piece_square", INVALID_SQUARE)
+	spell_barrier_active = bool(snapshot.get("spell_barrier_active", false))
+	spell_barrier_owner = str(snapshot.get("spell_barrier_owner", ""))
+	spell_barrier_square = snapshot.get("spell_barrier_square", INVALID_SQUARE)
+	spell_teleport_source_square = snapshot.get("spell_teleport_source_square", INVALID_SQUARE)
+	pending_spell_card_id = str(snapshot.get("pending_spell_card_id", ""))
+	pending_spell_card_owner = str(snapshot.get("pending_spell_card_owner", ""))
+	selected_spell_card_id = pending_spell_card_id
+	selected_spell_card_owner = pending_spell_card_owner
+	spell_keep_selection_after_cast = false
+	if not spell_haste_active:
+		spell_haste_owner = ""
+		spell_haste_piece_square = INVALID_SQUARE
+		spell_haste_moves_remaining = 0
+	if not spell_fortify_active:
+		spell_fortify_owner = ""
+		spell_fortify_piece_square = INVALID_SQUARE
+	if not spell_barrier_active:
+		spell_barrier_owner = ""
+		spell_barrier_square = INVALID_SQUARE
 	move_history = (snapshot.get("move_history", []) as Array).duplicate(true)
 	current_turn = str(snapshot.get("current_turn", "white"))
 	status_message = str(snapshot.get("status_message", ""))
 	game_over = bool(snapshot.get("game_over", false))
 	en_passant_target_square = snapshot.get("en_passant_target", INVALID_SQUARE)
+	muster_phase_active = bool(snapshot.get("muster_phase_active", false))
+	muster_consecutive_passes = int(snapshot.get("muster_consecutive_passes", 0))
+	muster_black_placements_this_turn = int(snapshot.get("muster_black_placements_this_turn", 0))
+	var restored_kings = snapshot.get("muster_kings_placed", {"white": false, "black": false})
+	muster_kings_placed = {
+		"white": bool(restored_kings.get("white", false)) if restored_kings is Dictionary else false,
+		"black": bool(restored_kings.get("black", false)) if restored_kings is Dictionary else false
+	}
 	promotion_pending = false
 	pending_promotion_move.clear()
 	_hide_promotion_picker()
@@ -638,23 +1067,58 @@ func _on_online_match_ended(reason: String) -> void:
 func _export_network_state() -> Dictionary:
 	var serialized_pieces: Array = []
 	for square in pieces.keys():
-		var piece_data: Dictionary = pieces[square]
+		var stack = _get_piece_stack_on_state(pieces, square)
+		if stack.is_empty():
+			continue
+		var top_piece: Dictionary = stack[stack.size() - 1]
 		serialized_pieces.append({
 			"x": square.x,
 			"y": square.y,
-			"piece_id": str(piece_data.get("piece_id", "")),
-			"color": str(piece_data.get("color", "white")),
-			"has_moved": bool(piece_data.get("has_moved", false))
+			"piece_id": str(top_piece.get("piece_id", "")),
+			"color": str(top_piece.get("color", "white")),
+			"has_moved": bool(top_piece.get("has_moved", false)),
+			"stack": stack.duplicate(true)
 		})
 
 	return {
 		"pieces": serialized_pieces,
 		"captured_pieces": captured_pieces.duplicate(true),
 		"drop_pools": _duplicate_drop_pools(drop_pools),
+		"spell_card_hands": $"/root/GameManager".normalize_spell_card_hands(spell_card_hands),
+		"spell_cast_this_turn": spell_cast_this_turn,
+		"spell_haste_active": spell_haste_active,
+		"spell_haste_owner": spell_haste_owner,
+		"spell_haste_piece_square": {
+			"x": spell_haste_piece_square.x,
+			"y": spell_haste_piece_square.y
+		},
+		"spell_haste_moves_remaining": spell_haste_moves_remaining,
+		"spell_fortify_active": spell_fortify_active,
+		"spell_fortify_owner": spell_fortify_owner,
+		"spell_fortify_piece_square": {
+			"x": spell_fortify_piece_square.x,
+			"y": spell_fortify_piece_square.y
+		},
+		"spell_barrier_active": spell_barrier_active,
+		"spell_barrier_owner": spell_barrier_owner,
+		"spell_barrier_square": {
+			"x": spell_barrier_square.x,
+			"y": spell_barrier_square.y
+		},
+		"spell_teleport_source_square": {
+			"x": spell_teleport_source_square.x,
+			"y": spell_teleport_source_square.y
+		},
+		"pending_spell_card_id": pending_spell_card_id,
+		"pending_spell_card_owner": pending_spell_card_owner,
 		"move_history": move_history.duplicate(true),
 		"current_turn": current_turn,
 		"status_message": status_message,
 		"game_over": game_over,
+		"muster_phase_active": muster_phase_active,
+		"muster_consecutive_passes": muster_consecutive_passes,
+		"muster_black_placements_this_turn": muster_black_placements_this_turn,
+		"muster_kings_placed": muster_kings_placed.duplicate(true),
 		"en_passant_target": {
 			"x": en_passant_target_square.x,
 			"y": en_passant_target_square.y
@@ -671,18 +1135,74 @@ func _import_network_state(state: Dictionary) -> void:
 			var square = Vector2i(int(entry.get("x", -1)), int(entry.get("y", -1)))
 			if square.x < 0 or square.y < 0 or square.x >= board_width or square.y >= board_height:
 				continue
-			pieces[square] = {
+			var stack_value = entry.get("stack", [])
+			if stack_value is Array and not stack_value.is_empty():
+				_set_piece_stack_on_state(pieces, square, stack_value)
+				continue
+			_set_piece_stack_on_state(pieces, square, [{
 				"piece_id": str(entry.get("piece_id", "")),
 				"color": str(entry.get("color", "white")),
 				"has_moved": bool(entry.get("has_moved", false))
-			}
+			}])
 
 	captured_pieces = state.get("captured_pieces", {"white": [], "black": []}).duplicate(true)
 	drop_pools = _duplicate_drop_pools(state.get("drop_pools", {}))
+	spell_card_hands = $"/root/GameManager".normalize_spell_card_hands(state.get("spell_card_hands", {"white": [], "black": []}))
+	spell_cast_this_turn = bool(state.get("spell_cast_this_turn", false))
+	spell_haste_active = bool(state.get("spell_haste_active", false))
+	spell_haste_owner = str(state.get("spell_haste_owner", ""))
+	spell_haste_moves_remaining = int(state.get("spell_haste_moves_remaining", 0))
+	var haste_square = state.get("spell_haste_piece_square", {})
+	if haste_square is Dictionary:
+		spell_haste_piece_square = Vector2i(int(haste_square.get("x", -1)), int(haste_square.get("y", -1)))
+	else:
+		spell_haste_piece_square = INVALID_SQUARE
+	spell_fortify_active = bool(state.get("spell_fortify_active", false))
+	spell_fortify_owner = str(state.get("spell_fortify_owner", ""))
+	var fortify_square = state.get("spell_fortify_piece_square", {})
+	if fortify_square is Dictionary:
+		spell_fortify_piece_square = Vector2i(int(fortify_square.get("x", -1)), int(fortify_square.get("y", -1)))
+	else:
+		spell_fortify_piece_square = INVALID_SQUARE
+	spell_barrier_active = bool(state.get("spell_barrier_active", false))
+	spell_barrier_owner = str(state.get("spell_barrier_owner", ""))
+	var barrier_square = state.get("spell_barrier_square", {})
+	if barrier_square is Dictionary:
+		spell_barrier_square = Vector2i(int(barrier_square.get("x", -1)), int(barrier_square.get("y", -1)))
+	else:
+		spell_barrier_square = INVALID_SQUARE
+	var teleport_square = state.get("spell_teleport_source_square", {})
+	if teleport_square is Dictionary:
+		spell_teleport_source_square = Vector2i(int(teleport_square.get("x", -1)), int(teleport_square.get("y", -1)))
+	else:
+		spell_teleport_source_square = INVALID_SQUARE
+	pending_spell_card_id = str(state.get("pending_spell_card_id", ""))
+	pending_spell_card_owner = str(state.get("pending_spell_card_owner", ""))
+	selected_spell_card_id = pending_spell_card_id
+	selected_spell_card_owner = pending_spell_card_owner
+	spell_keep_selection_after_cast = false
+	if not spell_haste_active:
+		spell_haste_owner = ""
+		spell_haste_piece_square = INVALID_SQUARE
+		spell_haste_moves_remaining = 0
+	if not spell_fortify_active:
+		spell_fortify_owner = ""
+		spell_fortify_piece_square = INVALID_SQUARE
+	if not spell_barrier_active:
+		spell_barrier_owner = ""
+		spell_barrier_square = INVALID_SQUARE
 	move_history = (state.get("move_history", []) as Array).duplicate(true)
 	current_turn = str(state.get("current_turn", "white"))
 	status_message = str(state.get("status_message", ""))
 	game_over = bool(state.get("game_over", false))
+	muster_phase_active = bool(state.get("muster_phase_active", false))
+	muster_consecutive_passes = int(state.get("muster_consecutive_passes", 0))
+	muster_black_placements_this_turn = int(state.get("muster_black_placements_this_turn", 0))
+	var synced_kings = state.get("muster_kings_placed", {"white": false, "black": false})
+	muster_kings_placed = {
+		"white": bool(synced_kings.get("white", false)) if synced_kings is Dictionary else false,
+		"black": bool(synced_kings.get("black", false)) if synced_kings is Dictionary else false
+	}
 	var en_passant_target = state.get("en_passant_target", {})
 	if en_passant_target is Dictionary:
 		en_passant_target_square = Vector2i(int(en_passant_target.get("x", -1)), int(en_passant_target.get("y", -1)))
@@ -783,9 +1303,520 @@ func _draw_drop_pool_panels() -> void:
 	)
 	white_drop_pool_panel_rect = Rect2(left_position, panel_size)
 	black_drop_pool_panel_rect = Rect2(right_position, panel_size)
+	drop_pool_viewport_rects["white"] = Rect2()
+	drop_pool_viewport_rects["black"] = Rect2()
 
 	_draw_drop_pool_panel(left_position, panel_size, "Player 1 Drop Pool", "white")
 	_draw_drop_pool_panel(right_position, panel_size, "Player 2 Drop Pool", "black")
+
+func _draw_spell_card_panels() -> void:
+	white_spell_panel_rect = Rect2()
+	black_spell_panel_rect = Rect2()
+	spell_panel_entry_rects["white"] = []
+	spell_panel_entry_rects["black"] = []
+	spell_panel_viewport_rects["white"] = Rect2()
+	spell_panel_viewport_rects["black"] = Rect2()
+	if not spell_cards_enabled:
+		return
+
+	var panel_size = _get_hud_panel_size(3.0, 1.55, 180.0, 80.0)
+	var footer_height = _get_hud_panel_size(3.0, 2.0, 168.0, 102.0).y
+	var y = get_viewport_rect().size.y - footer_height - panel_size.y - TURN_INDICATOR_PADDING - 8.0
+	var left_position = Vector2(TURN_INDICATOR_PADDING, y)
+	var right_position = Vector2(get_viewport_rect().size.x - panel_size.x - TURN_INDICATOR_PADDING, y)
+	white_spell_panel_rect = Rect2(left_position, panel_size)
+	black_spell_panel_rect = Rect2(right_position, panel_size)
+	_draw_single_spell_card_panel(left_position, panel_size, "Player 1 Hand", "white")
+	_draw_single_spell_card_panel(right_position, panel_size, "Player 2 Hand", "black")
+
+func _draw_single_spell_card_panel(panel_position: Vector2, panel_size: Vector2, title: String, owner: String) -> void:
+	var background = ColorRect.new()
+	background.position = panel_position
+	background.size = panel_size
+	background.color = _drop_pool_panel_color(owner, false)
+	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(background)
+	add_child(_create_colored_border(panel_position, panel_size, SPELL_PANEL_BORDER))
+
+	var title_label = Label.new()
+	title_label.position = panel_position + Vector2(TURN_INDICATOR_PADDING, TURN_INDICATOR_PADDING - 2.0)
+	title_label.text = "%s (%d/%d)" % [title, (spell_card_hands.get(owner, []) as Array).size(), _spell_hand_size_for_owner(owner)]
+	title_label.add_theme_font_size_override("font_size", _hud_font_size(0.16, 11, 15))
+	title_label.add_theme_color_override("font_color", Color(0.95, 0.97, 1.0, 1.0))
+	title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(title_label)
+
+	var entry_rects: Array = []
+	var row_height = max(tile_size * 0.24, 15.0)
+	var content_x = panel_position.x + TURN_INDICATOR_PADDING
+	var content_width = panel_size.x - TURN_INDICATOR_PADDING * 2.0
+	var current_y = panel_position.y + TURN_INDICATOR_PADDING + 20.0
+	var body_height = max(panel_size.y - (TURN_INDICATOR_PADDING + 24.0), row_height)
+	var entries: Array = spell_card_hands.get(owner, [])
+	spell_panel_viewport_rects[owner] = Rect2(content_x, current_y, content_width, body_height)
+
+	if entries.is_empty():
+		spell_panel_scroll_offsets[owner] = 0
+		var empty_label = Label.new()
+		empty_label.position = Vector2(content_x, current_y)
+		empty_label.size = Vector2(content_width, body_height)
+		empty_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		empty_label.text = "(empty)"
+		empty_label.add_theme_font_size_override("font_size", _hud_font_size(0.12, 10, 12))
+		empty_label.add_theme_color_override("font_color", Color(0.9, 0.93, 1.0, 1.0))
+		empty_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(empty_label)
+		spell_panel_entry_rects[owner] = entry_rects
+		return
+
+	var scroll = ScrollContainer.new()
+	scroll.position = Vector2(content_x, current_y)
+	scroll.size = Vector2(content_width, body_height)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(scroll)
+
+	var rows = VBoxContainer.new()
+	rows.custom_minimum_size = Vector2(content_width, 0.0)
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rows.add_theme_constant_override("separation", 3)
+	scroll.add_child(rows)
+
+	var total_rows_height = entries.size() * row_height + max(entries.size() - 1, 0) * 3
+	rows.custom_minimum_size = Vector2(content_width, max(body_height, total_rows_height))
+
+	var y_offset = 0.0
+	for index in range(entries.size()):
+		var card_id = str(entries[index])
+		var row_rect = Rect2(Vector2(0.0, y_offset), Vector2(content_width, row_height))
+		var selected = owner == selected_spell_card_owner and card_id == selected_spell_card_id
+
+		var row_label = Label.new()
+		row_label.custom_minimum_size = Vector2(content_width, row_height)
+		row_label.clip_text = true
+		row_label.text = "%s%s [%s]" % ["> " if selected else "", _spell_card_name(card_id), "P" if _spell_card_type(card_id) == "power" else "R"]
+		row_label.tooltip_text = _spell_card_description(card_id)
+		row_label.add_theme_font_size_override("font_size", _hud_font_size(0.12, 10, 12))
+		row_label.add_theme_color_override("font_color", Color(0.99, 0.99, 1.0, 1.0) if selected else Color(0.94, 0.96, 1.0, 1.0))
+		row_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		rows.add_child(row_label)
+
+		entry_rects.append({"card_id": card_id, "rect": row_rect})
+		y_offset += row_height + 3.0
+
+	var saved_scroll = int(spell_panel_scroll_offsets.get(owner, 0))
+	var max_scroll = max(int(ceil(total_rows_height - body_height)), 0)
+	scroll.scroll_vertical = clamp(saved_scroll, 0, max_scroll)
+	spell_panel_scroll_offsets[owner] = scroll.scroll_vertical
+
+	spell_panel_entry_rects[owner] = entry_rects
+
+func _try_handle_spell_card_click(mouse_position: Vector2) -> bool:
+	if not spell_cards_enabled:
+		return false
+	if game_over or promotion_pending:
+		return false
+	if online_mode and not _is_local_turn():
+		return false
+	var owner = _spell_panel_side_at_position(mouse_position)
+	if owner == "":
+		return false
+	if owner != current_turn:
+		status_message = "You can only cast cards from your own hand."
+		_build_board()
+		return true
+	if spell_cast_this_turn:
+		status_message = "Only one spell card can be cast per turn."
+		_build_board()
+		return true
+
+	var entry = _get_spell_panel_entry_at_position(owner, mouse_position)
+	if entry.is_empty():
+		return true
+	var card_id = str(entry.get("card_id", ""))
+	if card_id == "":
+		return true
+
+	if pending_spell_card_id == card_id and pending_spell_card_owner == owner:
+		pending_spell_card_id = ""
+		pending_spell_card_owner = ""
+		selected_spell_card_id = ""
+		selected_spell_card_owner = ""
+		spell_teleport_source_square = INVALID_SQUARE
+		status_message = "Spell cast canceled."
+		_build_board()
+		return true
+
+	selected_spell_card_id = card_id
+	selected_spell_card_owner = owner
+	pending_spell_card_id = card_id
+	pending_spell_card_owner = owner
+	spell_teleport_source_square = INVALID_SQUARE
+	selected_square = INVALID_SQUARE
+	legal_moves.clear()
+	legal_drop_squares.clear()
+	match card_id:
+		"haste", "fortify":
+			status_message = "Cast %s: click a target allied piece." % _spell_card_name(card_id)
+		"assassinate":
+			status_message = "Cast %s: click a target enemy non-king piece." % _spell_card_name(card_id)
+		"teleport":
+			status_message = "Cast %s: click an allied piece, then an empty destination square." % _spell_card_name(card_id)
+		"barrier":
+			status_message = "Cast %s: click any board square to block movement this turn." % _spell_card_name(card_id)
+		_:
+			status_message = "Cast %s: choose a target." % _spell_card_name(card_id)
+	_build_board()
+	return true
+
+func _spell_panel_side_at_position(mouse_position: Vector2) -> String:
+	if white_spell_panel_rect.has_point(mouse_position):
+		return "white"
+	if black_spell_panel_rect.has_point(mouse_position):
+		return "black"
+	return ""
+
+func _get_spell_panel_entry_at_position(owner: String, mouse_position: Vector2) -> Dictionary:
+	var viewport_rect: Rect2 = spell_panel_viewport_rects.get(owner, Rect2())
+	if not viewport_rect.has_point(mouse_position):
+		return {}
+	var local_position = Vector2(
+		mouse_position.x - viewport_rect.position.x,
+		mouse_position.y - viewport_rect.position.y + int(spell_panel_scroll_offsets.get(owner, 0))
+	)
+	var entries: Array = spell_panel_entry_rects.get(owner, [])
+	for entry in entries:
+		if entry is Dictionary and Rect2(entry.get("rect", Rect2())).has_point(local_position):
+			return entry
+	return {}
+
+func _begin_hud_scroll_drag(mouse_position: Vector2) -> bool:
+	if drop_piece_drag_active:
+		return false
+	for owner in ["white", "black"]:
+		var spell_view: Rect2 = spell_panel_viewport_rects.get(owner, Rect2())
+		if spell_view.has_point(mouse_position):
+			if not _get_spell_panel_entry_at_position(owner, mouse_position).is_empty():
+				return false
+			hud_scroll_drag_active = true
+			hud_scroll_drag_kind = "spell"
+			hud_scroll_drag_owner = owner
+			hud_scroll_drag_last_mouse_position = mouse_position
+			return true
+
+	if not piece_dropping_enabled:
+		return false
+	for owner in ["white", "black"]:
+		var pool_view: Rect2 = drop_pool_viewport_rects.get(owner, Rect2())
+		if pool_view.has_point(mouse_position):
+			if not _get_drop_pool_entry_at_position(owner, mouse_position).is_empty():
+				return false
+			hud_scroll_drag_active = true
+			hud_scroll_drag_kind = "drop_pool"
+			hud_scroll_drag_owner = owner
+			hud_scroll_drag_last_mouse_position = mouse_position
+			return true
+
+	return false
+
+func _update_hud_scroll_drag(mouse_position: Vector2) -> void:
+	if not hud_scroll_drag_active:
+		return
+	var delta_y = mouse_position.y - hud_scroll_drag_last_mouse_position.y
+	hud_scroll_drag_last_mouse_position = mouse_position
+	if is_zero_approx(delta_y):
+		return
+
+	var owner = hud_scroll_drag_owner
+	if hud_scroll_drag_kind == "spell":
+		var view_rect: Rect2 = spell_panel_viewport_rects.get(owner, Rect2())
+		var max_scroll = _hud_list_max_scroll(spell_panel_entry_rects.get(owner, []), view_rect.size.y)
+		var next_scroll = clamp(int(spell_panel_scroll_offsets.get(owner, 0)) - int(round(delta_y)), 0, max_scroll)
+		if next_scroll == int(spell_panel_scroll_offsets.get(owner, 0)):
+			return
+		spell_panel_scroll_offsets[owner] = next_scroll
+		_build_board()
+		return
+
+	if hud_scroll_drag_kind == "drop_pool":
+		var pool_view: Rect2 = drop_pool_viewport_rects.get(owner, Rect2())
+		var pool_max_scroll = _hud_list_max_scroll(drop_pool_entry_rects.get(owner, []), pool_view.size.y)
+		var next_pool_scroll = clamp(int(drop_pool_scroll_offsets.get(owner, 0)) - int(round(delta_y)), 0, pool_max_scroll)
+		if next_pool_scroll == int(drop_pool_scroll_offsets.get(owner, 0)):
+			return
+		drop_pool_scroll_offsets[owner] = next_pool_scroll
+		_build_board()
+
+func _end_hud_scroll_drag() -> void:
+	hud_scroll_drag_active = false
+	hud_scroll_drag_kind = ""
+	hud_scroll_drag_owner = ""
+
+func _update_hud_panel_scroll(mouse_position: Vector2, direction: int) -> bool:
+	if direction == 0:
+		return false
+
+	for owner in ["white", "black"]:
+		var spell_view: Rect2 = spell_panel_viewport_rects.get(owner, Rect2())
+		if spell_view.has_point(mouse_position):
+			var max_scroll = _hud_list_max_scroll(spell_panel_entry_rects.get(owner, []), spell_view.size.y)
+			var next_scroll = clamp(int(spell_panel_scroll_offsets.get(owner, 0)) + direction * 24, 0, max_scroll)
+			if next_scroll == int(spell_panel_scroll_offsets.get(owner, 0)):
+				return true
+			spell_panel_scroll_offsets[owner] = next_scroll
+			_build_board()
+			return true
+
+	if piece_dropping_enabled:
+		for owner in ["white", "black"]:
+			var pool_view: Rect2 = drop_pool_viewport_rects.get(owner, Rect2())
+			if pool_view.has_point(mouse_position):
+				var max_scroll = _hud_list_max_scroll(drop_pool_entry_rects.get(owner, []), pool_view.size.y)
+				var next_scroll = clamp(int(drop_pool_scroll_offsets.get(owner, 0)) + direction * 24, 0, max_scroll)
+				if next_scroll == int(drop_pool_scroll_offsets.get(owner, 0)):
+					return true
+				drop_pool_scroll_offsets[owner] = next_scroll
+				_build_board()
+				return true
+
+	return false
+
+func _hud_list_max_scroll(entries: Array, viewport_height: float) -> int:
+	var total_height = 0.0
+	for entry in entries:
+		total_height = max(total_height, Rect2(entry.get("rect", Rect2())).end.y)
+	return max(int(ceil(total_height - viewport_height)), 0)
+
+func _try_cast_pending_spell_at_square(target_square: Vector2i) -> bool:
+	if pending_spell_card_id == "" or pending_spell_card_owner != current_turn:
+		return false
+	spell_keep_selection_after_cast = false
+
+	match pending_spell_card_id:
+		"haste":
+			if not pieces.has(target_square):
+				status_message = "Target square has no piece for %s." % _spell_card_name(pending_spell_card_id)
+				_build_board()
+				return false
+			return _cast_haste_on_square(target_square)
+		"assassinate":
+			if not pieces.has(target_square):
+				status_message = "Target square has no piece for %s." % _spell_card_name(pending_spell_card_id)
+				_build_board()
+				return false
+			return _cast_assassinate_on_square(target_square)
+		"fortify":
+			if not pieces.has(target_square):
+				status_message = "Target square has no piece for %s." % _spell_card_name(pending_spell_card_id)
+				_build_board()
+				return false
+			return _cast_fortify_on_square(target_square)
+		"teleport":
+			return _cast_teleport_on_square(target_square)
+		"barrier":
+			return _cast_barrier_on_square(target_square)
+		_:
+			status_message = "Spell %s is not implemented yet." % _spell_card_name(pending_spell_card_id)
+			_build_board()
+			return false
+
+func _cast_haste_on_square(target_square: Vector2i) -> bool:
+	var target_piece: Dictionary = pieces[target_square]
+	if str(target_piece.get("color", "")) != current_turn:
+		status_message = "Haste must target an allied piece."
+		_build_board()
+		return false
+	undo_snapshots.append(_capture_undo_snapshot())
+	if not _consume_spell_card_from_hand(current_turn, "haste"):
+		undo_snapshots.pop_back()
+		status_message = "Haste is no longer in hand."
+		_build_board()
+		return false
+	spell_haste_active = true
+	spell_haste_owner = current_turn
+	spell_haste_piece_square = target_square
+	spell_haste_moves_remaining = 2
+	spell_cast_this_turn = true
+	status_message = "%s casts Haste on %s at %s." % [_display_color(current_turn), _get_piece_symbol(str(target_piece.get("piece_id", ""))), _square_to_notation(target_square)]
+	_record_spell_cast_in_history(current_turn, "haste", "on %s @ %s" % [_get_piece_symbol(str(target_piece.get("piece_id", ""))), _square_to_notation(target_square)])
+	_pending_spell_cleanup()
+	_publish_turn_state_to_peer()
+	return true
+
+func _cast_assassinate_on_square(target_square: Vector2i) -> bool:
+	var target_piece: Dictionary = pieces[target_square]
+	if str(target_piece.get("color", "")) == current_turn:
+		status_message = "Assassinate must target an enemy piece."
+		_build_board()
+		return false
+	if str(target_piece.get("piece_id", "")) == "king":
+		status_message = "Assassinate cannot target a king."
+		_build_board()
+		return false
+	undo_snapshots.append(_capture_undo_snapshot())
+	if not _consume_spell_card_from_hand(current_turn, "assassinate"):
+		undo_snapshots.pop_back()
+		status_message = "Assassinate is no longer in hand."
+		_build_board()
+		return false
+
+	pieces.erase(target_square)
+	if capture_to_drop_pool_enabled:
+		_add_piece_to_drop_pool(current_turn, str(target_piece.get("piece_id", "")))
+	else:
+		_record_capture(current_turn, target_piece)
+	spell_cast_this_turn = true
+	status_message = "%s casts Assassinate at %s." % [_display_color(current_turn), _square_to_notation(target_square)]
+	_record_spell_cast_in_history(current_turn, "assassinate", "x %s @ %s" % [_get_piece_symbol(str(target_piece.get("piece_id", ""))), _square_to_notation(target_square)])
+	_pending_spell_cleanup()
+	return true
+
+func _cast_fortify_on_square(target_square: Vector2i) -> bool:
+	var target_piece: Dictionary = pieces[target_square]
+	if str(target_piece.get("color", "")) != current_turn:
+		status_message = "Fortify must target an allied piece."
+		_build_board()
+		return false
+	undo_snapshots.append(_capture_undo_snapshot())
+	if not _consume_spell_card_from_hand(current_turn, "fortify"):
+		undo_snapshots.pop_back()
+		status_message = "Fortify is no longer in hand."
+		_build_board()
+		return false
+	spell_fortify_active = true
+	spell_fortify_owner = current_turn
+	spell_fortify_piece_square = target_square
+	spell_cast_this_turn = true
+	status_message = "%s casts Fortify on %s at %s." % [_display_color(current_turn), _get_piece_symbol(str(target_piece.get("piece_id", ""))), _square_to_notation(target_square)]
+	_record_spell_cast_in_history(current_turn, "fortify", "on %s @ %s" % [_get_piece_symbol(str(target_piece.get("piece_id", ""))), _square_to_notation(target_square)])
+	_pending_spell_cleanup()
+	_publish_turn_state_to_peer()
+	return true
+
+func _cast_teleport_on_square(target_square: Vector2i) -> bool:
+	if spell_teleport_source_square == INVALID_SQUARE:
+		if not pieces.has(target_square):
+			status_message = "Teleport: select an allied piece first."
+			_build_board()
+			return false
+		var source_piece: Dictionary = pieces[target_square]
+		if str(source_piece.get("color", "")) != current_turn:
+			status_message = "Teleport must start from an allied piece."
+			_build_board()
+			return false
+		spell_teleport_source_square = target_square
+		status_message = "Teleport selected %s at %s. Choose an empty destination square." % [_get_piece_symbol(str(source_piece.get("piece_id", ""))), _square_to_notation(target_square)]
+		_build_board()
+		return false
+
+	if target_square == spell_teleport_source_square:
+		status_message = "Teleport destination must be a different square."
+		_build_board()
+		return false
+	if pieces.has(target_square):
+		status_message = "Teleport destination must be empty."
+		_build_board()
+		return false
+	if spell_barrier_active and (target_square == spell_barrier_square or spell_teleport_source_square == spell_barrier_square):
+		status_message = "Barrier blocks movement through that square this turn."
+		_build_board()
+		return false
+
+	var moving_piece: Dictionary = pieces.get(spell_teleport_source_square, {})
+	if moving_piece.is_empty() or str(moving_piece.get("color", "")) != current_turn:
+		spell_teleport_source_square = INVALID_SQUARE
+		status_message = "Teleport source is no longer valid."
+		_build_board()
+		return false
+
+	var simulated_board = pieces.duplicate(true)
+	var source_stack = _get_piece_stack_on_state(simulated_board, spell_teleport_source_square)
+	if source_stack.is_empty():
+		spell_teleport_source_square = INVALID_SQUARE
+		status_message = "Teleport source is no longer valid."
+		_build_board()
+		return false
+	source_stack.pop_back()
+	_set_piece_stack_on_state(simulated_board, spell_teleport_source_square, source_stack)
+	var simulated_piece = moving_piece.duplicate(true)
+	simulated_piece["has_moved"] = true
+	_set_piece_stack_on_state(simulated_board, target_square, [simulated_piece])
+	if _is_king_in_check(current_turn, simulated_board):
+		status_message = "Teleport cannot leave your king in check."
+		_build_board()
+		return false
+
+	undo_snapshots.append(_capture_undo_snapshot())
+	if not _consume_spell_card_from_hand(current_turn, "teleport"):
+		undo_snapshots.pop_back()
+		status_message = "Teleport is no longer in hand."
+		_build_board()
+		return false
+
+	var live_source_stack = _get_piece_stack_on_state(pieces, spell_teleport_source_square)
+	if live_source_stack.is_empty():
+		status_message = "Teleport source is no longer valid."
+		_build_board()
+		return false
+	live_source_stack.pop_back()
+	_set_piece_stack_on_state(pieces, spell_teleport_source_square, live_source_stack)
+	var moved_piece = moving_piece.duplicate(true)
+	moved_piece["has_moved"] = true
+	_set_piece_stack_on_state(pieces, target_square, [moved_piece])
+	if spell_fortify_active and spell_fortify_owner == current_turn and spell_fortify_piece_square == spell_teleport_source_square:
+		spell_fortify_piece_square = target_square
+	spell_cast_this_turn = true
+	status_message = "%s casts Teleport to %s." % [_display_color(current_turn), _square_to_notation(target_square)]
+	_record_spell_cast_in_history(current_turn, "teleport", "%s %s -> %s" % [_get_piece_symbol(str(moved_piece.get("piece_id", ""))), _square_to_notation(spell_teleport_source_square), _square_to_notation(target_square)])
+	_pending_spell_cleanup()
+	return true
+
+func _cast_barrier_on_square(target_square: Vector2i) -> bool:
+	if target_square.x < 0 or target_square.y < 0 or target_square.x >= board_width or target_square.y >= board_height:
+		status_message = "Barrier target is outside the board."
+		_build_board()
+		return false
+	undo_snapshots.append(_capture_undo_snapshot())
+	if not _consume_spell_card_from_hand(current_turn, "barrier"):
+		undo_snapshots.pop_back()
+		status_message = "Barrier is no longer in hand."
+		_build_board()
+		return false
+	spell_barrier_active = true
+	spell_barrier_owner = current_turn
+	spell_barrier_square = target_square
+	spell_cast_this_turn = true
+	status_message = "%s casts Barrier on %s." % [_display_color(current_turn), _square_to_notation(target_square)]
+	_record_spell_cast_in_history(current_turn, "barrier", "on %s" % _square_to_notation(target_square))
+	_pending_spell_cleanup()
+	_publish_turn_state_to_peer()
+	return true
+
+func _consume_spell_card_from_hand(owner: String, card_id: String) -> bool:
+	var hand: Array = spell_card_hands.get(owner, [])
+	var index = hand.find(card_id)
+	if index == -1:
+		return false
+	hand.remove_at(index)
+	spell_card_hands[owner] = hand
+	if spell_cards_random and spell_draw_replacement_after_cast:
+		_spell_fill_hand_randomly(owner, _spell_hand_size_for_owner(owner))
+	return true
+
+func _pending_spell_cleanup() -> void:
+	pending_spell_card_id = ""
+	pending_spell_card_owner = ""
+	selected_spell_card_id = ""
+	selected_spell_card_owner = ""
+	spell_teleport_source_square = INVALID_SQUARE
+
+func _record_spell_cast_in_history(owner: String, card_id: String, detail: String = "") -> void:
+	var card_name = _spell_card_name(card_id)
+	var detail_text = ""
+	if detail != "":
+		detail_text = " %s" % detail
+	move_history.append("%s | casts %s%s" % [_display_color(owner), card_name, detail_text])
 
 func _draw_drop_pool_panel(panel_position: Vector2, panel_size: Vector2, title: String, owner: String) -> void:
 	var background = ColorRect.new()
@@ -810,12 +1841,16 @@ func _draw_drop_pool_panel(panel_position: Vector2, panel_size: Vector2, title: 
 	var content_x = panel_position.x + TURN_INDICATOR_PADDING
 	var content_width = panel_size.x - TURN_INDICATOR_PADDING * 2.0
 	var current_y = panel_position.y + TURN_INDICATOR_PADDING + 22.0
+	var helper_height = row_height if owner == current_turn else 0.0
+	var body_height = max(panel_size.y - (TURN_INDICATOR_PADDING + 28.0 + helper_height), row_height)
 	var entries = _get_drop_pool_display_entries(owner)
+	drop_pool_viewport_rects[owner] = Rect2(content_x, current_y, content_width, body_height)
 
 	if entries.is_empty():
+		drop_pool_scroll_offsets[owner] = 0
 		var empty_label = Label.new()
 		empty_label.position = Vector2(content_x, current_y)
-		empty_label.size = Vector2(content_width, row_height * 2.0)
+		empty_label.size = Vector2(content_width, body_height)
 		empty_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		empty_label.text = "(empty)"
 		if owner == current_turn:
@@ -827,38 +1862,52 @@ func _draw_drop_pool_panel(panel_position: Vector2, panel_size: Vector2, title: 
 		drop_pool_entry_rects[owner] = entry_rects
 		return
 
+	var scroll = ScrollContainer.new()
+	scroll.position = Vector2(content_x, current_y)
+	scroll.size = Vector2(content_width, body_height)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(scroll)
+
+	var rows = VBoxContainer.new()
+	rows.custom_minimum_size = Vector2(content_width, 0.0)
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rows.add_theme_constant_override("separation", 4)
+	scroll.add_child(rows)
+
+	var total_rows_height = entries.size() * row_height + max(entries.size() - 1, 0) * 4
+	rows.custom_minimum_size = Vector2(content_width, max(body_height, total_rows_height))
+
+	var y_offset = 0.0
 	for entry in entries:
 		var piece_id = str(entry.get("piece_id", ""))
 		var count = int(entry.get("count", 0))
-		var row_rect = Rect2(Vector2(content_x, current_y), Vector2(content_width, row_height))
+		var row_rect = Rect2(Vector2(0.0, y_offset), Vector2(content_width, row_height))
 		var selected = owner == selected_drop_piece_owner and piece_id == selected_drop_piece_id
 
-		if selected:
-			var row_background = ColorRect.new()
-			row_background.position = row_rect.position
-			row_background.size = row_rect.size
-			row_background.color = Color(0.32, 0.42, 0.56, 0.72)
-			row_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			add_child(row_background)
-
 		var row_label = Label.new()
-		row_label.position = row_rect.position + Vector2(4.0, 1.0)
-		row_label.size = row_rect.size - Vector2(4.0, 0.0)
-		row_label.text = "%s x%d" % [_get_piece_symbol(piece_id), count]
+		row_label.custom_minimum_size = Vector2(content_width, row_height)
+		row_label.text = "%s%s x%d" % ["> " if selected else "", _get_piece_symbol(piece_id), count]
 		row_label.add_theme_font_size_override("font_size", _hud_font_size(0.15, 11, 14))
-		row_label.add_theme_color_override("font_color", Color(0.94, 0.96, 1.0, 1.0))
+		row_label.add_theme_color_override("font_color", Color(0.99, 0.99, 1.0, 1.0) if selected else Color(0.94, 0.96, 1.0, 1.0))
 		row_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		add_child(row_label)
+		rows.add_child(row_label)
 
 		entry_rects.append({
 			"piece_id": piece_id,
 			"rect": row_rect
 		})
-		current_y += row_height + 4.0
+		y_offset += row_height + 4.0
+
+	var saved_scroll = int(drop_pool_scroll_offsets.get(owner, 0))
+	var max_scroll = max(int(ceil(total_rows_height - body_height)), 0)
+	scroll.scroll_vertical = clamp(saved_scroll, 0, max_scroll)
+	drop_pool_scroll_offsets[owner] = scroll.scroll_vertical
 
 	if owner == current_turn:
 		var helper_label = Label.new()
-		helper_label.position = Vector2(content_x, min(current_y + 2.0, panel_position.y + panel_size.y - row_height))
+		helper_label.position = Vector2(content_x, panel_position.y + panel_size.y - row_height - 2.0)
 		helper_label.size = Vector2(content_width, row_height)
 		helper_label.text = "Drag from pool to board"
 		helper_label.add_theme_font_size_override("font_size", _hud_font_size(0.12, 10, 12))
@@ -1261,6 +2310,9 @@ func _turn_color_swatch(color: String) -> Color:
 	return _player_color(color)
 
 func _draw_highlights() -> void:
+	for square in _get_pending_spell_target_squares():
+		add_child(_create_square_overlay(square, SPELL_TARGET_HIGHLIGHT))
+
 	for square in legal_drop_squares:
 		add_child(_create_square_overlay(square, LEGAL_MOVE_HIGHLIGHT))
 
@@ -1270,6 +2322,49 @@ func _draw_highlights() -> void:
 	for square in legal_moves:
 		if square != selected_square:
 			add_child(_create_square_overlay(square, LEGAL_MOVE_HIGHLIGHT))
+
+func _get_pending_spell_target_squares() -> Array[Vector2i]:
+	var targets: Array[Vector2i] = []
+	if pending_spell_card_id == "" or pending_spell_card_owner != current_turn:
+		return targets
+
+	var card_id = pending_spell_card_id
+	if card_id == "barrier":
+		for y in board_height:
+			for x in board_width:
+				targets.append(Vector2i(x, y))
+		return targets
+	if card_id == "teleport" and spell_teleport_source_square != INVALID_SQUARE:
+		for y in board_height:
+			for x in board_width:
+				var square = Vector2i(x, y)
+				if square == spell_teleport_source_square:
+					continue
+				if pieces.has(square):
+					continue
+				targets.append(square)
+		return targets
+
+	for square in pieces.keys():
+		if not (square is Vector2i):
+			continue
+		var piece_data = _get_top_piece_on_state(pieces, square)
+		if piece_data.is_empty():
+			continue
+		match card_id:
+			"haste":
+				if str(piece_data.get("color", "")) == current_turn:
+					targets.append(square)
+			"fortify":
+				if str(piece_data.get("color", "")) == current_turn:
+					targets.append(square)
+			"assassinate":
+				if str(piece_data.get("color", "")) != current_turn and str(piece_data.get("piece_id", "")) != "king":
+					targets.append(square)
+			"teleport":
+				if str(piece_data.get("color", "")) == current_turn:
+					targets.append(square)
+	return targets
 
 func _is_board_view_flipped() -> bool:
 	return online_mode and local_player_side == "black"
@@ -1313,8 +2408,10 @@ func _create_board_tile(square: Vector2i, tile_color: Color) -> Polygon2D:
 
 func _draw_pieces() -> void:
 	for square in pieces.keys():
-		var piece_data: Dictionary = pieces[square]
-		var piece_node = _create_piece_node(piece_data)
+		var piece_data = _get_top_piece_on_state(pieces, square)
+		if piece_data.is_empty():
+			continue
+		var piece_node = _create_piece_node(piece_data, _get_stack_level_on_state(pieces, square))
 		piece_node.position = _board_square_to_screen_position(square)
 		add_child(piece_node)
 
@@ -1324,12 +2421,12 @@ func _draw_drop_piece_drag_preview() -> void:
 	var preview_piece = _create_piece_node({
 		"piece_id": selected_drop_piece_id,
 		"color": selected_drop_piece_owner
-	})
+	}, 1)
 	preview_piece.modulate = Color(1.0, 1.0, 1.0, 0.72)
 	preview_piece.position = drop_piece_drag_position - Vector2(tile_size * 0.5, tile_size * 0.5)
 	add_child(preview_piece)
 
-func _create_piece_node(piece_data: Dictionary) -> Node2D:
+func _create_piece_node(piece_data: Dictionary, stack_level: int = 1) -> Node2D:
 	var piece_root = Node2D.new()
 	var piece_id = str(piece_data.get("piece_id", ""))
 	var path_strokes = $"/root/GameManager".get_piece_path_strokes(piece_id)
@@ -1338,6 +2435,7 @@ func _create_piece_node(piece_data: Dictionary) -> Node2D:
 		var icon_offset = (tile_size - icon_extent) * 0.5
 		var stroke_width = icon_extent * $"/root/GameManager".get_piece_path_stroke_width(piece_id)
 		_add_piece_path_visual(piece_root, path_strokes, Vector2(icon_offset, icon_offset), icon_extent, stroke_width, _piece_fill_color(piece_data.get("color", "white")), _piece_outline_color(piece_data.get("color", "white")))
+		_add_piece_stack_badge(piece_root, stack_level)
 		return piece_root
 
 	var icon_texture = $"/root/GameManager".get_piece_icon_texture(piece_id)
@@ -1352,6 +2450,7 @@ func _create_piece_node(piece_data: Dictionary) -> Node2D:
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		piece_root.add_child(icon)
+		_add_piece_stack_badge(piece_root, stack_level)
 		return piece_root
 
 	# Label placeholder for now; this wrapper node lets us replace it with an image sprite later.
@@ -1366,8 +2465,32 @@ func _create_piece_node(piece_data: Dictionary) -> Node2D:
 	label.add_theme_color_override("font_outline_color", _piece_outline_color(piece_data.get("color", "white")))
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	piece_root.add_child(label)
+	_add_piece_stack_badge(piece_root, stack_level)
 
 	return piece_root
+
+func _add_piece_stack_badge(piece_root: Node2D, stack_level: int) -> void:
+	if stack_level <= 1:
+		return
+	var badge_bg = ColorRect.new()
+	badge_bg.position = Vector2(tile_size * 0.61, tile_size * 0.61)
+	badge_bg.size = Vector2(tile_size * 0.34, tile_size * 0.34)
+	badge_bg.color = Color(0.06, 0.06, 0.06, 0.82)
+	badge_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	piece_root.add_child(badge_bg)
+
+	var badge_label = Label.new()
+	badge_label.position = badge_bg.position
+	badge_label.size = badge_bg.size
+	badge_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	badge_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	badge_label.text = str(stack_level)
+	badge_label.add_theme_font_size_override("font_size", max(int(tile_size * 0.18), 10))
+	badge_label.add_theme_color_override("font_color", Color(1.0, 0.96, 0.66, 1.0))
+	badge_label.add_theme_constant_override("outline_size", max(int(tile_size * 0.03), 1))
+	badge_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.95))
+	badge_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	piece_root.add_child(badge_label)
 
 func _add_piece_path_visual(parent: Node2D, path_strokes: Array, origin: Vector2, extent: float, stroke_width: float, fill_color: Color, outline_color: Color) -> void:
 	for stroke_data in path_strokes:
@@ -1458,6 +2581,57 @@ func _is_square_in_promotion_zone(piece_color: String, target_square: Vector2i) 
 		return target_square.y < zone_rows
 	return target_square.y >= board_height - zone_rows
 
+func _is_square_in_owner_territory(owner: String, target_square: Vector2i) -> bool:
+	if target_square == INVALID_SQUARE:
+		return false
+	var rows = clamp(territory_rows, 1, max(board_height, 1))
+	if owner == "white":
+		return target_square.y >= board_height - rows
+	if owner == "black":
+		return target_square.y < rows
+	return false
+
+func _is_muster_drop_piece_allowed(piece_id: String, owner: String, target_square: Vector2i) -> bool:
+	if not muster_phase_active:
+		return true
+	if owner != current_turn:
+		return false
+	if territory_enabled and muster_phase_active and not _is_square_in_owner_territory(owner, target_square):
+		return false
+	if not bool(muster_kings_placed.get(owner, false)):
+		return piece_id == "king"
+	return true
+
+func _both_kings_placed() -> bool:
+	return bool(muster_kings_placed.get("white", false)) and bool(muster_kings_placed.get("black", false))
+
+func _should_end_muster_phase() -> bool:
+	return muster_consecutive_passes >= 2 and _both_kings_placed()
+
+func _advance_muster_turn_after_drop(piece_id: String) -> void:
+	muster_consecutive_passes = 0
+	if piece_id == "king":
+		muster_kings_placed[current_turn] = true
+	if current_turn == "black":
+		muster_black_placements_this_turn += 1
+		if muster_black_placements_this_turn < 2:
+			status_message = "Player 2 may place one more piece or pass."
+			return
+	muster_black_placements_this_turn = 0
+	current_turn = _opponent_color(current_turn)
+
+func _advance_muster_turn_after_pass() -> void:
+	if current_turn == "black":
+		muster_black_placements_this_turn = 0
+	current_turn = _opponent_color(current_turn)
+
+func _end_muster_phase() -> void:
+	muster_phase_active = false
+	muster_consecutive_passes = 0
+	muster_black_placements_this_turn = 0
+	current_turn = "white"
+	status_message = "Muster complete. Player 1 to move."
+
 func _color_from_variant(source: Variant, fallback: Color) -> Color:
 	if source is Dictionary:
 		return Color(
@@ -1526,6 +2700,16 @@ func _record_move(moving_piece: Dictionary, from_square: Vector2i, to_square: Ve
 		])
 		return
 
+	if bool(move_info.get("is_stack_move", false)):
+		move_history.append("%s | %s %s stacks @ %s (L%d)" % [
+			_display_color(str(moving_piece.get("color", "white"))),
+			_get_piece_symbol(str(moving_piece.get("piece_id", ""))),
+			_square_to_notation(from_square),
+			_square_to_notation(to_square),
+			int(move_info.get("target_level", 0)) + 1
+		])
+		return
+
 	var move_connector = " -> "
 	var capture_suffix = ""
 	if not captured_piece.is_empty():
@@ -1571,11 +2755,40 @@ func _handle_board_click(mouse_position: Vector2) -> void:
 
 	var square = _screen_to_square(mouse_position)
 	if square == INVALID_SQUARE:
+		if pending_spell_card_id != "":
+			status_message = "Select a valid target square for %s." % _spell_card_name(pending_spell_card_id)
+			_build_board()
+			return
 		_clear_selection()
 		_clear_drop_piece_selection()
 		return
 
+	if pending_spell_card_id != "":
+		var pending_type = _spell_card_type(pending_spell_card_id)
+		if _try_cast_pending_spell_at_square(square):
+			if not spell_keep_selection_after_cast:
+				_clear_selection()
+			spell_keep_selection_after_cast = false
+			_clear_drop_piece_selection()
+			if pending_type == "power":
+				_finalize_turn_after_move()
+			else:
+				_build_board()
+		return
+
+	if muster_phase_active:
+		if selected_drop_piece_id != "" and selected_drop_piece_owner == current_turn and _try_drop_piece_from_pool(square):
+			_finalize_turn_after_move()
+			return
+		status_message = "Muster phase: place a piece from your drop pool or pass."
+		_build_board()
+		return
+
 	if selected_square == INVALID_SQUARE:
+		if spell_haste_active and square != spell_haste_piece_square:
+			status_message = "Haste active: move the boosted piece at %s." % _square_to_notation(spell_haste_piece_square)
+			_build_board()
+			return
 		if _is_current_turn_piece(square):
 			_select_square(square)
 		return
@@ -1586,7 +2799,10 @@ func _handle_board_click(mouse_position: Vector2) -> void:
 
 	if _is_square_in_legal_moves(square) and _try_move_piece(selected_square, square):
 		_clear_drop_piece_selection()
-		_finalize_turn_after_move()
+		if last_piece_move_should_end_turn:
+			_finalize_turn_after_move()
+		else:
+			_build_board()
 		return
 
 	if _is_current_turn_piece(square):
@@ -1597,6 +2813,10 @@ func _handle_board_click(mouse_position: Vector2) -> void:
 func _try_begin_drop_pool_drag(mouse_position: Vector2) -> bool:
 	if not piece_dropping_enabled:
 		return false
+	if spell_haste_active and spell_haste_owner == current_turn and spell_haste_moves_remaining > 0:
+		status_message = "Haste active: move the boosted piece before dropping."
+		_build_board()
+		return true
 	if online_mode and not _is_local_turn():
 		return true
 	var owner = _drop_pool_side_at_position(mouse_position)
@@ -1627,14 +2847,24 @@ func _drop_pool_side_at_position(mouse_position: Vector2) -> String:
 	return ""
 
 func _get_drop_pool_entry_at_position(owner: String, mouse_position: Vector2) -> Dictionary:
+	var viewport_rect: Rect2 = drop_pool_viewport_rects.get(owner, Rect2())
+	if not viewport_rect.has_point(mouse_position):
+		return {}
+	var local_position = Vector2(
+		mouse_position.x - viewport_rect.position.x,
+		mouse_position.y - viewport_rect.position.y + int(drop_pool_scroll_offsets.get(owner, 0))
+	)
 	var entries: Array = drop_pool_entry_rects.get(owner, [])
 	for entry in entries:
-		if entry is Dictionary and Rect2(entry.get("rect", Rect2())).has_point(mouse_position):
+		if entry is Dictionary and Rect2(entry.get("rect", Rect2())).has_point(local_position):
 			return entry
 	return {}
 
 func _try_drop_piece_from_pool(target_square: Vector2i) -> bool:
 	if not piece_dropping_enabled:
+		return false
+	if spell_haste_active and spell_haste_owner == current_turn and spell_haste_moves_remaining > 0:
+		status_message = "Haste active: move the boosted piece before dropping."
 		return false
 	if selected_drop_piece_id == "" or selected_drop_piece_owner != current_turn:
 		return false
@@ -1654,22 +2884,30 @@ func _try_drop_piece_from_pool(target_square: Vector2i) -> bool:
 		_get_piece_symbol(selected_drop_piece_id),
 		_square_to_notation(target_square)
 	])
+	if muster_phase_active:
+		_advance_muster_turn_after_drop(selected_drop_piece_id)
 	_clear_drop_piece_selection()
 	return true
 
 func _is_legal_drop_piece_from_pool(piece_id: String, owner: String, target_square: Vector2i) -> bool:
 	if target_square == INVALID_SQUARE:
 		return false
+	if spell_barrier_active and target_square == spell_barrier_square:
+		return false
+	if territory_enabled and muster_phase_active and not _is_square_in_owner_territory(owner, target_square):
+		return false
+	if not _is_muster_drop_piece_allowed(piece_id, owner, target_square):
+		return false
 	if pieces.has(target_square):
 		return false
 	if owner == "" or piece_id == "":
 		return false
 	var simulated_board = pieces.duplicate(true)
-	simulated_board[target_square] = {
+	_set_piece_stack_on_state(simulated_board, target_square, [{
 		"piece_id": piece_id,
 		"color": owner,
 		"has_moved": false
-	}
+	}])
 	if _is_king_in_check(owner, simulated_board):
 		return false
 	return _is_drop_allowed_by_army_strength(piece_id, owner, target_square, pieces, drop_pools)
@@ -1696,7 +2934,9 @@ func _clear_selection() -> void:
 func _is_current_turn_piece(square: Vector2i) -> bool:
 	if not pieces.has(square):
 		return false
-	var piece_data: Dictionary = pieces[square]
+	var piece_data = _get_top_piece_on_state(pieces, square)
+	if piece_data.is_empty():
+		return false
 	return piece_data.get("color", "") == current_turn
 
 func _is_square_in_legal_moves(square: Vector2i) -> bool:
@@ -1710,10 +2950,29 @@ func _get_legal_moves(from_square: Vector2i) -> Array[Vector2i]:
 	if not pieces.has(from_square):
 		return available_moves
 
-	var moving_piece: Dictionary = pieces[from_square]
+	var moving_piece = _get_top_piece_on_state(pieces, from_square)
+	if moving_piece.is_empty():
+		return available_moves
 	if moving_piece.get("color", "") != current_turn:
 		return available_moves
 
+	for y in board_height:
+		for x in board_width:
+			var to_square = Vector2i(x, y)
+			var move_info = _analyze_move(moving_piece, from_square, to_square, pieces, true)
+			if bool(move_info.get("is_legal", false)):
+				available_moves.append(to_square)
+
+	return available_moves
+
+func _get_legal_moves_for_piece(from_square: Vector2i) -> Array[Vector2i]:
+	var available_moves: Array[Vector2i] = []
+	if not pieces.has(from_square):
+		return available_moves
+
+	var moving_piece = _get_top_piece_on_state(pieces, from_square)
+	if moving_piece.is_empty():
+		return available_moves
 	for y in board_height:
 		for x in board_width:
 			var to_square = Vector2i(x, y)
@@ -1742,7 +3001,34 @@ func _screen_to_square(mouse_position: Vector2) -> Vector2i:
 	return _view_square_to_board_square(Vector2i(square_x, square_y))
 
 func _finalize_turn_after_move() -> void:
+	if muster_phase_active:
+		selected_square = INVALID_SQUARE
+		legal_moves.clear()
+		legal_drop_squares.clear()
+		if _should_end_muster_phase():
+			_end_muster_phase()
+		_update_game_state(true)
+		_build_board()
+		_publish_turn_state_to_peer()
+		return
+
+	_pending_spell_cleanup()
+	spell_cast_this_turn = false
+	if spell_haste_active and spell_haste_owner == current_turn:
+		spell_haste_active = false
+		spell_haste_owner = ""
+		spell_haste_piece_square = INVALID_SQUARE
+		spell_haste_moves_remaining = 0
+	if spell_barrier_active and spell_barrier_owner == current_turn:
+		spell_barrier_active = false
+		spell_barrier_owner = ""
+		spell_barrier_square = INVALID_SQUARE
+	last_piece_move_should_end_turn = true
 	current_turn = _opponent_color(current_turn)
+	if spell_fortify_active and current_turn == spell_fortify_owner:
+		spell_fortify_active = false
+		spell_fortify_owner = ""
+		spell_fortify_piece_square = INVALID_SQUARE
 	selected_square = INVALID_SQUARE
 	legal_moves.clear()
 	legal_drop_squares.clear()
@@ -1753,10 +3039,17 @@ func _finalize_turn_after_move() -> void:
 func _try_move_piece(from_square: Vector2i, to_square: Vector2i) -> bool:
 	if promotion_pending:
 		return false
+	if muster_phase_active:
+		return false
 	if not pieces.has(from_square):
 		return false
+	if spell_haste_active and spell_haste_owner == current_turn and spell_haste_moves_remaining > 0 and from_square != spell_haste_piece_square:
+		status_message = "Haste active: move the boosted piece at %s." % _square_to_notation(spell_haste_piece_square)
+		return false
 
-	var moving_piece: Dictionary = pieces[from_square]
+	var moving_piece = _get_top_piece_on_state(pieces, from_square)
+	if moving_piece.is_empty():
+		return false
 	var move_info = _analyze_move(moving_piece, from_square, to_square, pieces, true)
 	if not bool(move_info.get("is_legal", false)):
 		return false
@@ -1776,36 +3069,74 @@ func _commit_move(from_square: Vector2i, to_square: Vector2i, moving_piece: Dict
 	if not pieces.has(from_square):
 		return false
 	undo_snapshots.append(_capture_undo_snapshot())
+	var moving_stack = _get_piece_stack_on_state(pieces, from_square)
+	if moving_stack.is_empty():
+		return false
+	var moving_layer: Dictionary = moving_stack.pop_back()
+	_set_piece_stack_on_state(pieces, from_square, moving_stack)
 
 	var captured_piece: Dictionary = {}
+	var captured_stack: Array = []
 	var capture_square = move_info.get("capture_square", INVALID_SQUARE)
 	if capture_square != INVALID_SQUARE and pieces.has(capture_square):
-		captured_piece = pieces[capture_square].duplicate(true)
+		captured_stack = _get_piece_stack_on_state(pieces, capture_square)
+		if not captured_stack.is_empty():
+			captured_piece = captured_stack[captured_stack.size() - 1].duplicate(true)
 		pieces.erase(capture_square)
 
-	pieces.erase(from_square)
-	var moved_piece = moving_piece.duplicate(true)
+	var moved_piece = moving_layer.duplicate(true)
 	moved_piece["has_moved"] = true
 	if str(move_info.get("promotion_piece_id", "")) != "":
 		moved_piece["piece_id"] = str(move_info.get("promotion_piece_id", ""))
-	pieces[to_square] = moved_piece
+	var destination_stack = _get_piece_stack_on_state(pieces, to_square)
+	destination_stack.append(moved_piece)
+	_set_piece_stack_on_state(pieces, to_square, destination_stack)
 
 	if bool(move_info.get("is_castling", false)):
 		var rook_from = move_info.get("rook_from", INVALID_SQUARE)
 		var rook_to = move_info.get("rook_to", INVALID_SQUARE)
 		if rook_from != INVALID_SQUARE and rook_to != INVALID_SQUARE and pieces.has(rook_from):
-			var rook_piece: Dictionary = pieces[rook_from].duplicate(true)
-			pieces.erase(rook_from)
+			var rook_stack = _get_piece_stack_on_state(pieces, rook_from)
+			if rook_stack.is_empty():
+				return false
+			var rook_piece: Dictionary = rook_stack.pop_back()
+			_set_piece_stack_on_state(pieces, rook_from, rook_stack)
 			rook_piece["has_moved"] = true
-			pieces[rook_to] = rook_piece
+			_set_piece_stack_on_state(pieces, rook_to, [rook_piece])
 
 	en_passant_target_square = move_info.get("new_en_passant_target", INVALID_SQUARE)
 
-	if not captured_piece.is_empty():
+	if not captured_stack.is_empty():
+		if capture_to_drop_pool_enabled:
+			for captured_layer in captured_stack:
+				_add_piece_to_drop_pool(str(moving_piece.get("color", "white")), str(captured_layer.get("piece_id", "")))
+		else:
+			for captured_layer in captured_stack:
+				_record_capture(str(moving_piece.get("color", "white")), captured_layer)
+	elif not captured_piece.is_empty():
 		if capture_to_drop_pool_enabled:
 			_add_piece_to_drop_pool(str(moving_piece.get("color", "white")), str(captured_piece.get("piece_id", "")))
 		else:
 			_record_capture(str(moving_piece.get("color", "white")), captured_piece)
+	if spell_fortify_active and spell_fortify_piece_square == from_square and spell_fortify_owner == str(moving_piece.get("color", "")):
+		spell_fortify_piece_square = to_square
+	if spell_fortify_active and not pieces.has(spell_fortify_piece_square):
+		spell_fortify_active = false
+		spell_fortify_owner = ""
+		spell_fortify_piece_square = INVALID_SQUARE
+
+	last_piece_move_should_end_turn = true
+	if spell_haste_active and spell_haste_owner == str(moving_piece.get("color", "")) and spell_haste_piece_square == from_square and spell_haste_moves_remaining > 0:
+		spell_haste_piece_square = to_square
+		spell_haste_moves_remaining -= 1
+		if spell_haste_moves_remaining > 0:
+			last_piece_move_should_end_turn = false
+		else:
+			spell_haste_active = false
+			spell_haste_owner = ""
+			spell_haste_piece_square = INVALID_SQUARE
+			spell_haste_moves_remaining = 0
+
 	_record_move(moving_piece, from_square, to_square, captured_piece, move_info)
 	return true
 
@@ -1827,6 +3158,9 @@ func _create_move_info() -> Dictionary:
 	return {
 		"is_legal": false,
 		"capture_square": INVALID_SQUARE,
+		"is_stack_move": false,
+		"source_level": 1,
+		"target_level": 0,
 		"rook_from": INVALID_SQUARE,
 		"rook_to": INVALID_SQUARE,
 		"promotion_piece_id": "",
@@ -1839,6 +3173,11 @@ func _create_move_info() -> Dictionary:
 func _analyze_move(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, validate_king_safety: bool, drop_pool_state: Dictionary = {}) -> Dictionary:
 	var move_info = _create_move_info()
 	if not _is_base_legal_piece_move(piece_data, from_square, to_square, board_state, move_info):
+		return move_info
+	if spell_barrier_active and (from_square == spell_barrier_square or to_square == spell_barrier_square):
+		return move_info
+	var capture_square = move_info.get("capture_square", INVALID_SQUARE)
+	if spell_fortify_active and capture_square == spell_fortify_piece_square and str(piece_data.get("color", "")) != spell_fortify_owner:
 		return move_info
 
 	if validate_king_safety:
@@ -1858,30 +3197,44 @@ func _analyze_move(piece_data: Dictionary, from_square: Vector2i, to_square: Vec
 func _is_base_legal_piece_move(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, move_info: Dictionary) -> bool:
 	if from_square == to_square:
 		return false
+	var source_level = _get_stack_level_on_state(board_state, from_square)
+	if source_level <= 0:
+		return false
+	var move_scale = _effective_move_scale(piece_data, board_state, from_square)
+	move_info["source_level"] = source_level
 	if board_state.has(to_square):
-		var target_piece: Dictionary = board_state[to_square]
+		var target_piece = _get_top_piece_on_state(board_state, to_square)
+		if target_piece.is_empty():
+			return false
+		var target_level = _get_stack_level_on_state(board_state, to_square)
+		move_info["target_level"] = target_level
+		if piece_stacking_enabled and target_level > source_level:
+			return false
 		if target_piece.get("color", "") == piece_data.get("color", ""):
+			if not piece_stacking_enabled:
+				return false
+			move_info["is_stack_move"] = true
+		elif target_piece.get("piece_id", "") == "king":
 			return false
-		if target_piece.get("piece_id", "") == "king":
-			return false
-		move_info["capture_square"] = to_square
+		else:
+			move_info["capture_square"] = to_square
 
-	var piece_definition = _get_piece_definition(str(piece_data.get("piece_id", "")))
-	match piece_definition.get("move_type", ""):
+	var move_type = _effective_move_type(piece_data, board_state, from_square)
+	match move_type:
 		"pawn":
 			return _is_pawn_move_legal(piece_data, from_square, to_square, board_state, move_info)
 		"shogi_pawn":
-			return _is_shogi_pawn_move_legal(piece_data, from_square, to_square, board_state)
+			return _is_shogi_pawn_move_legal(piece_data, from_square, to_square, board_state, move_scale)
 		"lance_forward_slide":
 			return _is_lance_move_legal(piece_data, from_square, to_square, board_state)
 		"shogi_knight_jump":
-			return _is_shogi_knight_move_legal(piece_data, from_square, to_square)
+			return _is_shogi_knight_move_legal(piece_data, from_square, to_square, move_scale)
 		"silver_general_step":
-			return _is_silver_general_move_legal(piece_data, from_square, to_square)
+			return _is_silver_general_move_legal(piece_data, from_square, to_square, board_state, move_scale)
 		"gold_general_step":
-			return _is_gold_general_move_legal(piece_data, from_square, to_square)
+			return _is_gold_general_move_legal(piece_data, from_square, to_square, board_state, move_scale)
 		"knight_jump":
-			return _is_knight_move_legal(from_square, to_square)
+			return _is_knight_move_legal(from_square, to_square, move_scale)
 		"diagonal_slide":
 			return _is_bishop_move_legal(from_square, to_square, board_state)
 		"cardinal_slide":
@@ -1889,35 +3242,43 @@ func _is_base_legal_piece_move(piece_data: Dictionary, from_square: Vector2i, to
 		"omni_slide":
 			return _is_queen_move_legal(from_square, to_square, board_state)
 		"king_step":
-			if _is_king_move_legal(from_square, to_square):
+			if _is_king_move_legal(from_square, to_square, board_state, move_scale):
 				return true
 			return _is_castling_move_legal(piece_data, from_square, to_square, board_state, move_info)
 		"custom":
 			var is_capture = move_info.get("capture_square", INVALID_SQUARE) != INVALID_SQUARE
-			return _is_custom_move_legal(piece_data, from_square, to_square, board_state, is_capture, false)
+			return _is_custom_move_legal(piece_data, from_square, to_square, board_state, is_capture, false, move_scale)
 		_:
 			return false
 
 func _simulate_move_with_info(board_state: Dictionary, from_square: Vector2i, to_square: Vector2i, piece_data: Dictionary, move_info: Dictionary) -> Dictionary:
 	var simulated_board = board_state.duplicate(true)
-	var moving_piece: Dictionary = piece_data.duplicate(true)
+	var from_stack = _get_piece_stack_on_state(simulated_board, from_square)
+	if from_stack.is_empty():
+		return simulated_board
+	var moving_piece: Dictionary = from_stack.pop_back()
+	_set_piece_stack_on_state(simulated_board, from_square, from_stack)
 	var capture_square = move_info.get("capture_square", INVALID_SQUARE)
 	if capture_square != INVALID_SQUARE:
 		simulated_board.erase(capture_square)
-	simulated_board.erase(from_square)
 	moving_piece["has_moved"] = true
 	if str(move_info.get("promotion_piece_id", "")) != "":
 		moving_piece["piece_id"] = str(move_info.get("promotion_piece_id", ""))
-	simulated_board[to_square] = moving_piece
+	var destination_stack = _get_piece_stack_on_state(simulated_board, to_square)
+	destination_stack.append(moving_piece)
+	_set_piece_stack_on_state(simulated_board, to_square, destination_stack)
 
 	if bool(move_info.get("is_castling", false)):
 		var rook_from = move_info.get("rook_from", INVALID_SQUARE)
 		var rook_to = move_info.get("rook_to", INVALID_SQUARE)
 		if rook_from != INVALID_SQUARE and rook_to != INVALID_SQUARE and simulated_board.has(rook_from):
-			var rook_piece: Dictionary = simulated_board[rook_from].duplicate(true)
-			simulated_board.erase(rook_from)
+			var rook_stack = _get_piece_stack_on_state(simulated_board, rook_from)
+			if rook_stack.is_empty():
+				return simulated_board
+			var rook_piece: Dictionary = rook_stack.pop_back()
+			_set_piece_stack_on_state(simulated_board, rook_from, rook_stack)
 			rook_piece["has_moved"] = true
-			simulated_board[rook_to] = rook_piece
+			_set_piece_stack_on_state(simulated_board, rook_to, [rook_piece])
 
 	return simulated_board
 
@@ -1927,7 +3288,9 @@ func _is_king_in_check(piece_color: String, board_state: Dictionary) -> bool:
 		return false
 
 	for from_square in board_state.keys():
-		var piece_data: Dictionary = board_state[from_square]
+		var piece_data = _get_top_piece_on_state(board_state, from_square)
+		if piece_data.is_empty():
+			continue
 		if piece_data.get("color", "") == piece_color:
 			continue
 		if _can_piece_attack_square(piece_data, from_square, king_square, board_state):
@@ -1937,28 +3300,29 @@ func _is_king_in_check(piece_color: String, board_state: Dictionary) -> bool:
 
 func _find_king_square(piece_color: String, board_state: Dictionary) -> Vector2i:
 	for square in board_state.keys():
-		var piece_data: Dictionary = board_state[square]
-		if piece_data.get("color", "") == piece_color and piece_data.get("piece_id", "") == "king":
-			return square
+		for layer in _get_piece_stack_on_state(board_state, square):
+			if str(layer.get("color", "")) == piece_color and str(layer.get("piece_id", "")) == "king":
+				return square
 	return INVALID_SQUARE
 
 func _can_piece_attack_square(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
-	var piece_definition = _get_piece_definition(str(piece_data.get("piece_id", "")))
-	match piece_definition.get("move_type", ""):
+	var move_scale = _effective_move_scale(piece_data, board_state, from_square)
+	var move_type = _effective_move_type(piece_data, board_state, from_square)
+	match move_type:
 		"pawn":
 			return _is_pawn_attack_legal(piece_data, from_square, to_square)
 		"shogi_pawn":
-			return _is_shogi_pawn_attack_legal(piece_data, from_square, to_square)
+			return _is_shogi_pawn_attack_legal(piece_data, from_square, to_square, move_scale)
 		"lance_forward_slide":
 			return _is_lance_move_legal(piece_data, from_square, to_square, board_state)
 		"shogi_knight_jump":
-			return _is_shogi_knight_move_legal(piece_data, from_square, to_square)
+			return _is_shogi_knight_move_legal(piece_data, from_square, to_square, move_scale)
 		"silver_general_step":
-			return _is_silver_general_move_legal(piece_data, from_square, to_square)
+			return _is_silver_general_move_legal(piece_data, from_square, to_square, board_state, move_scale)
 		"gold_general_step":
-			return _is_gold_general_move_legal(piece_data, from_square, to_square)
+			return _is_gold_general_move_legal(piece_data, from_square, to_square, board_state, move_scale)
 		"knight_jump":
-			return _is_knight_move_legal(from_square, to_square)
+			return _is_knight_move_legal(from_square, to_square, move_scale)
 		"diagonal_slide":
 			return _is_bishop_move_legal(from_square, to_square, board_state)
 		"cardinal_slide":
@@ -1966,13 +3330,13 @@ func _can_piece_attack_square(piece_data: Dictionary, from_square: Vector2i, to_
 		"omni_slide":
 			return _is_queen_move_legal(from_square, to_square, board_state)
 		"king_step":
-			return _is_king_move_legal(from_square, to_square)
+			return _is_king_move_legal(from_square, to_square, board_state, move_scale)
 		"custom":
-			return _is_custom_move_legal(piece_data, from_square, to_square, board_state, true, true)
+			return _is_custom_move_legal(piece_data, from_square, to_square, board_state, true, true, move_scale)
 		_:
 			return false
 
-func _is_custom_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, is_capture: bool, allow_virtual_capture_target: bool) -> bool:
+func _is_custom_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, is_capture: bool, allow_virtual_capture_target: bool, move_scale: int = 1) -> bool:
 	var piece_id = str(piece_data.get("piece_id", ""))
 	var delta = to_square - from_square
 	if delta == Vector2i.ZERO:
@@ -1986,21 +3350,23 @@ func _is_custom_move_legal(piece_data: Dictionary, from_square: Vector2i, to_squ
 		var rule_kind = str(movement_rule.get("kind", CUSTOM_MOVE_KIND_JUMP))
 		var rule_delta: Vector2i = movement_rule.get("offset", Vector2i.ZERO)
 		if rule_kind == CUSTOM_MOVE_KIND_JUMP:
-			if rule_delta == delta:
-				return true
+			for scale in range(1, max(move_scale, 1) + 1):
+				if rule_delta * scale == delta:
+					return true
 			continue
 
 		if str(movement_rule.get("slide_scope", CUSTOM_SLIDE_SCOPE_INFINITE)) == CUSTOM_SLIDE_SCOPE_HALTING:
-			if rule_delta != delta:
-				continue
-			var halt_step = _normalize_direction_vector(rule_delta)
-			if halt_step == Vector2i.ZERO:
-				continue
-			var halt_steps = _count_slide_steps(rule_delta, halt_step)
-			if halt_steps <= 0:
-				continue
-			if _is_custom_slide_path_clear(from_square, halt_step, halt_steps, board_state):
-				return true
+			for scale in range(1, max(move_scale, 1) + 1):
+				if rule_delta * scale != delta:
+					continue
+				var halt_step = _normalize_direction_vector(rule_delta)
+				if halt_step == Vector2i.ZERO:
+					continue
+				var halt_steps = _count_slide_steps(rule_delta, halt_step)
+				if halt_steps <= 0:
+					continue
+				if _is_custom_slide_path_clear(from_square, halt_step, halt_steps * scale, board_state):
+					return true
 			continue
 
 		var steps = _count_slide_steps(delta, rule_delta)
@@ -2190,7 +3556,9 @@ func _is_custom_slide_path_clear(from_square: Vector2i, slide_step: Vector2i, st
 
 func _is_square_attacked(square: Vector2i, defended_color: String, board_state: Dictionary) -> bool:
 	for from_square in board_state.keys():
-		var attacker_piece: Dictionary = board_state[from_square]
+		var attacker_piece = _get_top_piece_on_state(board_state, from_square)
+		if attacker_piece.is_empty():
+			continue
 		if attacker_piece.get("color", "") == defended_color:
 			continue
 		if _can_piece_attack_square(attacker_piece, from_square, square, board_state):
@@ -2199,7 +3567,9 @@ func _is_square_attacked(square: Vector2i, defended_color: String, board_state: 
 
 func _has_any_legal_moves(piece_color: String) -> bool:
 	for from_square in pieces.keys():
-		var piece_data: Dictionary = pieces[from_square]
+		var piece_data = _get_top_piece_on_state(pieces, from_square)
+		if piece_data.is_empty():
+			continue
 		if piece_data.get("color", "") != piece_color:
 			continue
 		for y in board_height:
@@ -2219,6 +3589,22 @@ func _has_any_legal_moves(piece_color: String) -> bool:
 	return false
 
 func _update_game_state(record_history: bool) -> void:
+	if muster_phase_active:
+		game_over = false
+		if _should_end_muster_phase():
+			_end_muster_phase()
+			if record_history:
+				move_history.append("Muster complete. Player 1 to move.")
+			return
+		if not _both_kings_placed():
+			if not bool(muster_kings_placed.get(current_turn, false)):
+				status_message = "%s muster: place your king in territory." % _display_color(current_turn)
+			else:
+				status_message = "%s muster: place pieces in territory or pass." % _display_color(current_turn)
+		else:
+			status_message = "%s muster: place in territory or pass." % _display_color(current_turn)
+		return
+
 	if limit_army_strength_enabled and not _state_respects_army_strength(pieces, drop_pools):
 		game_over = true
 		status_message = "Army strength limit exceeded"
@@ -2285,18 +3671,22 @@ func _update_game_state(record_history: bool) -> void:
 func _count_pieces_on_board(piece_color: String) -> int:
 	var count = 0
 	for square in pieces.keys():
-		var piece_data: Dictionary = pieces[square]
-		if piece_data.get("color", "") == piece_color:
-			count += 1
+		for layer in _get_piece_stack_on_state(pieces, square):
+			if str(layer.get("color", "")) == piece_color:
+				count += 1
 	return count
 
 func _has_any_legal_captures(piece_color: String) -> bool:
 	for from_square in pieces.keys():
-		var piece_data: Dictionary = pieces[from_square]
+		var piece_data = _get_top_piece_on_state(pieces, from_square)
+		if piece_data.is_empty():
+			continue
 		if piece_data.get("color", "") != piece_color:
 			continue
 		for to_square in pieces.keys():
-			var target_piece: Dictionary = pieces[to_square]
+			var target_piece = _get_top_piece_on_state(pieces, to_square)
+			if target_piece.is_empty():
+				continue
 			if target_piece.get("color", "") == piece_color:
 				continue
 			var move_info = _analyze_move(piece_data, from_square, to_square, pieces, true)
@@ -2331,7 +3721,9 @@ func _is_opposite_color_bishop_dead_position() -> bool:
 	var white_bishop_colors = {}
 	var black_bishop_colors = {}
 	for square in pieces.keys():
-		var piece_data: Dictionary = pieces[square]
+		var piece_data = _get_top_piece_on_state(pieces, square)
+		if piece_data.is_empty():
+			return false
 		if str(piece_data.get("piece_id", "")) != "bishop":
 			return false
 		var square_color = (square.x + square.y) % 2
@@ -2383,7 +3775,9 @@ func _generate_non_capturing_total_war_successors(state: Dictionary) -> Array[Di
 	var en_passant_target: Vector2i = state.get("en_passant_target", INVALID_SQUARE)
 
 	for from_square in board_state.keys():
-		var piece_data: Dictionary = board_state[from_square]
+		var piece_data = _get_top_piece_on_state(board_state, from_square)
+		if piece_data.is_empty():
+			continue
 		if piece_data.get("color", "") != turn_color:
 			continue
 		for y in board_height:
@@ -2419,11 +3813,11 @@ func _generate_non_capturing_total_war_successors(state: Dictionary) -> Array[Di
 					if not _is_legal_drop_piece_on_state(piece_key, turn_color, target_square, board_state, drop_pool_state):
 						continue
 					var next_board = board_state.duplicate(true)
-					next_board[target_square] = {
+					_set_piece_stack_on_state(next_board, target_square, [{
 						"piece_id": piece_key,
 						"color": turn_color,
 						"has_moved": false
-					}
+					}])
 					var next_drop_pools = _duplicate_drop_pools(drop_pool_state)
 					var next_pool_contents: Array = next_drop_pools.get(turn_color, [])
 					var remove_index = next_pool_contents.find(piece_key)
@@ -2441,11 +3835,15 @@ func _generate_non_capturing_total_war_successors(state: Dictionary) -> Array[Di
 
 func _has_any_legal_captures_on_state(piece_color: String, board_state: Dictionary, en_passant_target: Vector2i, drop_pool_state: Dictionary) -> bool:
 	for from_square in board_state.keys():
-		var piece_data: Dictionary = board_state[from_square]
+		var piece_data = _get_top_piece_on_state(board_state, from_square)
+		if piece_data.is_empty():
+			continue
 		if piece_data.get("color", "") != piece_color:
 			continue
 		for to_square in board_state.keys():
-			var target_piece: Dictionary = board_state[to_square]
+			var target_piece = _get_top_piece_on_state(board_state, to_square)
+			if target_piece.is_empty():
+				continue
 			if target_piece.get("color", "") == piece_color:
 				continue
 			var move_info = _analyze_move_on_state(piece_data, from_square, to_square, board_state, true, en_passant_target, drop_pool_state)
@@ -2463,16 +3861,18 @@ func _analyze_move_on_state(piece_data: Dictionary, from_square: Vector2i, to_sq
 func _is_legal_drop_piece_on_state(piece_id: String, owner: String, target_square: Vector2i, board_state: Dictionary, drop_pool_state: Dictionary) -> bool:
 	if target_square == INVALID_SQUARE:
 		return false
+	if territory_enabled and not _is_square_in_owner_territory(owner, target_square):
+		return false
 	if board_state.has(target_square):
 		return false
 	if owner == "" or piece_id == "":
 		return false
 	var simulated_board = board_state.duplicate(true)
-	simulated_board[target_square] = {
+	_set_piece_stack_on_state(simulated_board, target_square, [{
 		"piece_id": piece_id,
 		"color": owner,
 		"has_moved": false
-	}
+	}])
 	if _is_king_in_check(owner, simulated_board):
 		return false
 	return _is_drop_allowed_by_army_strength(piece_id, owner, target_square, board_state, drop_pool_state)
@@ -2498,10 +3898,10 @@ func _piece_strength(piece_id: String) -> int:
 func _army_strength_for_owner_on_state(owner: String, board_state: Dictionary, drop_pool_state: Dictionary) -> int:
 	var total = 0
 	for square in board_state.keys():
-		var piece_data: Dictionary = board_state[square]
-		if str(piece_data.get("color", "")) != owner:
-			continue
-		total += _piece_strength(str(piece_data.get("piece_id", "")))
+		for layer in _get_piece_stack_on_state(board_state, square):
+			if str(layer.get("color", "")) != owner:
+				continue
+			total += _piece_strength(str(layer.get("piece_id", "")))
 	var pool_contents: Array = drop_pool_state.get(owner, [])
 	for piece_id in pool_contents:
 		total += _piece_strength(str(piece_id))
@@ -2532,9 +3932,9 @@ func _is_move_allowed_by_army_strength(piece_data: Dictionary, from_square: Vect
 	if capture_to_drop_pool_enabled:
 		var capture_square = move_info.get("capture_square", INVALID_SQUARE)
 		if capture_square != INVALID_SQUARE and board_state.has(capture_square):
-			var captured_piece: Dictionary = board_state[capture_square]
 			var pool_contents: Array = next_drop_pools.get(moving_color, [])
-			pool_contents.append(str(captured_piece.get("piece_id", "")))
+			for captured_layer in _get_piece_stack_on_state(board_state, capture_square):
+				pool_contents.append(str(captured_layer.get("piece_id", "")))
 			next_drop_pools[moving_color] = pool_contents
 	return _state_respects_army_strength(next_board, next_drop_pools)
 
@@ -2542,11 +3942,11 @@ func _is_drop_allowed_by_army_strength(piece_id: String, owner: String, target_s
 	if not limit_army_strength_enabled:
 		return true
 	var next_board = board_state.duplicate(true)
-	next_board[target_square] = {
+	_set_piece_stack_on_state(next_board, target_square, [{
 		"piece_id": piece_id,
 		"color": owner,
 		"has_moved": false
-	}
+	}])
 	var next_drop_pools = _duplicate_drop_pools(drop_pool_state)
 	var pool_contents: Array = next_drop_pools.get(owner, [])
 	var remove_index = pool_contents.find(piece_id)
@@ -2565,14 +3965,15 @@ func _build_total_war_state_key(state: Dictionary) -> String:
 		return a.x < b.x
 	)
 	for square in squares:
-		var piece_data: Dictionary = board_state[square]
-		board_entries.append("%d,%d,%s,%s,%s" % [
-			square.x,
-			square.y,
-			str(piece_data.get("piece_id", "")),
-			str(piece_data.get("color", "")),
-			str(bool(piece_data.get("has_moved", false)))
-		])
+		var stack = _get_piece_stack_on_state(board_state, square)
+		var layer_entries: Array[String] = []
+		for layer in stack:
+			layer_entries.append("%s,%s,%s" % [
+				str(layer.get("piece_id", "")),
+				str(layer.get("color", "")),
+				str(bool(layer.get("has_moved", false)))
+			])
+		board_entries.append("%d,%d,%s" % [square.x, square.y, "/".join(layer_entries)])
 
 	var drop_pool_state: Dictionary = state.get("drop_pools", {})
 	var white_pool: Array = (drop_pool_state.get("white", []) as Array).duplicate(true)
@@ -2643,31 +4044,45 @@ func _is_pawn_attack_legal(piece_data: Dictionary, from_square: Vector2i, to_squ
 		direction = -1
 	return abs(to_square.x - from_square.x) == 1 and to_square.y - from_square.y == direction
 
-func _is_knight_move_legal(from_square: Vector2i, to_square: Vector2i) -> bool:
+func _is_knight_move_legal(from_square: Vector2i, to_square: Vector2i, move_scale: int = 1) -> bool:
 	var delta_x = abs(to_square.x - from_square.x)
 	var delta_y = abs(to_square.y - from_square.y)
-	return (delta_x == 2 and delta_y == 1) or (delta_x == 1 and delta_y == 2)
+	for scale in range(1, max(move_scale, 1) + 1):
+		if (delta_x == 2 * scale and delta_y == scale) or (delta_x == scale and delta_y == 2 * scale):
+			return true
+	return false
 
 func _forward_direction(piece_color: String) -> int:
 	if piece_color == "white":
 		return -1
 	return 1
 
-func _is_shogi_pawn_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
+func _is_shogi_pawn_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, move_scale: int = 1) -> bool:
 	var forward = _forward_direction(str(piece_data.get("color", "white")))
 	if to_square.x != from_square.x:
 		return false
-	if to_square.y - from_square.y != forward:
+	var delta_y = to_square.y - from_square.y
+	if delta_y == 0 or signi(delta_y) != forward:
+		return false
+	if abs(delta_y) > max(move_scale, 1):
+		return false
+	if not _is_path_clear(from_square, to_square, board_state):
 		return false
 	if board_state.has(to_square):
-		var target_piece: Dictionary = board_state[to_square]
+		var target_piece = _get_top_piece_on_state(board_state, to_square)
+		if target_piece.is_empty():
+			return false
 		if target_piece.get("color", "") == piece_data.get("color", ""):
 			return false
 	return true
 
-func _is_shogi_pawn_attack_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i) -> bool:
+func _is_shogi_pawn_attack_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, move_scale: int = 1) -> bool:
 	var forward = _forward_direction(str(piece_data.get("color", "white")))
-	return to_square.x == from_square.x and to_square.y - from_square.y == forward
+	var delta_x = to_square.x - from_square.x
+	var delta_y = to_square.y - from_square.y
+	if delta_x != 0 or delta_y == 0 or signi(delta_y) != forward:
+		return false
+	return abs(delta_y) <= max(move_scale, 1)
 
 func _is_lance_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
 	if to_square.x != from_square.x:
@@ -2678,39 +4093,57 @@ func _is_lance_move_legal(piece_data: Dictionary, from_square: Vector2i, to_squa
 		return false
 	return _is_path_clear(from_square, to_square, board_state)
 
-func _is_shogi_knight_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i) -> bool:
+func _is_shogi_knight_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, move_scale: int = 1) -> bool:
 	var forward = _forward_direction(str(piece_data.get("color", "white")))
 	var delta_x = to_square.x - from_square.x
 	var delta_y = to_square.y - from_square.y
-	return abs(delta_x) == 1 and delta_y == forward * 2
-
-func _is_silver_general_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i) -> bool:
-	var forward = _forward_direction(str(piece_data.get("color", "white")))
-	var delta_x = to_square.x - from_square.x
-	var delta_y = to_square.y - from_square.y
-	if abs(delta_x) > 1 or abs(delta_y) > 1:
-		return false
-	if delta_x == 0 and delta_y == forward:
-		return true
-	if abs(delta_x) == 1 and delta_y == forward:
-		return true
-	if abs(delta_x) == 1 and delta_y == -forward:
-		return true
+	for scale in range(1, max(move_scale, 1) + 1):
+		if abs(delta_x) == scale and delta_y == forward * 2 * scale:
+			return true
 	return false
 
-func _is_gold_general_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i) -> bool:
+func _is_silver_general_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, move_scale: int = 1) -> bool:
 	var forward = _forward_direction(str(piece_data.get("color", "white")))
 	var delta_x = to_square.x - from_square.x
 	var delta_y = to_square.y - from_square.y
-	if abs(delta_x) > 1 or abs(delta_y) > 1:
+	var direction = _normalize_direction_vector(Vector2i(delta_x, delta_y))
+	if direction == Vector2i.ZERO:
 		return false
-	if delta_x == 0 and abs(delta_y) == 1:
-		return true
-	if abs(delta_x) == 1 and delta_y == 0:
-		return true
-	if abs(delta_x) == 1 and delta_y == forward:
-		return true
-	return false
+	var allowed = [
+		Vector2i(0, forward),
+		Vector2i(1, forward),
+		Vector2i(-1, forward),
+		Vector2i(1, -forward),
+		Vector2i(-1, -forward)
+	]
+	if not allowed.has(direction):
+		return false
+	var steps = _count_slide_steps(Vector2i(delta_x, delta_y), direction)
+	if steps <= 0 or steps > max(move_scale, 1):
+		return false
+	return _is_path_clear(from_square, to_square, board_state)
+
+func _is_gold_general_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, move_scale: int = 1) -> bool:
+	var forward = _forward_direction(str(piece_data.get("color", "white")))
+	var delta_x = to_square.x - from_square.x
+	var delta_y = to_square.y - from_square.y
+	var direction = _normalize_direction_vector(Vector2i(delta_x, delta_y))
+	if direction == Vector2i.ZERO:
+		return false
+	var allowed = [
+		Vector2i(0, forward),
+		Vector2i(0, -forward),
+		Vector2i(1, 0),
+		Vector2i(-1, 0),
+		Vector2i(1, forward),
+		Vector2i(-1, forward)
+	]
+	if not allowed.has(direction):
+		return false
+	var steps = _count_slide_steps(Vector2i(delta_x, delta_y), direction)
+	if steps <= 0 or steps > max(move_scale, 1):
+		return false
+	return _is_path_clear(from_square, to_square, board_state)
 
 func _is_bishop_move_legal(from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
 	var delta_x = to_square.x - from_square.x
@@ -2728,10 +4161,20 @@ func _is_rook_move_legal(from_square: Vector2i, to_square: Vector2i, board_state
 func _is_queen_move_legal(from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
 	return _is_rook_move_legal(from_square, to_square, board_state) or _is_bishop_move_legal(from_square, to_square, board_state)
 
-func _is_king_move_legal(from_square: Vector2i, to_square: Vector2i) -> bool:
-	var delta_x = abs(to_square.x - from_square.x)
-	var delta_y = abs(to_square.y - from_square.y)
-	return delta_x <= 1 and delta_y <= 1
+func _is_king_move_legal(from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, move_scale: int = 1) -> bool:
+	var delta_x = to_square.x - from_square.x
+	var delta_y = to_square.y - from_square.y
+	if delta_x == 0 and delta_y == 0:
+		return false
+	var direction = _normalize_direction_vector(Vector2i(delta_x, delta_y))
+	if direction == Vector2i.ZERO:
+		return false
+	if abs(direction.x) > 1 or abs(direction.y) > 1:
+		return false
+	var steps = _count_slide_steps(Vector2i(delta_x, delta_y), direction)
+	if steps <= 0 or steps > max(move_scale, 1):
+		return false
+	return _is_path_clear(from_square, to_square, board_state)
 
 func _is_castling_move_legal(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, move_info: Dictionary) -> bool:
 	if not castling_enabled:
@@ -2755,7 +4198,9 @@ func _is_castling_move_legal(piece_data: Dictionary, from_square: Vector2i, to_s
 	if not board_state.has(rook_from):
 		return false
 
-	var rook_piece: Dictionary = board_state[rook_from]
+	var rook_piece = _get_top_piece_on_state(board_state, rook_from)
+	if rook_piece.is_empty():
+		return false
 	if rook_piece.get("piece_id", "") != "rook":
 		return false
 	if rook_piece.get("color", "") != piece_data.get("color", ""):
@@ -2785,9 +4230,9 @@ func _board_supports_castling() -> bool:
 
 func _has_piece_on_board(piece_color: String, piece_id: String) -> bool:
 	for square in pieces.keys():
-		var piece_data: Dictionary = pieces[square]
-		if piece_data.get("color", "") == piece_color and piece_data.get("piece_id", "") == piece_id:
-			return true
+		for layer in _get_piece_stack_on_state(pieces, square):
+			if str(layer.get("color", "")) == piece_color and str(layer.get("piece_id", "")) == piece_id:
+				return true
 	return false
 
 func _is_path_clear(from_square: Vector2i, to_square: Vector2i, board_state: Dictionary) -> bool:
