@@ -189,10 +189,20 @@ func _builtin_preset_config(preset_id: String) -> Dictionary:
 				"en_passant": false,
 				"promotion": false,
 				"allow_undo": false,
+				"enable_spell_cards": false,
 				"piece_dropping": true,
 				"capture_to_drop_pool": true,
 				"limit_army_strength": false,
 				"unbalanced_armies": false
+			},
+			"spell_cards": {
+				"hand_size": 3,
+				"unbalanced_hand_sizes": false,
+				"hand_size_white": 3,
+				"hand_size_black": 3,
+				"random_cards": true,
+				"available_cards": ["haste", "assassinate", "fortify", "teleport", "barrier"],
+				"starting_hands": {"white": [], "black": []}
 			},
 			"army_strength_cap": 32,
 			"army_strength_caps": {"white": 32, "black": 32},
@@ -212,10 +222,20 @@ func _builtin_preset_config(preset_id: String) -> Dictionary:
 			"en_passant": true,
 			"promotion": true,
 			"allow_undo": false,
+			"enable_spell_cards": false,
 			"piece_dropping": false,
 			"capture_to_drop_pool": false,
 			"limit_army_strength": false,
 			"unbalanced_armies": false
+		},
+		"spell_cards": {
+			"hand_size": 3,
+			"unbalanced_hand_sizes": false,
+			"hand_size_white": 3,
+			"hand_size_black": 3,
+			"random_cards": true,
+			"available_cards": ["haste", "assassinate", "fortify", "teleport", "barrier"],
+			"starting_hands": {"white": [], "black": []}
 		},
 		"army_strength_cap": 32,
 		"army_strength_caps": {"white": 32, "black": 32},

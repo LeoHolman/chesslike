@@ -7,6 +7,7 @@ const BASE_TILE_SIZE = 100.0
 const INVALID_SQUARE = Vector2i(-1, -1)
 const SELECTED_HIGHLIGHT = Color(1.0, 0.84, 0.0, 0.38)
 const LEGAL_MOVE_HIGHLIGHT = Color(0.18, 0.75, 0.3, 0.35)
+const SPELL_TARGET_HIGHLIGHT = Color(0.2, 0.67, 0.95, 0.35)
 const TURN_INDICATOR_PADDING = 12.0
 const TURN_INDICATOR_BACKGROUND = Color(0.95, 0.93, 0.86, 0.94)
 const TURN_INDICATOR_BORDER = Color(0.2, 0.2, 0.2, 1.0)
@@ -15,6 +16,7 @@ const WHITE_POOL_PANEL_HOVER_BACKGROUND = Color(0.36, 0.46, 0.66, 0.96)
 const BLACK_POOL_PANEL_BACKGROUND = Color(0.43, 0.25, 0.24, 0.92)
 const BLACK_POOL_PANEL_HOVER_BACKGROUND = Color(0.57, 0.33, 0.31, 0.96)
 const DROP_POOL_PANEL_BORDER = Color(0.9, 0.92, 0.98, 1.0)
+const SPELL_PANEL_BORDER = Color(0.9, 0.92, 0.98, 1.0)
 const HUD_PANEL_SPACING = 12.0
 const FILE_NAMES = "abcdefghijklmnopqrstuvwxyz"
 const DEFAULT_PROMOTION_PIECE_IDS = ["queen", "rook", "bishop", "knight"]
@@ -98,6 +100,40 @@ var undo_snapshots: Array[Dictionary] = []
 var drop_piece_drag_active = false
 var drop_piece_drag_position = Vector2.ZERO
 var drop_pool_hover_owner = ""
+var spell_cards_enabled = false
+var spell_cards_random = true
+var spell_card_available_ids: Array[String] = []
+var spell_card_definitions_by_id: Dictionary = {}
+var spell_card_hands = {
+	"white": [],
+	"black": []
+}
+var spell_card_hand_size_white = 0
+var spell_card_hand_size_black = 0
+var selected_spell_card_id = ""
+var selected_spell_card_owner = ""
+var pending_spell_card_id = ""
+var pending_spell_card_owner = ""
+var spell_cast_this_turn = false
+var spell_haste_active = false
+var spell_haste_owner = ""
+var spell_haste_piece_square = INVALID_SQUARE
+var spell_haste_moves_remaining = 0
+var spell_fortify_active = false
+var spell_fortify_owner = ""
+var spell_fortify_piece_square = INVALID_SQUARE
+var spell_barrier_active = false
+var spell_barrier_owner = ""
+var spell_barrier_square = INVALID_SQUARE
+var spell_teleport_source_square = INVALID_SQUARE
+var spell_keep_selection_after_cast = false
+var white_spell_panel_rect = Rect2()
+var black_spell_panel_rect = Rect2()
+var spell_panel_entry_rects = {
+	"white": [],
+	"black": []
+}
+var last_piece_move_should_end_turn = true
 var online_mode = false
 var local_player_side = "white"
 var export_feedback_serial = 0
@@ -150,6 +186,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_handle_pointer_release(event.position)
 
 func _handle_pointer_press(mouse_position: Vector2) -> void:
+	if _try_handle_spell_card_click(mouse_position):
+		return
 	if piece_dropping_enabled and _try_begin_drop_pool_drag(mouse_position):
 		return
 	_handle_board_click(mouse_position)
@@ -288,6 +326,114 @@ func _get_starting_drop_pools() -> Dictionary:
 				parsed[pool_owner] = normalized
 	return parsed
 
+func _spell_initialize_state_from_game_manager() -> void:
+	spell_card_definitions_by_id.clear()
+	for card in $"/root/GameManager".get_spell_card_definitions():
+		var card_id = str(card.get("id", "")).strip_edges()
+		if card_id == "":
+			continue
+		spell_card_definitions_by_id[card_id] = card.duplicate(true)
+
+	spell_cards_random = bool($"/root/GameManager".SpellCardsRandom)
+	spell_card_available_ids.clear()
+	for card_id in $"/root/GameManager".normalize_spell_card_ids($"/root/GameManager".SpellCardAvailableIds):
+		var key = str(card_id)
+		if not spell_card_definitions_by_id.has(key):
+			continue
+		spell_card_available_ids.append(key)
+
+	spell_card_hand_size_white = max(int($"/root/GameManager".SpellCardHandSizeWhite), 0)
+	spell_card_hand_size_black = max(int($"/root/GameManager".SpellCardHandSizeBlack), 0)
+	if spell_card_hand_size_white == 0 and spell_card_hand_size_black == 0:
+		var fallback_size = max(int($"/root/GameManager".SpellCardHandSize), 0)
+		spell_card_hand_size_white = fallback_size
+		spell_card_hand_size_black = fallback_size
+
+	spell_card_hands = {
+		"white": [],
+		"black": []
+	}
+	if spell_cards_enabled:
+		if spell_cards_random:
+			_spell_fill_hand_randomly("white", spell_card_hand_size_white)
+			_spell_fill_hand_randomly("black", spell_card_hand_size_black)
+		else:
+			spell_card_hands = $"/root/GameManager".normalize_spell_card_hands($"/root/GameManager".StartingSpellHands)
+			_spell_clamp_hand_to_rules("white")
+			_spell_clamp_hand_to_rules("black")
+
+	selected_spell_card_id = ""
+	selected_spell_card_owner = ""
+	pending_spell_card_id = ""
+	pending_spell_card_owner = ""
+	spell_cast_this_turn = false
+	spell_haste_active = false
+	spell_haste_owner = ""
+	spell_haste_piece_square = INVALID_SQUARE
+	spell_haste_moves_remaining = 0
+	spell_fortify_active = false
+	spell_fortify_owner = ""
+	spell_fortify_piece_square = INVALID_SQUARE
+	spell_barrier_active = false
+	spell_barrier_owner = ""
+	spell_barrier_square = INVALID_SQUARE
+	spell_teleport_source_square = INVALID_SQUARE
+	spell_keep_selection_after_cast = false
+	white_spell_panel_rect = Rect2()
+	black_spell_panel_rect = Rect2()
+	spell_panel_entry_rects["white"] = []
+	spell_panel_entry_rects["black"] = []
+	last_piece_move_should_end_turn = true
+
+func _spell_hand_size_for_owner(owner: String) -> int:
+	if owner == "black":
+		return spell_card_hand_size_black
+	return spell_card_hand_size_white
+
+func _spell_fill_hand_randomly(owner: String, target_size: int) -> void:
+	var hand: Array = spell_card_hands.get(owner, [])
+	while hand.size() < max(target_size, 0):
+		if spell_card_available_ids.is_empty():
+			break
+		hand.append(spell_card_available_ids[randi_range(0, spell_card_available_ids.size() - 1)])
+	spell_card_hands[owner] = hand
+
+func _spell_clamp_hand_to_rules(owner: String) -> void:
+	var hand: Array = spell_card_hands.get(owner, [])
+	var clamped: Array = []
+	var cap = _spell_hand_size_for_owner(owner)
+	for card_id in hand:
+		var key = str(card_id)
+		if not spell_card_definitions_by_id.has(key):
+			continue
+		if not spell_card_available_ids.has(key):
+			continue
+		if clamped.size() >= cap:
+			break
+		clamped.append(key)
+	spell_card_hands[owner] = clamped
+
+func _spell_card_definition(card_id: String) -> Dictionary:
+	if spell_card_definitions_by_id.has(card_id):
+		return spell_card_definitions_by_id[card_id]
+	return {}
+
+func _spell_card_name(card_id: String) -> String:
+	var definition = _spell_card_definition(card_id)
+	var fallback = card_id.capitalize()
+	return str(definition.get("name", fallback))
+
+func _spell_card_description(card_id: String) -> String:
+	var definition = _spell_card_definition(card_id)
+	return str(definition.get("description", ""))
+
+func _spell_card_type(card_id: String) -> String:
+	var definition = _spell_card_definition(card_id)
+	var kind = str(definition.get("type", "regular")).to_lower()
+	if kind != "power":
+		return "regular"
+	return "power"
+
 func _hide_promotion_picker() -> void:
 	if promotion_picker_root != null:
 		promotion_picker_root.visible = false
@@ -320,7 +466,10 @@ func _on_promotion_option_selected(piece_id: String) -> void:
 	promotion_pending = false
 	pending_promotion_move.clear()
 	if committed:
-		_finalize_turn_after_move()
+		if last_piece_move_should_end_turn:
+			_finalize_turn_after_move()
+		else:
+			_build_board()
 	else:
 		_build_board()
 
@@ -355,6 +504,7 @@ func _initialize_board_state() -> void:
 		allow_undo_enabled = false
 	piece_dropping_enabled = bool(special_rules.get("piece_dropping", false))
 	capture_to_drop_pool_enabled = bool(special_rules.get("capture_to_drop_pool", false)) and piece_dropping_enabled
+	spell_cards_enabled = bool(special_rules.get("enable_spell_cards", false))
 	limit_army_strength_enabled = bool(special_rules.get("limit_army_strength", false))
 	unbalanced_armies_enabled = bool(special_rules.get("unbalanced_armies", false))
 	army_strength_cap = max(int($"/root/GameManager".ArmyStrengthCap), 2)
@@ -373,6 +523,7 @@ func _initialize_board_state() -> void:
 	drop_pool_hover_owner = ""
 	drop_pool_selection_index["white"] = 0
 	drop_pool_selection_index["black"] = 0
+	_spell_initialize_state_from_game_manager()
 	pieces.clear()
 	if board_width < 1 or board_height < 1:
 		return
@@ -478,6 +629,7 @@ func _build_board() -> void:
 	_draw_back_to_main_menu_button()
 	_draw_undo_button()
 	_draw_status_feedback_banner()
+	_draw_spell_card_panels()
 	if piece_dropping_enabled:
 		_draw_drop_pool_panels()
 	else:
@@ -487,6 +639,7 @@ func _build_board() -> void:
 
 func _draw_turn_indicator() -> void:
 	var font_size = _hud_font_size(0.22, 13, 24)
+	var info_font_size = _hud_font_size(0.14, 10, 14)
 	var swatch_size = clampf(tile_size * 0.24, 14.0, 24.0)
 	var indicator_position = Vector2(
 		TURN_INDICATOR_PADDING,
@@ -494,7 +647,7 @@ func _draw_turn_indicator() -> void:
 	)
 	var viewport_size = get_viewport_rect().size
 	var indicator_width = clampf(tile_size * 2.2, 150.0, min(viewport_size.x * 0.30, 260.0))
-	var indicator_height = clampf(swatch_size + TURN_INDICATOR_PADDING * 2.0, 40.0, 56.0)
+	var indicator_height = _turn_indicator_height()
 	var indicator_size = Vector2(indicator_width, indicator_height)
 
 	var background = ColorRect.new()
@@ -518,15 +671,33 @@ func _draw_turn_indicator() -> void:
 
 	var turn_label = Label.new()
 	turn_label.text = "Turn: %s" % _display_color(current_turn)
-	turn_label.position = indicator_position + Vector2(TURN_INDICATOR_PADDING + swatch_size + 10.0, (indicator_size.y - font_size) / 2.0 - 2.0)
+	var turn_label_y = indicator_position.y + ((indicator_size.y - font_size) * 0.5) - 2.0
+	if spell_cards_enabled:
+		turn_label_y = indicator_position.y + TURN_INDICATOR_PADDING - 1.0
+	turn_label.position = Vector2(indicator_position.x + TURN_INDICATOR_PADDING + swatch_size + 10.0, turn_label_y)
 	turn_label.add_theme_font_size_override("font_size", font_size)
 	turn_label.add_theme_color_override("font_color", Color(0.1, 0.1, 0.1))
 	turn_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(turn_label)
 
+	if spell_cards_enabled:
+		var cast_status_label = Label.new()
+		cast_status_label.text = "Spell: Used" if spell_cast_this_turn else "Spell: Ready"
+		cast_status_label.position = Vector2(
+			indicator_position.x + TURN_INDICATOR_PADDING + swatch_size + 10.0,
+			turn_label.position.y + font_size - 1.0
+		)
+		cast_status_label.add_theme_font_size_override("font_size", info_font_size)
+		cast_status_label.add_theme_color_override("font_color", Color(0.64, 0.12, 0.12, 1.0) if spell_cast_this_turn else Color(0.11, 0.43, 0.12, 1.0))
+		cast_status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(cast_status_label)
+
 func _turn_indicator_height() -> float:
 	var swatch_size = clampf(tile_size * 0.24, 14.0, 24.0)
-	return clampf(swatch_size + TURN_INDICATOR_PADDING * 2.0, 40.0, 56.0)
+	var base_height = clampf(swatch_size + TURN_INDICATOR_PADDING * 2.0, 40.0, 56.0)
+	if spell_cards_enabled:
+		return max(base_height + _hud_font_size(0.14, 10, 14) + 4.0, 56.0)
+	return base_height
 
 func _hud_top_action_button_size() -> Vector2:
 	var viewport_size = get_viewport_rect().size
@@ -578,6 +749,21 @@ func _capture_undo_snapshot() -> Dictionary:
 		"pieces": pieces.duplicate(true),
 		"captured_pieces": captured_pieces.duplicate(true),
 		"drop_pools": _duplicate_drop_pools(drop_pools),
+		"spell_card_hands": $"/root/GameManager".normalize_spell_card_hands(spell_card_hands),
+		"spell_cast_this_turn": spell_cast_this_turn,
+		"spell_haste_active": spell_haste_active,
+		"spell_haste_owner": spell_haste_owner,
+		"spell_haste_piece_square": spell_haste_piece_square,
+		"spell_haste_moves_remaining": spell_haste_moves_remaining,
+		"spell_fortify_active": spell_fortify_active,
+		"spell_fortify_owner": spell_fortify_owner,
+		"spell_fortify_piece_square": spell_fortify_piece_square,
+		"spell_barrier_active": spell_barrier_active,
+		"spell_barrier_owner": spell_barrier_owner,
+		"spell_barrier_square": spell_barrier_square,
+		"spell_teleport_source_square": spell_teleport_source_square,
+		"pending_spell_card_id": pending_spell_card_id,
+		"pending_spell_card_owner": pending_spell_card_owner,
 		"move_history": move_history.duplicate(true),
 		"current_turn": current_turn,
 		"status_message": status_message,
@@ -589,6 +775,34 @@ func _restore_from_undo_snapshot(snapshot: Dictionary) -> void:
 	pieces = snapshot.get("pieces", {}).duplicate(true)
 	captured_pieces = snapshot.get("captured_pieces", {"white": [], "black": []}).duplicate(true)
 	drop_pools = _duplicate_drop_pools(snapshot.get("drop_pools", {}))
+	spell_card_hands = $"/root/GameManager".normalize_spell_card_hands(snapshot.get("spell_card_hands", {"white": [], "black": []}))
+	spell_cast_this_turn = bool(snapshot.get("spell_cast_this_turn", false))
+	spell_haste_active = bool(snapshot.get("spell_haste_active", false))
+	spell_haste_owner = str(snapshot.get("spell_haste_owner", ""))
+	spell_haste_piece_square = snapshot.get("spell_haste_piece_square", INVALID_SQUARE)
+	spell_haste_moves_remaining = int(snapshot.get("spell_haste_moves_remaining", 0))
+	spell_fortify_active = bool(snapshot.get("spell_fortify_active", false))
+	spell_fortify_owner = str(snapshot.get("spell_fortify_owner", ""))
+	spell_fortify_piece_square = snapshot.get("spell_fortify_piece_square", INVALID_SQUARE)
+	spell_barrier_active = bool(snapshot.get("spell_barrier_active", false))
+	spell_barrier_owner = str(snapshot.get("spell_barrier_owner", ""))
+	spell_barrier_square = snapshot.get("spell_barrier_square", INVALID_SQUARE)
+	spell_teleport_source_square = snapshot.get("spell_teleport_source_square", INVALID_SQUARE)
+	pending_spell_card_id = str(snapshot.get("pending_spell_card_id", ""))
+	pending_spell_card_owner = str(snapshot.get("pending_spell_card_owner", ""))
+	selected_spell_card_id = pending_spell_card_id
+	selected_spell_card_owner = pending_spell_card_owner
+	spell_keep_selection_after_cast = false
+	if not spell_haste_active:
+		spell_haste_owner = ""
+		spell_haste_piece_square = INVALID_SQUARE
+		spell_haste_moves_remaining = 0
+	if not spell_fortify_active:
+		spell_fortify_owner = ""
+		spell_fortify_piece_square = INVALID_SQUARE
+	if not spell_barrier_active:
+		spell_barrier_owner = ""
+		spell_barrier_square = INVALID_SQUARE
 	move_history = (snapshot.get("move_history", []) as Array).duplicate(true)
 	current_turn = str(snapshot.get("current_turn", "white"))
 	status_message = str(snapshot.get("status_message", ""))
@@ -651,6 +865,33 @@ func _export_network_state() -> Dictionary:
 		"pieces": serialized_pieces,
 		"captured_pieces": captured_pieces.duplicate(true),
 		"drop_pools": _duplicate_drop_pools(drop_pools),
+		"spell_card_hands": $"/root/GameManager".normalize_spell_card_hands(spell_card_hands),
+		"spell_cast_this_turn": spell_cast_this_turn,
+		"spell_haste_active": spell_haste_active,
+		"spell_haste_owner": spell_haste_owner,
+		"spell_haste_piece_square": {
+			"x": spell_haste_piece_square.x,
+			"y": spell_haste_piece_square.y
+		},
+		"spell_haste_moves_remaining": spell_haste_moves_remaining,
+		"spell_fortify_active": spell_fortify_active,
+		"spell_fortify_owner": spell_fortify_owner,
+		"spell_fortify_piece_square": {
+			"x": spell_fortify_piece_square.x,
+			"y": spell_fortify_piece_square.y
+		},
+		"spell_barrier_active": spell_barrier_active,
+		"spell_barrier_owner": spell_barrier_owner,
+		"spell_barrier_square": {
+			"x": spell_barrier_square.x,
+			"y": spell_barrier_square.y
+		},
+		"spell_teleport_source_square": {
+			"x": spell_teleport_source_square.x,
+			"y": spell_teleport_source_square.y
+		},
+		"pending_spell_card_id": pending_spell_card_id,
+		"pending_spell_card_owner": pending_spell_card_owner,
 		"move_history": move_history.duplicate(true),
 		"current_turn": current_turn,
 		"status_message": status_message,
@@ -679,6 +920,50 @@ func _import_network_state(state: Dictionary) -> void:
 
 	captured_pieces = state.get("captured_pieces", {"white": [], "black": []}).duplicate(true)
 	drop_pools = _duplicate_drop_pools(state.get("drop_pools", {}))
+	spell_card_hands = $"/root/GameManager".normalize_spell_card_hands(state.get("spell_card_hands", {"white": [], "black": []}))
+	spell_cast_this_turn = bool(state.get("spell_cast_this_turn", false))
+	spell_haste_active = bool(state.get("spell_haste_active", false))
+	spell_haste_owner = str(state.get("spell_haste_owner", ""))
+	spell_haste_moves_remaining = int(state.get("spell_haste_moves_remaining", 0))
+	var haste_square = state.get("spell_haste_piece_square", {})
+	if haste_square is Dictionary:
+		spell_haste_piece_square = Vector2i(int(haste_square.get("x", -1)), int(haste_square.get("y", -1)))
+	else:
+		spell_haste_piece_square = INVALID_SQUARE
+	spell_fortify_active = bool(state.get("spell_fortify_active", false))
+	spell_fortify_owner = str(state.get("spell_fortify_owner", ""))
+	var fortify_square = state.get("spell_fortify_piece_square", {})
+	if fortify_square is Dictionary:
+		spell_fortify_piece_square = Vector2i(int(fortify_square.get("x", -1)), int(fortify_square.get("y", -1)))
+	else:
+		spell_fortify_piece_square = INVALID_SQUARE
+	spell_barrier_active = bool(state.get("spell_barrier_active", false))
+	spell_barrier_owner = str(state.get("spell_barrier_owner", ""))
+	var barrier_square = state.get("spell_barrier_square", {})
+	if barrier_square is Dictionary:
+		spell_barrier_square = Vector2i(int(barrier_square.get("x", -1)), int(barrier_square.get("y", -1)))
+	else:
+		spell_barrier_square = INVALID_SQUARE
+	var teleport_square = state.get("spell_teleport_source_square", {})
+	if teleport_square is Dictionary:
+		spell_teleport_source_square = Vector2i(int(teleport_square.get("x", -1)), int(teleport_square.get("y", -1)))
+	else:
+		spell_teleport_source_square = INVALID_SQUARE
+	pending_spell_card_id = str(state.get("pending_spell_card_id", ""))
+	pending_spell_card_owner = str(state.get("pending_spell_card_owner", ""))
+	selected_spell_card_id = pending_spell_card_id
+	selected_spell_card_owner = pending_spell_card_owner
+	spell_keep_selection_after_cast = false
+	if not spell_haste_active:
+		spell_haste_owner = ""
+		spell_haste_piece_square = INVALID_SQUARE
+		spell_haste_moves_remaining = 0
+	if not spell_fortify_active:
+		spell_fortify_owner = ""
+		spell_fortify_piece_square = INVALID_SQUARE
+	if not spell_barrier_active:
+		spell_barrier_owner = ""
+		spell_barrier_square = INVALID_SQUARE
 	move_history = (state.get("move_history", []) as Array).duplicate(true)
 	current_turn = str(state.get("current_turn", "white"))
 	status_message = str(state.get("status_message", ""))
@@ -786,6 +1071,380 @@ func _draw_drop_pool_panels() -> void:
 
 	_draw_drop_pool_panel(left_position, panel_size, "Player 1 Drop Pool", "white")
 	_draw_drop_pool_panel(right_position, panel_size, "Player 2 Drop Pool", "black")
+
+func _draw_spell_card_panels() -> void:
+	white_spell_panel_rect = Rect2()
+	black_spell_panel_rect = Rect2()
+	spell_panel_entry_rects["white"] = []
+	spell_panel_entry_rects["black"] = []
+	if not spell_cards_enabled:
+		return
+
+	var panel_size = _get_hud_panel_size(3.0, 1.55, 180.0, 80.0)
+	var footer_height = _get_hud_panel_size(3.0, 2.0, 168.0, 102.0).y
+	var y = get_viewport_rect().size.y - footer_height - panel_size.y - TURN_INDICATOR_PADDING - 8.0
+	var left_position = Vector2(TURN_INDICATOR_PADDING, y)
+	var right_position = Vector2(get_viewport_rect().size.x - panel_size.x - TURN_INDICATOR_PADDING, y)
+	white_spell_panel_rect = Rect2(left_position, panel_size)
+	black_spell_panel_rect = Rect2(right_position, panel_size)
+	_draw_single_spell_card_panel(left_position, panel_size, "Player 1 Hand", "white")
+	_draw_single_spell_card_panel(right_position, panel_size, "Player 2 Hand", "black")
+
+func _draw_single_spell_card_panel(panel_position: Vector2, panel_size: Vector2, title: String, owner: String) -> void:
+	var background = ColorRect.new()
+	background.position = panel_position
+	background.size = panel_size
+	background.color = _drop_pool_panel_color(owner, false)
+	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(background)
+	add_child(_create_colored_border(panel_position, panel_size, SPELL_PANEL_BORDER))
+
+	var title_label = Label.new()
+	title_label.position = panel_position + Vector2(TURN_INDICATOR_PADDING, TURN_INDICATOR_PADDING - 2.0)
+	title_label.text = "%s (%d/%d)" % [title, (spell_card_hands.get(owner, []) as Array).size(), _spell_hand_size_for_owner(owner)]
+	title_label.add_theme_font_size_override("font_size", _hud_font_size(0.16, 11, 15))
+	title_label.add_theme_color_override("font_color", Color(0.95, 0.97, 1.0, 1.0))
+	title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(title_label)
+
+	var entry_rects: Array = []
+	var row_height = max(tile_size * 0.24, 15.0)
+	var content_x = panel_position.x + TURN_INDICATOR_PADDING
+	var content_width = panel_size.x - TURN_INDICATOR_PADDING * 2.0
+	var current_y = panel_position.y + TURN_INDICATOR_PADDING + 20.0
+	var entries: Array = spell_card_hands.get(owner, [])
+
+	if entries.is_empty():
+		var empty_label = Label.new()
+		empty_label.position = Vector2(content_x, current_y)
+		empty_label.size = Vector2(content_width, row_height * 2.0)
+		empty_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		empty_label.text = "(empty)"
+		empty_label.add_theme_font_size_override("font_size", _hud_font_size(0.12, 10, 12))
+		empty_label.add_theme_color_override("font_color", Color(0.9, 0.93, 1.0, 1.0))
+		empty_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(empty_label)
+		spell_panel_entry_rects[owner] = entry_rects
+		return
+
+	for index in range(entries.size()):
+		var card_id = str(entries[index])
+		var row_rect = Rect2(Vector2(content_x, current_y), Vector2(content_width, row_height))
+		var selected = owner == selected_spell_card_owner and card_id == selected_spell_card_id
+		if selected:
+			var row_background = ColorRect.new()
+			row_background.position = row_rect.position
+			row_background.size = row_rect.size
+			row_background.color = Color(0.30, 0.44, 0.62, 0.75)
+			row_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			add_child(row_background)
+
+		var row_label = Label.new()
+		row_label.position = row_rect.position + Vector2(3.0, 0.0)
+		row_label.size = row_rect.size - Vector2(3.0, 0.0)
+		row_label.clip_text = true
+		row_label.text = "%s [%s]" % [_spell_card_name(card_id), "P" if _spell_card_type(card_id) == "power" else "R"]
+		row_label.tooltip_text = _spell_card_description(card_id)
+		row_label.add_theme_font_size_override("font_size", _hud_font_size(0.12, 10, 12))
+		row_label.add_theme_color_override("font_color", Color(0.94, 0.96, 1.0, 1.0))
+		row_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(row_label)
+
+		entry_rects.append({"card_id": card_id, "rect": row_rect})
+		current_y += row_height + 3.0
+		if current_y > panel_position.y + panel_size.y - row_height:
+			break
+
+	spell_panel_entry_rects[owner] = entry_rects
+
+func _try_handle_spell_card_click(mouse_position: Vector2) -> bool:
+	if not spell_cards_enabled:
+		return false
+	if game_over or promotion_pending:
+		return false
+	if online_mode and not _is_local_turn():
+		return false
+	var owner = _spell_panel_side_at_position(mouse_position)
+	if owner == "":
+		return false
+	if owner != current_turn:
+		status_message = "You can only cast cards from your own hand."
+		_build_board()
+		return true
+	if spell_cast_this_turn:
+		status_message = "Only one spell card can be cast per turn."
+		_build_board()
+		return true
+
+	var entry = _get_spell_panel_entry_at_position(owner, mouse_position)
+	if entry.is_empty():
+		return true
+	var card_id = str(entry.get("card_id", ""))
+	if card_id == "":
+		return true
+
+	if pending_spell_card_id == card_id and pending_spell_card_owner == owner:
+		pending_spell_card_id = ""
+		pending_spell_card_owner = ""
+		selected_spell_card_id = ""
+		selected_spell_card_owner = ""
+		spell_teleport_source_square = INVALID_SQUARE
+		status_message = "Spell cast canceled."
+		_build_board()
+		return true
+
+	selected_spell_card_id = card_id
+	selected_spell_card_owner = owner
+	pending_spell_card_id = card_id
+	pending_spell_card_owner = owner
+	spell_teleport_source_square = INVALID_SQUARE
+	selected_square = INVALID_SQUARE
+	legal_moves.clear()
+	legal_drop_squares.clear()
+	match card_id:
+		"haste", "fortify":
+			status_message = "Cast %s: click a target allied piece." % _spell_card_name(card_id)
+		"assassinate":
+			status_message = "Cast %s: click a target enemy non-king piece." % _spell_card_name(card_id)
+		"teleport":
+			status_message = "Cast %s: click an allied piece, then an empty destination square." % _spell_card_name(card_id)
+		"barrier":
+			status_message = "Cast %s: click any board square to block movement this turn." % _spell_card_name(card_id)
+		_:
+			status_message = "Cast %s: choose a target." % _spell_card_name(card_id)
+	_build_board()
+	return true
+
+func _spell_panel_side_at_position(mouse_position: Vector2) -> String:
+	if white_spell_panel_rect.has_point(mouse_position):
+		return "white"
+	if black_spell_panel_rect.has_point(mouse_position):
+		return "black"
+	return ""
+
+func _get_spell_panel_entry_at_position(owner: String, mouse_position: Vector2) -> Dictionary:
+	var entries: Array = spell_panel_entry_rects.get(owner, [])
+	for entry in entries:
+		if entry is Dictionary and Rect2(entry.get("rect", Rect2())).has_point(mouse_position):
+			return entry
+	return {}
+
+func _try_cast_pending_spell_at_square(target_square: Vector2i) -> bool:
+	if pending_spell_card_id == "" or pending_spell_card_owner != current_turn:
+		return false
+	spell_keep_selection_after_cast = false
+
+	match pending_spell_card_id:
+		"haste":
+			if not pieces.has(target_square):
+				status_message = "Target square has no piece for %s." % _spell_card_name(pending_spell_card_id)
+				_build_board()
+				return false
+			return _cast_haste_on_square(target_square)
+		"assassinate":
+			if not pieces.has(target_square):
+				status_message = "Target square has no piece for %s." % _spell_card_name(pending_spell_card_id)
+				_build_board()
+				return false
+			return _cast_assassinate_on_square(target_square)
+		"fortify":
+			if not pieces.has(target_square):
+				status_message = "Target square has no piece for %s." % _spell_card_name(pending_spell_card_id)
+				_build_board()
+				return false
+			return _cast_fortify_on_square(target_square)
+		"teleport":
+			return _cast_teleport_on_square(target_square)
+		"barrier":
+			return _cast_barrier_on_square(target_square)
+		_:
+			status_message = "Spell %s is not implemented yet." % _spell_card_name(pending_spell_card_id)
+			_build_board()
+			return false
+
+func _cast_haste_on_square(target_square: Vector2i) -> bool:
+	var target_piece: Dictionary = pieces[target_square]
+	if str(target_piece.get("color", "")) != current_turn:
+		status_message = "Haste must target an allied piece."
+		_build_board()
+		return false
+	undo_snapshots.append(_capture_undo_snapshot())
+	if not _consume_spell_card_from_hand(current_turn, "haste"):
+		undo_snapshots.pop_back()
+		status_message = "Haste is no longer in hand."
+		_build_board()
+		return false
+	spell_haste_active = true
+	spell_haste_owner = current_turn
+	spell_haste_piece_square = target_square
+	spell_haste_moves_remaining = 2
+	spell_cast_this_turn = true
+	status_message = "%s casts Haste on %s at %s." % [_display_color(current_turn), _get_piece_symbol(str(target_piece.get("piece_id", ""))), _square_to_notation(target_square)]
+	_record_spell_cast_in_history(current_turn, "haste", "on %s @ %s" % [_get_piece_symbol(str(target_piece.get("piece_id", ""))), _square_to_notation(target_square)])
+	_pending_spell_cleanup()
+	_publish_turn_state_to_peer()
+	return true
+
+func _cast_assassinate_on_square(target_square: Vector2i) -> bool:
+	var target_piece: Dictionary = pieces[target_square]
+	if str(target_piece.get("color", "")) == current_turn:
+		status_message = "Assassinate must target an enemy piece."
+		_build_board()
+		return false
+	if str(target_piece.get("piece_id", "")) == "king":
+		status_message = "Assassinate cannot target a king."
+		_build_board()
+		return false
+	undo_snapshots.append(_capture_undo_snapshot())
+	if not _consume_spell_card_from_hand(current_turn, "assassinate"):
+		undo_snapshots.pop_back()
+		status_message = "Assassinate is no longer in hand."
+		_build_board()
+		return false
+
+	pieces.erase(target_square)
+	if capture_to_drop_pool_enabled:
+		_add_piece_to_drop_pool(current_turn, str(target_piece.get("piece_id", "")))
+	else:
+		_record_capture(current_turn, target_piece)
+	spell_cast_this_turn = true
+	status_message = "%s casts Assassinate at %s." % [_display_color(current_turn), _square_to_notation(target_square)]
+	_record_spell_cast_in_history(current_turn, "assassinate", "x %s @ %s" % [_get_piece_symbol(str(target_piece.get("piece_id", ""))), _square_to_notation(target_square)])
+	_pending_spell_cleanup()
+	return true
+
+func _cast_fortify_on_square(target_square: Vector2i) -> bool:
+	var target_piece: Dictionary = pieces[target_square]
+	if str(target_piece.get("color", "")) != current_turn:
+		status_message = "Fortify must target an allied piece."
+		_build_board()
+		return false
+	undo_snapshots.append(_capture_undo_snapshot())
+	if not _consume_spell_card_from_hand(current_turn, "fortify"):
+		undo_snapshots.pop_back()
+		status_message = "Fortify is no longer in hand."
+		_build_board()
+		return false
+	spell_fortify_active = true
+	spell_fortify_owner = current_turn
+	spell_fortify_piece_square = target_square
+	spell_cast_this_turn = true
+	status_message = "%s casts Fortify on %s at %s." % [_display_color(current_turn), _get_piece_symbol(str(target_piece.get("piece_id", ""))), _square_to_notation(target_square)]
+	_record_spell_cast_in_history(current_turn, "fortify", "on %s @ %s" % [_get_piece_symbol(str(target_piece.get("piece_id", ""))), _square_to_notation(target_square)])
+	_pending_spell_cleanup()
+	_publish_turn_state_to_peer()
+	return true
+
+func _cast_teleport_on_square(target_square: Vector2i) -> bool:
+	if spell_teleport_source_square == INVALID_SQUARE:
+		if not pieces.has(target_square):
+			status_message = "Teleport: select an allied piece first."
+			_build_board()
+			return false
+		var source_piece: Dictionary = pieces[target_square]
+		if str(source_piece.get("color", "")) != current_turn:
+			status_message = "Teleport must start from an allied piece."
+			_build_board()
+			return false
+		spell_teleport_source_square = target_square
+		status_message = "Teleport selected %s at %s. Choose an empty destination square." % [_get_piece_symbol(str(source_piece.get("piece_id", ""))), _square_to_notation(target_square)]
+		_build_board()
+		return false
+
+	if target_square == spell_teleport_source_square:
+		status_message = "Teleport destination must be a different square."
+		_build_board()
+		return false
+	if pieces.has(target_square):
+		status_message = "Teleport destination must be empty."
+		_build_board()
+		return false
+	if spell_barrier_active and (target_square == spell_barrier_square or spell_teleport_source_square == spell_barrier_square):
+		status_message = "Barrier blocks movement through that square this turn."
+		_build_board()
+		return false
+
+	var moving_piece: Dictionary = pieces.get(spell_teleport_source_square, {})
+	if moving_piece.is_empty() or str(moving_piece.get("color", "")) != current_turn:
+		spell_teleport_source_square = INVALID_SQUARE
+		status_message = "Teleport source is no longer valid."
+		_build_board()
+		return false
+
+	var simulated_board = pieces.duplicate(true)
+	simulated_board.erase(spell_teleport_source_square)
+	var simulated_piece = moving_piece.duplicate(true)
+	simulated_piece["has_moved"] = true
+	simulated_board[target_square] = simulated_piece
+	if _is_king_in_check(current_turn, simulated_board):
+		status_message = "Teleport cannot leave your king in check."
+		_build_board()
+		return false
+
+	undo_snapshots.append(_capture_undo_snapshot())
+	if not _consume_spell_card_from_hand(current_turn, "teleport"):
+		undo_snapshots.pop_back()
+		status_message = "Teleport is no longer in hand."
+		_build_board()
+		return false
+
+	pieces.erase(spell_teleport_source_square)
+	var moved_piece = moving_piece.duplicate(true)
+	moved_piece["has_moved"] = true
+	pieces[target_square] = moved_piece
+	if spell_fortify_active and spell_fortify_owner == current_turn and spell_fortify_piece_square == spell_teleport_source_square:
+		spell_fortify_piece_square = target_square
+	spell_cast_this_turn = true
+	status_message = "%s casts Teleport to %s." % [_display_color(current_turn), _square_to_notation(target_square)]
+	_record_spell_cast_in_history(current_turn, "teleport", "%s %s -> %s" % [_get_piece_symbol(str(moved_piece.get("piece_id", ""))), _square_to_notation(spell_teleport_source_square), _square_to_notation(target_square)])
+	_pending_spell_cleanup()
+	return true
+
+func _cast_barrier_on_square(target_square: Vector2i) -> bool:
+	if target_square.x < 0 or target_square.y < 0 or target_square.x >= board_width or target_square.y >= board_height:
+		status_message = "Barrier target is outside the board."
+		_build_board()
+		return false
+	undo_snapshots.append(_capture_undo_snapshot())
+	if not _consume_spell_card_from_hand(current_turn, "barrier"):
+		undo_snapshots.pop_back()
+		status_message = "Barrier is no longer in hand."
+		_build_board()
+		return false
+	spell_barrier_active = true
+	spell_barrier_owner = current_turn
+	spell_barrier_square = target_square
+	spell_cast_this_turn = true
+	status_message = "%s casts Barrier on %s." % [_display_color(current_turn), _square_to_notation(target_square)]
+	_record_spell_cast_in_history(current_turn, "barrier", "on %s" % _square_to_notation(target_square))
+	_pending_spell_cleanup()
+	_publish_turn_state_to_peer()
+	return true
+
+func _consume_spell_card_from_hand(owner: String, card_id: String) -> bool:
+	var hand: Array = spell_card_hands.get(owner, [])
+	var index = hand.find(card_id)
+	if index == -1:
+		return false
+	hand.remove_at(index)
+	spell_card_hands[owner] = hand
+	if spell_cards_random:
+		_spell_fill_hand_randomly(owner, _spell_hand_size_for_owner(owner))
+	return true
+
+func _pending_spell_cleanup() -> void:
+	pending_spell_card_id = ""
+	pending_spell_card_owner = ""
+	selected_spell_card_id = ""
+	selected_spell_card_owner = ""
+	spell_teleport_source_square = INVALID_SQUARE
+
+func _record_spell_cast_in_history(owner: String, card_id: String, detail: String = "") -> void:
+	var card_name = _spell_card_name(card_id)
+	var detail_text = ""
+	if detail != "":
+		detail_text = " %s" % detail
+	move_history.append("%s | casts %s%s" % [_display_color(owner), card_name, detail_text])
 
 func _draw_drop_pool_panel(panel_position: Vector2, panel_size: Vector2, title: String, owner: String) -> void:
 	var background = ColorRect.new()
@@ -1261,6 +1920,9 @@ func _turn_color_swatch(color: String) -> Color:
 	return _player_color(color)
 
 func _draw_highlights() -> void:
+	for square in _get_pending_spell_target_squares():
+		add_child(_create_square_overlay(square, SPELL_TARGET_HIGHLIGHT))
+
 	for square in legal_drop_squares:
 		add_child(_create_square_overlay(square, LEGAL_MOVE_HIGHLIGHT))
 
@@ -1270,6 +1932,47 @@ func _draw_highlights() -> void:
 	for square in legal_moves:
 		if square != selected_square:
 			add_child(_create_square_overlay(square, LEGAL_MOVE_HIGHLIGHT))
+
+func _get_pending_spell_target_squares() -> Array[Vector2i]:
+	var targets: Array[Vector2i] = []
+	if pending_spell_card_id == "" or pending_spell_card_owner != current_turn:
+		return targets
+
+	var card_id = pending_spell_card_id
+	if card_id == "barrier":
+		for y in board_height:
+			for x in board_width:
+				targets.append(Vector2i(x, y))
+		return targets
+	if card_id == "teleport" and spell_teleport_source_square != INVALID_SQUARE:
+		for y in board_height:
+			for x in board_width:
+				var square = Vector2i(x, y)
+				if square == spell_teleport_source_square:
+					continue
+				if pieces.has(square):
+					continue
+				targets.append(square)
+		return targets
+
+	for square in pieces.keys():
+		if not (square is Vector2i):
+			continue
+		var piece_data: Dictionary = pieces[square]
+		match card_id:
+			"haste":
+				if str(piece_data.get("color", "")) == current_turn:
+					targets.append(square)
+			"fortify":
+				if str(piece_data.get("color", "")) == current_turn:
+					targets.append(square)
+			"assassinate":
+				if str(piece_data.get("color", "")) != current_turn and str(piece_data.get("piece_id", "")) != "king":
+					targets.append(square)
+			"teleport":
+				if str(piece_data.get("color", "")) == current_turn:
+					targets.append(square)
+	return targets
 
 func _is_board_view_flipped() -> bool:
 	return online_mode and local_player_side == "black"
@@ -1571,11 +2274,32 @@ func _handle_board_click(mouse_position: Vector2) -> void:
 
 	var square = _screen_to_square(mouse_position)
 	if square == INVALID_SQUARE:
+		if pending_spell_card_id != "":
+			status_message = "Select a valid target square for %s." % _spell_card_name(pending_spell_card_id)
+			_build_board()
+			return
 		_clear_selection()
 		_clear_drop_piece_selection()
 		return
 
+	if pending_spell_card_id != "":
+		var pending_type = _spell_card_type(pending_spell_card_id)
+		if _try_cast_pending_spell_at_square(square):
+			if not spell_keep_selection_after_cast:
+				_clear_selection()
+			spell_keep_selection_after_cast = false
+			_clear_drop_piece_selection()
+			if pending_type == "power":
+				_finalize_turn_after_move()
+			else:
+				_build_board()
+		return
+
 	if selected_square == INVALID_SQUARE:
+		if spell_haste_active and square != spell_haste_piece_square:
+			status_message = "Haste active: move the boosted piece at %s." % _square_to_notation(spell_haste_piece_square)
+			_build_board()
+			return
 		if _is_current_turn_piece(square):
 			_select_square(square)
 		return
@@ -1586,7 +2310,10 @@ func _handle_board_click(mouse_position: Vector2) -> void:
 
 	if _is_square_in_legal_moves(square) and _try_move_piece(selected_square, square):
 		_clear_drop_piece_selection()
-		_finalize_turn_after_move()
+		if last_piece_move_should_end_turn:
+			_finalize_turn_after_move()
+		else:
+			_build_board()
 		return
 
 	if _is_current_turn_piece(square):
@@ -1597,6 +2324,10 @@ func _handle_board_click(mouse_position: Vector2) -> void:
 func _try_begin_drop_pool_drag(mouse_position: Vector2) -> bool:
 	if not piece_dropping_enabled:
 		return false
+	if spell_haste_active and spell_haste_owner == current_turn and spell_haste_moves_remaining > 0:
+		status_message = "Haste active: move the boosted piece before dropping."
+		_build_board()
+		return true
 	if online_mode and not _is_local_turn():
 		return true
 	var owner = _drop_pool_side_at_position(mouse_position)
@@ -1636,6 +2367,9 @@ func _get_drop_pool_entry_at_position(owner: String, mouse_position: Vector2) ->
 func _try_drop_piece_from_pool(target_square: Vector2i) -> bool:
 	if not piece_dropping_enabled:
 		return false
+	if spell_haste_active and spell_haste_owner == current_turn and spell_haste_moves_remaining > 0:
+		status_message = "Haste active: move the boosted piece before dropping."
+		return false
 	if selected_drop_piece_id == "" or selected_drop_piece_owner != current_turn:
 		return false
 	if not _is_legal_drop_piece_from_pool(selected_drop_piece_id, current_turn, target_square):
@@ -1659,6 +2393,8 @@ func _try_drop_piece_from_pool(target_square: Vector2i) -> bool:
 
 func _is_legal_drop_piece_from_pool(piece_id: String, owner: String, target_square: Vector2i) -> bool:
 	if target_square == INVALID_SQUARE:
+		return false
+	if spell_barrier_active and target_square == spell_barrier_square:
 		return false
 	if pieces.has(target_square):
 		return false
@@ -1723,6 +2459,21 @@ func _get_legal_moves(from_square: Vector2i) -> Array[Vector2i]:
 
 	return available_moves
 
+func _get_legal_moves_for_piece(from_square: Vector2i) -> Array[Vector2i]:
+	var available_moves: Array[Vector2i] = []
+	if not pieces.has(from_square):
+		return available_moves
+
+	var moving_piece: Dictionary = pieces[from_square]
+	for y in board_height:
+		for x in board_width:
+			var to_square = Vector2i(x, y)
+			var move_info = _analyze_move(moving_piece, from_square, to_square, pieces, true)
+			if bool(move_info.get("is_legal", false)):
+				available_moves.append(to_square)
+
+	return available_moves
+
 func _opponent_color(color: String) -> String:
 	if color == "white":
 		return "black"
@@ -1742,7 +2493,23 @@ func _screen_to_square(mouse_position: Vector2) -> Vector2i:
 	return _view_square_to_board_square(Vector2i(square_x, square_y))
 
 func _finalize_turn_after_move() -> void:
+	_pending_spell_cleanup()
+	spell_cast_this_turn = false
+	if spell_haste_active and spell_haste_owner == current_turn:
+		spell_haste_active = false
+		spell_haste_owner = ""
+		spell_haste_piece_square = INVALID_SQUARE
+		spell_haste_moves_remaining = 0
+	if spell_barrier_active and spell_barrier_owner == current_turn:
+		spell_barrier_active = false
+		spell_barrier_owner = ""
+		spell_barrier_square = INVALID_SQUARE
+	last_piece_move_should_end_turn = true
 	current_turn = _opponent_color(current_turn)
+	if spell_fortify_active and current_turn == spell_fortify_owner:
+		spell_fortify_active = false
+		spell_fortify_owner = ""
+		spell_fortify_piece_square = INVALID_SQUARE
 	selected_square = INVALID_SQUARE
 	legal_moves.clear()
 	legal_drop_squares.clear()
@@ -1754,6 +2521,9 @@ func _try_move_piece(from_square: Vector2i, to_square: Vector2i) -> bool:
 	if promotion_pending:
 		return false
 	if not pieces.has(from_square):
+		return false
+	if spell_haste_active and spell_haste_owner == current_turn and spell_haste_moves_remaining > 0 and from_square != spell_haste_piece_square:
+		status_message = "Haste active: move the boosted piece at %s." % _square_to_notation(spell_haste_piece_square)
 		return false
 
 	var moving_piece: Dictionary = pieces[from_square]
@@ -1806,6 +2576,25 @@ func _commit_move(from_square: Vector2i, to_square: Vector2i, moving_piece: Dict
 			_add_piece_to_drop_pool(str(moving_piece.get("color", "white")), str(captured_piece.get("piece_id", "")))
 		else:
 			_record_capture(str(moving_piece.get("color", "white")), captured_piece)
+	if spell_fortify_active and spell_fortify_piece_square == from_square and spell_fortify_owner == str(moving_piece.get("color", "")):
+		spell_fortify_piece_square = to_square
+	if spell_fortify_active and not pieces.has(spell_fortify_piece_square):
+		spell_fortify_active = false
+		spell_fortify_owner = ""
+		spell_fortify_piece_square = INVALID_SQUARE
+
+	last_piece_move_should_end_turn = true
+	if spell_haste_active and spell_haste_owner == str(moving_piece.get("color", "")) and spell_haste_piece_square == from_square and spell_haste_moves_remaining > 0:
+		spell_haste_piece_square = to_square
+		spell_haste_moves_remaining -= 1
+		if spell_haste_moves_remaining > 0:
+			last_piece_move_should_end_turn = false
+		else:
+			spell_haste_active = false
+			spell_haste_owner = ""
+			spell_haste_piece_square = INVALID_SQUARE
+			spell_haste_moves_remaining = 0
+
 	_record_move(moving_piece, from_square, to_square, captured_piece, move_info)
 	return true
 
@@ -1839,6 +2628,11 @@ func _create_move_info() -> Dictionary:
 func _analyze_move(piece_data: Dictionary, from_square: Vector2i, to_square: Vector2i, board_state: Dictionary, validate_king_safety: bool, drop_pool_state: Dictionary = {}) -> Dictionary:
 	var move_info = _create_move_info()
 	if not _is_base_legal_piece_move(piece_data, from_square, to_square, board_state, move_info):
+		return move_info
+	if spell_barrier_active and (from_square == spell_barrier_square or to_square == spell_barrier_square):
+		return move_info
+	var capture_square = move_info.get("capture_square", INVALID_SQUARE)
+	if spell_fortify_active and capture_square == spell_fortify_piece_square and str(piece_data.get("color", "")) != spell_fortify_owner:
 		return move_info
 
 	if validate_king_safety:
