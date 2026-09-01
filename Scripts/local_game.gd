@@ -8,6 +8,8 @@ const INVALID_SQUARE = Vector2i(-1, -1)
 const SELECTED_HIGHLIGHT = Color(1.0, 0.84, 0.0, 0.38)
 const LEGAL_MOVE_HIGHLIGHT = Color(0.18, 0.75, 0.3, 0.35)
 const SPELL_TARGET_HIGHLIGHT = Color(0.2, 0.67, 0.95, 0.35)
+const ZONE_PROMOTION_RING = Color(0.36, 0.84, 0.34, 0.92)
+const ZONE_MUSTER_RING = Color(0.52, 0.35, 0.18, 0.92)
 const TURN_INDICATOR_PADDING = 12.0
 const TURN_INDICATOR_BACKGROUND = Color(0.95, 0.93, 0.86, 0.94)
 const TURN_INDICATOR_BORDER = Color(0.2, 0.2, 0.2, 1.0)
@@ -790,6 +792,7 @@ func _build_board() -> void:
 			var tile_color = board_tile_colors.get("light", Color(1.0, 1.0, 1.0, 1.0)) if (x + y) % 2 == 0 else board_tile_colors.get("dark", Color(0.41, 0.41, 0.41, 1.0))
 			add_child(_create_board_tile(Vector2i(x, y), tile_color))
 
+	_draw_zone_rings()
 	_draw_highlights()
 	_draw_pieces()
 	_draw_drop_piece_drag_preview()
@@ -797,6 +800,7 @@ func _build_board() -> void:
 	_draw_back_to_main_menu_button()
 	_draw_undo_button()
 	_draw_muster_pass_button()
+	_draw_zone_legend_panel()
 	_draw_status_feedback_banner()
 	_draw_spell_card_panels()
 	if piece_dropping_enabled:
@@ -913,6 +917,93 @@ func _draw_muster_pass_button() -> void:
 	button.text = "Pass (Muster)"
 	button.pressed.connect(_on_muster_pass_pressed)
 	add_child(button)
+
+func _draw_zone_legend_panel() -> void:
+	if not _has_active_zone_rings():
+		return
+	var panel_size = Vector2(
+		clampf(tile_size * 2.9, 168.0, 240.0),
+		clampf(tile_size * 1.55, 96.0, 132.0)
+	)
+	var panel_position = Vector2(TURN_INDICATOR_PADDING, _zone_legend_panel_top())
+
+	var background = ColorRect.new()
+	background.position = panel_position
+	background.size = panel_size
+	background.color = TURN_INDICATOR_BACKGROUND
+	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(background)
+	add_child(_create_indicator_border(panel_position, panel_size))
+
+	var title_label = Label.new()
+	title_label.position = panel_position + Vector2(TURN_INDICATOR_PADDING, TURN_INDICATOR_PADDING - 2.0)
+	title_label.text = "Zone Rings"
+	title_label.add_theme_font_size_override("font_size", _hud_font_size(0.16, 11, 15))
+	title_label.add_theme_color_override("font_color", Color(0.1, 0.1, 0.1))
+	title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(title_label)
+
+	var row_y = title_label.position.y + _hud_font_size(0.16, 11, 15) + 4.0
+	if promotion_enabled:
+		row_y = _draw_zone_legend_row(panel_position, panel_size.x, row_y, ZONE_PROMOTION_RING, "Promotion")
+	if muster_phase_active:
+		row_y = _draw_zone_legend_row(panel_position, panel_size.x, row_y, ZONE_MUSTER_RING, "Muster")
+	if territory_enabled:
+		_draw_zone_legend_row(panel_position, panel_size.x, row_y, _player_color("white"), "P1 Territory", _player_color("black"), "P2 Territory")
+
+func _zone_legend_panel_top() -> float:
+	var top = TURN_INDICATOR_PADDING + _turn_indicator_height() + 8.0 + _hud_top_action_button_size().y + 8.0
+	if allow_undo_enabled:
+		top += _hud_top_action_button_size().y + 8.0
+	if muster_phase_active:
+		top += _hud_top_action_button_size().y + 8.0
+	return top
+
+func _has_active_zone_rings() -> bool:
+	return promotion_enabled or territory_enabled or muster_phase_active
+
+func _draw_zone_legend_row(panel_position: Vector2, panel_width: float, y: float, swatch_color: Color, label_text: String, second_swatch_color: Variant = null, second_label_text: String = "") -> float:
+	var swatch_size = clampf(tile_size * 0.18, 12.0, 18.0)
+	var font_size = _hud_font_size(0.13, 10, 13)
+	var x = panel_position.x + TURN_INDICATOR_PADDING
+
+	var primary_swatch = ColorRect.new()
+	primary_swatch.position = Vector2(x, y + 2.0)
+	primary_swatch.size = Vector2(swatch_size, swatch_size)
+	primary_swatch.color = swatch_color
+	primary_swatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(primary_swatch)
+	add_child(_create_indicator_border(primary_swatch.position, primary_swatch.size))
+
+	var primary_label = Label.new()
+	primary_label.position = Vector2(x + swatch_size + 8.0, y)
+	primary_label.size = Vector2(panel_width * 0.46, swatch_size + 6.0)
+	primary_label.text = label_text
+	primary_label.add_theme_font_size_override("font_size", font_size)
+	primary_label.add_theme_color_override("font_color", Color(0.12, 0.12, 0.12, 1.0))
+	primary_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(primary_label)
+
+	if second_swatch_color != null and second_label_text != "":
+		var second_x = panel_position.x + panel_width * 0.53
+		var secondary_swatch = ColorRect.new()
+		secondary_swatch.position = Vector2(second_x, y + 2.0)
+		secondary_swatch.size = Vector2(swatch_size, swatch_size)
+		secondary_swatch.color = second_swatch_color
+		secondary_swatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(secondary_swatch)
+		add_child(_create_indicator_border(secondary_swatch.position, secondary_swatch.size))
+
+		var secondary_label = Label.new()
+		secondary_label.position = Vector2(second_x + swatch_size + 8.0, y)
+		secondary_label.size = Vector2(panel_width * 0.34, swatch_size + 6.0)
+		secondary_label.text = second_label_text
+		secondary_label.add_theme_font_size_override("font_size", font_size)
+		secondary_label.add_theme_color_override("font_color", Color(0.12, 0.12, 0.12, 1.0))
+		secondary_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(secondary_label)
+
+	return y + swatch_size + 6.0
 
 func _on_muster_pass_pressed() -> void:
 	if not muster_phase_active:
@@ -2267,6 +2358,9 @@ func _hud_top_reserve_height(viewport_size: Vector2) -> float:
 	banner_reserve = max(banner_reserve, clampf(max(132.0, viewport_size.y * 0.18), 132.0, 220.0))
 	if allow_undo_enabled:
 		banner_reserve = max(banner_reserve, clampf(max(172.0, viewport_size.y * 0.24), 172.0, 280.0))
+	if _has_active_zone_rings():
+		var legend_reserve = _zone_legend_panel_top() + clampf(tile_size * 1.55, 96.0, 132.0) + 10.0
+		banner_reserve = max(banner_reserve, legend_reserve)
 	return max(baseline_reserve, banner_reserve)
 
 func _hud_bottom_reserve_height(viewport_size: Vector2) -> float:
@@ -2393,6 +2487,74 @@ func _create_square_overlay(square: Vector2i, color: Color) -> Polygon2D:
 		Vector2(0.0, tile_size)
 	])
 	return overlay
+
+func _draw_zone_rings() -> void:
+	for y in range(board_height):
+		for x in range(board_width):
+			var square = Vector2i(x, y)
+			var ring_colors = _zone_ring_colors_for_square(square)
+			if ring_colors.is_empty():
+				continue
+			var tile_position = _board_square_to_screen_position(square)
+			var ring_metrics = _zone_ring_metrics(tile_size)
+			var ring_width = float(ring_metrics.get("width", 2.0))
+			var base_inset = float(ring_metrics.get("base_inset", 4.0))
+			var ring_step = float(ring_metrics.get("step", 3.0))
+			for index in range(ring_colors.size()):
+				var inset = base_inset + ring_step * index
+				add_child(_create_rect_ring(tile_position, tile_size, ring_colors[index], inset, ring_width))
+
+func _zone_ring_metrics(tile_extent: float) -> Dictionary:
+	if tile_extent <= 36.0:
+		var compact_width = clampf(tile_extent * 0.045, 1.5, 2.5)
+		return {
+			"width": compact_width,
+			"base_inset": clampf(tile_extent * 0.07, 2.0, 4.0),
+			"step": compact_width + clampf(tile_extent * 0.02, 1.0, 2.0)
+		}
+	var ring_width = clampf(tile_extent * 0.06, 2.0, 4.0)
+	return {
+		"width": ring_width,
+		"base_inset": clampf(tile_extent * 0.10, 4.0, 9.0),
+		"step": ring_width + clampf(tile_extent * 0.04, 2.0, 4.0)
+	}
+
+func _zone_ring_colors_for_square(square: Vector2i) -> Array[Color]:
+	var ring_colors: Array[Color] = []
+	if _is_square_in_any_promotion_zone(square):
+		ring_colors.append(ZONE_PROMOTION_RING)
+	if muster_phase_active and _is_square_in_any_territory(square):
+		ring_colors.append(ZONE_MUSTER_RING)
+	if territory_enabled:
+		if _is_square_in_owner_territory("white", square):
+			ring_colors.append(_player_color("white"))
+		if _is_square_in_owner_territory("black", square):
+			ring_colors.append(_player_color("black"))
+	return ring_colors
+
+func _is_square_in_any_promotion_zone(square: Vector2i) -> bool:
+	return _is_square_in_promotion_zone("white", square) or _is_square_in_promotion_zone("black", square)
+
+func _is_square_in_any_territory(square: Vector2i) -> bool:
+	return _is_square_in_owner_territory("white", square) or _is_square_in_owner_territory("black", square)
+
+func _create_rect_ring(position: Vector2, tile_extent: float, color: Color, inset: float, ring_width: float) -> Line2D:
+	var usable_extent = max(tile_extent - inset * 2.0, ring_width * 2.0)
+	var ring = Line2D.new()
+	ring.position = position + Vector2(inset, inset)
+	ring.width = ring_width
+	ring.default_color = color
+	ring.closed = true
+	ring.joint_mode = Line2D.LINE_JOINT_ROUND
+	ring.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	ring.end_cap_mode = Line2D.LINE_CAP_ROUND
+	ring.points = PackedVector2Array([
+		Vector2(0.0, 0.0),
+		Vector2(usable_extent, 0.0),
+		Vector2(usable_extent, usable_extent),
+		Vector2(0.0, usable_extent)
+	])
+	return ring
 
 func _create_board_tile(square: Vector2i, tile_color: Color) -> Polygon2D:
 	var tile = Polygon2D.new()

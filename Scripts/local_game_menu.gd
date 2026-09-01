@@ -73,6 +73,8 @@ const PREVIEW_DROP_POOL_BORDER = Color(0.82, 0.85, 0.92, 0.95)
 const PREVIEW_WHITE_DROP_POOL_HOVER_BACKGROUND = Color(0.26, 0.36, 0.56, 0.92)
 const PREVIEW_BLACK_DROP_POOL_HOVER_BACKGROUND = Color(0.46, 0.24, 0.24, 0.92)
 const PREVIEW_SPELL_HAND_BORDER = Color(0.92, 0.95, 1.0, 0.95)
+const PREVIEW_ZONE_PROMOTION_RING = Color(0.36, 0.84, 0.34, 0.92)
+const PREVIEW_ZONE_MUSTER_RING = Color(0.52, 0.35, 0.18, 0.92)
 const NAV_BUTTON_ACTIVE_COLOR = Color(0.18, 0.30, 0.45, 1.0)
 const NAV_BUTTON_INACTIVE_COLOR = Color(0.12, 0.12, 0.14, 1.0)
 const NAV_BUTTON_TEXT_COLOR = Color(0.94, 0.96, 1.0, 1.0)
@@ -291,6 +293,8 @@ var special_rule_helper_label: Label
 var special_rule_detail_title_label: Label
 var special_rule_content_root: VBoxContainer
 var special_rule_pages: Dictionary = {}
+var zone_legend_white_swatch: ColorRect
+var zone_legend_black_swatch: ColorRect
 var player_side_colors = {
 	"white": Color(1.0, 1.0, 1.0, 1.0),
 	"black": Color(0.08, 0.08, 0.08, 1.0)
@@ -533,7 +537,99 @@ func _build_board_section_page() -> VBoxContainer:
 	var page = _make_section_page("board", "Board Setup")
 	page.add_child(_make_labeled_spin_row("BoardWidth", "WidthSpinBox", "BoardHeight", "HeightSpinBox"))
 	page.add_child(_layout_existing_control(_find_option_node("PreviewInstructions"), true))
+	page.add_child(_build_zone_legend_panel())
 	return page
+
+func _build_zone_legend_panel() -> PanelContainer:
+	var panel = PanelContainer.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.11, 0.12, 0.15, 0.96)
+	style.border_width_left = 1
+	style.border_width_top = 1
+	style.border_width_right = 1
+	style.border_width_bottom = 1
+	style.border_color = Color(0.27, 0.31, 0.38, 1.0)
+	style.corner_radius_top_left = 10
+	style.corner_radius_top_right = 10
+	style.corner_radius_bottom_right = 10
+	style.corner_radius_bottom_left = 10
+	panel.add_theme_stylebox_override("panel", style)
+
+	var margin = MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 12)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 12)
+	panel.add_child(margin)
+
+	var content = VBoxContainer.new()
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.add_theme_constant_override("separation", 8)
+	margin.add_child(content)
+
+	var title = Label.new()
+	title.text = _icon_text("◎", "Zone Ring Legend")
+	title.add_theme_font_size_override("font_size", 14)
+	title.add_theme_color_override("font_color", Color(0.94, 0.95, 0.98, 1.0))
+	content.add_child(title)
+	content.add_child(_build_zone_legend_row(PREVIEW_ZONE_PROMOTION_RING, "Promotion zone"))
+	content.add_child(_build_zone_legend_row(PREVIEW_ZONE_MUSTER_RING, "Muster zone"))
+	content.add_child(_build_zone_territory_legend_row())
+	return panel
+
+func _build_zone_legend_row(color_value: Color, text: String) -> HBoxContainer:
+	var row = HBoxContainer.new()
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_theme_constant_override("separation", 10)
+	row.add_child(_create_zone_legend_swatch(color_value))
+	var label = Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 13)
+	label.add_theme_color_override("font_color", Color(0.85, 0.88, 0.93, 1.0))
+	row.add_child(label)
+	return row
+
+func _build_zone_territory_legend_row() -> VBoxContainer:
+	var box = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	var title = Label.new()
+	title.text = "Territory rings use player colors"
+	title.add_theme_font_size_override("font_size", 13)
+	title.add_theme_color_override("font_color", Color(0.85, 0.88, 0.93, 1.0))
+	box.add_child(title)
+	var row = HBoxContainer.new()
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_theme_constant_override("separation", 14)
+	zone_legend_white_swatch = _create_zone_legend_swatch(_get_player_color("white"))
+	zone_legend_black_swatch = _create_zone_legend_swatch(_get_player_color("black"))
+	row.add_child(_wrap_zone_legend_swatch(zone_legend_white_swatch, "Player 1 territory"))
+	row.add_child(_wrap_zone_legend_swatch(zone_legend_black_swatch, "Player 2 territory"))
+	box.add_child(row)
+	return box
+
+func _wrap_zone_legend_swatch(swatch: ColorRect, text: String) -> HBoxContainer:
+	var row = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	row.add_child(swatch)
+	var label = Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_color_override("font_color", Color(0.80, 0.84, 0.90, 1.0))
+	row.add_child(label)
+	return row
+
+func _create_zone_legend_swatch(color_value: Color) -> ColorRect:
+	var swatch = ColorRect.new()
+	swatch.custom_minimum_size = Vector2(18.0, 18.0)
+	swatch.color = color_value
+	return swatch
+
+func _update_zone_legend_colors() -> void:
+	if zone_legend_white_swatch != null:
+		zone_legend_white_swatch.color = _get_player_color("white")
+	if zone_legend_black_swatch != null:
+		zone_legend_black_swatch.color = _get_player_color("black")
 
 func _build_pieces_section_page() -> VBoxContainer:
 	var page = _make_section_page("pieces", "Available Pieces")
@@ -1130,6 +1226,7 @@ func _setup_player_color_pickers() -> void:
 
 func _on_player_color_changed(new_color: Color, owner: String) -> void:
 	player_side_colors[owner] = Color(new_color.r, new_color.g, new_color.b, 1.0)
+	_update_zone_legend_colors()
 	_refresh_preview()
 
 func _setup_tile_color_pickers() -> void:
@@ -2276,11 +2373,16 @@ func _refresh_preview(_value: float = 0.0) -> void:
 	var side_panel_width_estimate = 0.0
 	if piece_dropping_check_box.button_pressed:
 		side_panel_width_estimate = _preview_side_panel_width() + 16.0
-	var top_bottom_spell_reserve = 0.0
+	var top_reserve = 0.0
+	var bottom_reserve = 0.0
 	if _shows_preview_spell_hands():
-		top_bottom_spell_reserve = _preview_spell_hand_panel_height_estimate() * 2.0 + 24.0
+		var spell_hand_height = _preview_spell_hand_panel_height_estimate()
+		top_reserve += spell_hand_height + 16.0
+		bottom_reserve += spell_hand_height + 16.0
+	if _preview_has_active_zone_rings():
+		top_reserve += _preview_zone_legend_panel_height_estimate() + 10.0
 	var usable_width = max(board_preview.size.x - side_panel_width_estimate * 2.0, 80.0)
-	var usable_height = max(board_preview.size.y - top_bottom_spell_reserve, 80.0)
+	var usable_height = max(board_preview.size.y - top_reserve - bottom_reserve, 80.0)
 
 	preview_tile_size = min(
 		floor(usable_width / max(width, 1)),
@@ -2292,7 +2394,7 @@ func _refresh_preview(_value: float = 0.0) -> void:
 	var board_pixel_size = Vector2(width * preview_tile_size, height * preview_tile_size)
 	preview_board_origin = Vector2(
 		(board_preview.size.x - board_pixel_size.x) / 2.0,
-		(board_preview.size.y - board_pixel_size.y) / 2.0
+		top_reserve + (max(board_preview.size.y - top_reserve - bottom_reserve, board_pixel_size.y) - board_pixel_size.y) / 2.0
 	)
 
 	var is_white = true
@@ -2309,7 +2411,7 @@ func _refresh_preview(_value: float = 0.0) -> void:
 		if width % 2 == 0:
 			is_white = !is_white
 
-	_draw_preview_promotion_zone_tints(width, height)
+	_draw_preview_zone_rings(width, height)
 	_draw_preview_selection()
 	_draw_preview_pieces()
 	_draw_preview_ghost()
@@ -2317,6 +2419,7 @@ func _refresh_preview(_value: float = 0.0) -> void:
 	_draw_preview_drop_pools(board_pixel_size)
 	_clamp_preview_spell_hands_to_rules()
 	_draw_preview_spell_hands(board_pixel_size)
+	_draw_preview_zone_legend(board_pixel_size)
 	_update_castling_rule_availability()
 
 func _preview_side_panel_width() -> float:
@@ -2327,6 +2430,108 @@ func _shows_preview_spell_hands() -> bool:
 
 func _preview_spell_hand_panel_height_estimate() -> float:
 	return clampf(board_preview.size.y * 0.16, 80.0, 132.0)
+
+func _preview_zone_legend_panel_height_estimate() -> float:
+	return clampf(board_preview.size.y * 0.18, 86.0, 118.0)
+
+func _preview_has_active_zone_rings() -> bool:
+	return promotion_check_box.button_pressed or (enable_territory_check_box != null and enable_territory_check_box.button_pressed) or (enable_muster_check_box != null and enable_muster_check_box.button_pressed)
+
+func _draw_preview_zone_legend(board_pixel_size: Vector2) -> void:
+	if not _preview_has_active_zone_rings():
+		return
+	var panel_width = clampf(board_preview.size.x * 0.24, 138.0, 190.0)
+	var panel_height = _preview_zone_legend_panel_height_estimate()
+	var panel_x = preview_board_origin.x
+	var panel_y = max(preview_board_origin.y - panel_height - 8.0, 8.0)
+
+	var panel = ColorRect.new()
+	panel.position = Vector2(panel_x, panel_y)
+	panel.size = Vector2(panel_width, panel_height)
+	panel.color = Color(0.07, 0.08, 0.10, 0.90)
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	board_preview.add_child(panel)
+
+	var border = Line2D.new()
+	border.position = panel.position
+	border.width = 2.0
+	border.default_color = Color(0.82, 0.85, 0.92, 0.95)
+	border.closed = true
+	border.points = PackedVector2Array([
+		Vector2(0.0, 0.0),
+		Vector2(panel_width, 0.0),
+		Vector2(panel_width, panel_height),
+		Vector2(0.0, panel_height)
+	])
+	board_preview.add_child(border)
+
+	var title = Label.new()
+	title.position = panel.position + Vector2(8.0, 5.0)
+	title.size = Vector2(panel_width - 16.0, 18.0)
+	title.text = "Zone Rings"
+	title.add_theme_font_size_override("font_size", 12)
+	title.add_theme_color_override("font_color", Color(0.96, 0.97, 1.0, 1.0))
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	board_preview.add_child(title)
+
+	var row_y = panel.position.y + 24.0
+	if promotion_check_box.button_pressed:
+		row_y = _draw_preview_zone_legend_row(panel.position.x, row_y, PREVIEW_ZONE_PROMOTION_RING, "Promotion")
+	if enable_muster_check_box != null and enable_muster_check_box.button_pressed:
+		row_y = _draw_preview_zone_legend_row(panel.position.x, row_y, PREVIEW_ZONE_MUSTER_RING, "Muster")
+	if enable_territory_check_box != null and enable_territory_check_box.button_pressed:
+		_draw_preview_zone_legend_dual_row(panel.position.x, row_y, _get_player_color("white"), "P1", _get_player_color("black"), "P2")
+
+func _draw_preview_zone_legend_row(panel_x: float, y: float, swatch_color: Color, label_text: String) -> float:
+	var swatch = ColorRect.new()
+	swatch.position = Vector2(panel_x + 8.0, y + 1.0)
+	swatch.size = Vector2(12.0, 12.0)
+	swatch.color = swatch_color
+	swatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	board_preview.add_child(swatch)
+
+	var label = Label.new()
+	label.position = Vector2(panel_x + 26.0, y - 2.0)
+	label.size = Vector2(96.0, 16.0)
+	label.text = label_text
+	label.add_theme_font_size_override("font_size", 11)
+	label.add_theme_color_override("font_color", Color(0.90, 0.92, 0.97, 1.0))
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	board_preview.add_child(label)
+	return y + 16.0
+
+func _draw_preview_zone_legend_dual_row(panel_x: float, y: float, left_color: Color, left_text: String, right_color: Color, right_text: String) -> void:
+	var left_swatch = ColorRect.new()
+	left_swatch.position = Vector2(panel_x + 8.0, y + 1.0)
+	left_swatch.size = Vector2(12.0, 12.0)
+	left_swatch.color = left_color
+	left_swatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	board_preview.add_child(left_swatch)
+
+	var left_label = Label.new()
+	left_label.position = Vector2(panel_x + 26.0, y - 2.0)
+	left_label.size = Vector2(28.0, 16.0)
+	left_label.text = left_text
+	left_label.add_theme_font_size_override("font_size", 11)
+	left_label.add_theme_color_override("font_color", Color(0.90, 0.92, 0.97, 1.0))
+	left_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	board_preview.add_child(left_label)
+
+	var right_swatch = ColorRect.new()
+	right_swatch.position = Vector2(panel_x + 70.0, y + 1.0)
+	right_swatch.size = Vector2(12.0, 12.0)
+	right_swatch.color = right_color
+	right_swatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	board_preview.add_child(right_swatch)
+
+	var right_label = Label.new()
+	right_label.position = Vector2(panel_x + 88.0, y - 2.0)
+	right_label.size = Vector2(28.0, 16.0)
+	right_label.text = right_text
+	right_label.add_theme_font_size_override("font_size", 11)
+	right_label.add_theme_color_override("font_color", Color(0.90, 0.92, 0.97, 1.0))
+	right_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	board_preview.add_child(right_label)
 
 func _draw_preview_spell_hands(board_pixel_size: Vector2) -> void:
 	preview_white_spell_hand_rect = Rect2()
@@ -2440,50 +2645,94 @@ func _draw_single_preview_spell_hand(hand_rect: Rect2, title: String, owner: Str
 
 	preview_spell_hand_entry_rects[owner] = entry_rects
 
-func _draw_preview_promotion_zone_tints(width: int, height: int) -> void:
-	if not promotion_check_box.button_pressed:
-		return
+func _draw_preview_zone_rings(width: int, height: int) -> void:
 	if width <= 0 or height <= 0:
 		return
-
-	var zones = _build_promotion_zones()
-	var white_rows = clamp(int(zones.get("white_rows", 1)), 1, height)
-	var black_rows = clamp(int(zones.get("black_rows", 1)), 1, height)
-	var white_tint = _promotion_zone_tint_color("white")
-	var black_tint = _promotion_zone_tint_color("black")
-	var overlap_tint = Color(
-		(white_tint.r + black_tint.r) * 0.5,
-		(white_tint.g + black_tint.g) * 0.5,
-		(white_tint.b + black_tint.b) * 0.5,
-		max(white_tint.a, black_tint.a)
-	)
-
 	for y in range(height):
-		var in_white_zone = y < white_rows
-		var in_black_zone = y >= height - black_rows
-		if not in_white_zone and not in_black_zone:
-			continue
-		var row_tint = overlap_tint
-		if in_white_zone and not in_black_zone:
-			row_tint = white_tint
-		elif in_black_zone and not in_white_zone:
-			row_tint = black_tint
 		for x in range(width):
-			var overlay = ColorRect.new()
-			overlay.position = preview_board_origin + Vector2(x * preview_tile_size, y * preview_tile_size)
-			overlay.size = Vector2(preview_tile_size, preview_tile_size)
-			overlay.color = row_tint
-			overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			board_preview.add_child(overlay)
+			var square = Vector2i(x, y)
+			var ring_colors = _preview_zone_ring_colors_for_square(square, height)
+			if ring_colors.is_empty():
+				continue
+			_draw_preview_square_rings(square, ring_colors)
 
-func _promotion_zone_tint_color(owner: String) -> Color:
-	var base = _get_player_color(owner)
-	return Color(
-		clampf(base.r * 0.35 + 0.10, 0.0, 1.0),
-		clampf(base.g * 0.35 + 0.10, 0.0, 1.0),
-		clampf(base.b * 0.35 + 0.10, 0.0, 1.0),
-		0.42
-	)
+func _preview_zone_ring_colors_for_square(square: Vector2i, height: int) -> Array[Color]:
+	var ring_colors: Array[Color] = []
+	if promotion_check_box.button_pressed and _is_preview_square_in_any_promotion_zone(square, height):
+		ring_colors.append(PREVIEW_ZONE_PROMOTION_RING)
+	if enable_muster_check_box != null and enable_muster_check_box.button_pressed and _is_preview_square_in_any_territory(square, height):
+		ring_colors.append(PREVIEW_ZONE_MUSTER_RING)
+	if enable_territory_check_box != null and enable_territory_check_box.button_pressed:
+		if _is_preview_square_in_owner_territory("white", square, height):
+			ring_colors.append(_get_player_color("white"))
+		if _is_preview_square_in_owner_territory("black", square, height):
+			ring_colors.append(_get_player_color("black"))
+	return ring_colors
+
+func _is_preview_square_in_any_promotion_zone(square: Vector2i, height: int) -> bool:
+	return _is_preview_square_in_promotion_zone("white", square, height) or _is_preview_square_in_promotion_zone("black", square, height)
+
+func _is_preview_square_in_promotion_zone(owner: String, square: Vector2i, height: int) -> bool:
+	var zones = _build_promotion_zones()
+	var zone_rows = clamp(int(zones.get("white_rows" if owner == "white" else "black_rows", 1)), 1, max(height, 1))
+	if owner == "white":
+		return square.y < zone_rows
+	return square.y >= height - zone_rows
+
+func _is_preview_square_in_any_territory(square: Vector2i, height: int) -> bool:
+	return _is_preview_square_in_owner_territory("white", square, height) or _is_preview_square_in_owner_territory("black", square, height)
+
+func _is_preview_square_in_owner_territory(owner: String, square: Vector2i, height: int) -> bool:
+	var rows = clamp(_territory_rows_value(), 1, max(height, 1))
+	if owner == "white":
+		return square.y >= height - rows
+	if owner == "black":
+		return square.y < rows
+	return false
+
+func _draw_preview_square_rings(square: Vector2i, ring_colors: Array[Color]) -> void:
+	var tile_position = preview_board_origin + Vector2(square.x * preview_tile_size, square.y * preview_tile_size)
+	var ring_metrics = _zone_ring_metrics(preview_tile_size)
+	var ring_width = float(ring_metrics.get("width", 2.0))
+	var base_inset = float(ring_metrics.get("base_inset", 4.0))
+	var ring_step = float(ring_metrics.get("step", 3.0))
+	for index in range(ring_colors.size()):
+		var inset = base_inset + ring_step * index
+		var ring = _create_rect_ring(tile_position, preview_tile_size, ring_colors[index], inset, ring_width)
+		board_preview.add_child(ring)
+
+func _zone_ring_metrics(tile_extent: float) -> Dictionary:
+	if tile_extent <= 36.0:
+		var compact_width = clampf(tile_extent * 0.045, 1.5, 2.5)
+		return {
+			"width": compact_width,
+			"base_inset": clampf(tile_extent * 0.07, 2.0, 4.0),
+			"step": compact_width + clampf(tile_extent * 0.02, 1.0, 2.0)
+		}
+	var ring_width = clampf(tile_extent * 0.06, 2.0, 4.0)
+	return {
+		"width": ring_width,
+		"base_inset": clampf(tile_extent * 0.10, 4.0, 9.0),
+		"step": ring_width + clampf(tile_extent * 0.04, 2.0, 4.0)
+	}
+
+func _create_rect_ring(position: Vector2, tile_extent: float, color: Color, inset: float, ring_width: float) -> Line2D:
+	var usable_extent = max(tile_extent - inset * 2.0, ring_width * 2.0)
+	var ring = Line2D.new()
+	ring.position = position + Vector2(inset, inset)
+	ring.width = ring_width
+	ring.default_color = color
+	ring.closed = true
+	ring.joint_mode = Line2D.LINE_JOINT_ROUND
+	ring.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	ring.end_cap_mode = Line2D.LINE_CAP_ROUND
+	ring.points = PackedVector2Array([
+		Vector2(0.0, 0.0),
+		Vector2(usable_extent, 0.0),
+		Vector2(usable_extent, usable_extent),
+		Vector2(0.0, usable_extent)
+	])
+	return ring
 
 func _draw_preview_selection() -> void:
 	if selected_preview_square == INVALID_SQUARE:
@@ -2817,6 +3066,7 @@ func _apply_player_colors_from_serialized(serialized: Variant) -> void:
 	player_side_colors["black"] = black_color
 	player1_color_button.color = white_color
 	player2_color_button.color = black_color
+	_update_zone_legend_colors()
 
 func _serialize_player_colors() -> Dictionary:
 	return {
