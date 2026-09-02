@@ -5,6 +5,7 @@ signal peer_ready_changed(is_ready: bool)
 signal online_match_started()
 signal turn_state_received(state: Dictionary)
 signal online_match_ended(reason: String)
+signal setup_snapshot_received(snapshot: Dictionary)
 
 const DEFAULT_PORT = 24567
 
@@ -108,6 +109,9 @@ func _on_peer_connected(peer_id: int) -> void:
 	remote_peer_id = peer_id
 	emit_signal("network_status_changed", "peer_connected", "Player 2 connected.")
 	emit_signal("peer_ready_changed", true)
+	_rpc_open_online_setup_menu.rpc_id(peer_id)
+	var setup_snapshot = _build_match_config_from_game_manager()
+	_rpc_receive_setup_snapshot.rpc_id(peer_id, setup_snapshot)
 
 func _on_peer_disconnected(peer_id: int) -> void:
 	if is_hosting and remote_peer_id == peer_id:
@@ -121,6 +125,7 @@ func _on_peer_disconnected(peer_id: int) -> void:
 func _on_connected_to_server() -> void:
 	emit_signal("network_status_changed", "connected", "Connected. Waiting for host to start the match...")
 	emit_signal("peer_ready_changed", true)
+	get_tree().change_scene_to_file("res://Scenes/LocalGameMenu.tscn")
 
 func _on_connection_failed() -> void:
 	emit_signal("network_status_changed", "error", "Connection failed.")
@@ -141,6 +146,44 @@ func _rpc_start_online_match(config: Dictionary) -> void:
 	emit_signal("online_match_started")
 	emit_signal("network_status_changed", "started", "Online match started.")
 	get_tree().change_scene_to_file("res://Scenes/LocalGame.tscn")
+
+@rpc("authority", "reliable")
+func _rpc_open_online_setup_menu() -> void:
+	if is_online_match_active:
+		return
+	if get_tree().current_scene != null and get_tree().current_scene.scene_file_path == "res://Scenes/LocalGameMenu.tscn":
+		return
+	get_tree().change_scene_to_file("res://Scenes/LocalGameMenu.tscn")
+
+func submit_setup_snapshot(snapshot: Dictionary) -> void:
+	if is_online_match_active:
+		return
+	if multiplayer.multiplayer_peer == null:
+		return
+	if is_hosting:
+		_apply_match_config_to_game_manager(snapshot)
+		emit_signal("setup_snapshot_received", snapshot)
+		if remote_peer_id != 0:
+			_rpc_receive_setup_snapshot.rpc_id(remote_peer_id, snapshot)
+		return
+	_rpc_submit_setup_snapshot_from_client.rpc_id(1, snapshot)
+
+@rpc("any_peer", "reliable")
+func _rpc_submit_setup_snapshot_from_client(snapshot: Dictionary) -> void:
+	if not is_hosting:
+		return
+	if multiplayer.get_remote_sender_id() != remote_peer_id:
+		return
+	_apply_match_config_to_game_manager(snapshot)
+	emit_signal("setup_snapshot_received", snapshot)
+	_rpc_receive_setup_snapshot.rpc_id(remote_peer_id, snapshot)
+
+@rpc("authority", "reliable")
+func _rpc_receive_setup_snapshot(snapshot: Dictionary) -> void:
+	if is_online_match_active:
+		return
+	_apply_match_config_to_game_manager(snapshot)
+	emit_signal("setup_snapshot_received", snapshot)
 
 @rpc("any_peer", "reliable")
 func _rpc_submit_turn_state_from_client(state: Dictionary) -> void:

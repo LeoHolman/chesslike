@@ -304,6 +304,8 @@ var zone_legend_black_swatch: ColorRect
 var shared_color_picker_dialog: AcceptDialog
 var shared_color_picker: ColorPicker
 var pending_color_target = ""
+var is_applying_online_setup_sync = false
+var last_online_setup_signature = ""
 var player_side_colors = {
 	"white": Color(1.0, 1.0, 1.0, 1.0),
 	"black": Color(0.08, 0.08, 0.08, 1.0)
@@ -330,6 +332,7 @@ func _ready() -> void:
 	_setup_tile_color_pickers()
 	_setup_victory_condition_picker()
 	_setup_special_rules()
+	_connect_online_setup_collaboration()
 	_setup_section_navigation_ui()
 	resized.connect(_on_menu_resized)
 	_reset_preview_to_default(false, false)
@@ -358,7 +361,7 @@ func _update_menu_title_for_mode() -> void:
 		return
 	var title_text = "Create Local game"
 	var network_manager = get_node_or_null("/root/NetworkManager")
-	if network_manager != null and network_manager.is_hosting and not network_manager.is_online_active():
+	if network_manager != null and network_manager.is_session_connected() and not network_manager.is_online_active():
 		title_text = "Create Online Game"
 	local_game_title.text = title_text
 
@@ -367,8 +370,118 @@ func _update_primary_action_for_mode() -> void:
 		start_game_button.text = "Save Preset"
 		back_to_main_menu_button.visible = false
 		return
-	start_game_button.text = "Start Game"
+	var network_manager = get_node_or_null("/root/NetworkManager")
+	if network_manager != null and network_manager.is_session_connected() and not network_manager.is_online_active() and not network_manager.is_hosting:
+		start_game_button.text = "Waiting For Host"
+		start_game_button.disabled = true
+	else:
+		start_game_button.text = "Start Game"
+		start_game_button.disabled = false
 	back_to_main_menu_button.visible = true
+
+func _connect_online_setup_collaboration() -> void:
+	var network_manager = get_node_or_null("/root/NetworkManager")
+	if network_manager == null:
+		return
+	if network_manager.setup_snapshot_received.is_connected(_on_online_setup_snapshot_received):
+		network_manager.setup_snapshot_received.disconnect(_on_online_setup_snapshot_received)
+	network_manager.setup_snapshot_received.connect(_on_online_setup_snapshot_received)
+
+func _is_online_setup_collaboration_active() -> bool:
+	var network_manager = get_node_or_null("/root/NetworkManager")
+	if network_manager == null:
+		return false
+	return network_manager.is_session_connected() and not network_manager.is_online_active()
+
+func _build_online_setup_snapshot() -> Dictionary:
+	var game_manager = $"/root/GameManager"
+	return {
+		"board_height": _get_dimension(height_spin_box.value, 8),
+		"board_width": _get_dimension(width_spin_box.value, 8),
+		"starting_pieces": _serialize_preview_pieces(),
+		"starting_drop_pools": _serialize_drop_pools(),
+		"special_rules": _build_special_rules(),
+		"spell_card_hand_size": _get_spell_hand_size_value(),
+		"spell_card_hand_size_white": _get_spell_hand_size_for_owner("white"),
+		"spell_card_hand_size_black": _get_spell_hand_size_for_owner("black"),
+		"spell_cards_random": _is_random_spell_cards_enabled(),
+		"spell_card_allow_duplicates": _is_spell_card_duplicates_allowed(),
+		"spell_draw_replacement_after_cast": _is_draw_replacement_after_cast_enabled(),
+		"spell_card_available_ids": _build_enabled_spell_card_ids(),
+		"starting_spell_hands": _build_spell_card_hands(),
+		"promotion_piece_pool": _build_promotion_piece_pool(),
+		"promotion_zones": _build_promotion_zones(),
+		"territory_rows": _territory_rows_value(),
+		"victory_condition": _build_victory_condition(),
+		"army_strength_cap": _get_army_strength_cap_value(),
+		"army_strength_cap_white": _get_unbalanced_army_strength_cap_value("white"),
+		"army_strength_cap_black": _get_unbalanced_army_strength_cap_value("black"),
+		"player_colors": _serialize_player_colors(),
+		"tile_colors": _serialize_tile_colors(),
+		"piece_bank": game_manager.PieceBank.duplicate(true),
+		"piece_definitions": game_manager.PieceDefinitions.duplicate(true)
+	}
+
+func _setup_snapshot_signature(snapshot: Dictionary) -> String:
+	return JSON.stringify(snapshot)
+
+func _sync_online_setup_if_needed() -> void:
+	if is_applying_online_setup_sync:
+		return
+	if not _is_online_setup_collaboration_active():
+		return
+	var snapshot = _build_online_setup_snapshot()
+	var signature = _setup_snapshot_signature(snapshot)
+	if signature == last_online_setup_signature:
+		return
+	last_online_setup_signature = signature
+	var network_manager = get_node_or_null("/root/NetworkManager")
+	if network_manager != null:
+		network_manager.submit_setup_snapshot(snapshot)
+
+func _on_online_setup_snapshot_received(snapshot: Dictionary) -> void:
+	if not _is_online_setup_collaboration_active():
+		return
+	var signature = _setup_snapshot_signature(snapshot)
+	if signature == last_online_setup_signature:
+		return
+	is_applying_online_setup_sync = true
+	last_online_setup_signature = signature
+	if snapshot.has("piece_bank"):
+		_populate_piece_bank()
+	_build_promotion_piece_checkboxes()
+	_apply_saved_preset_config({
+		"width": int(snapshot.get("board_width", width_spin_box.value)),
+		"height": int(snapshot.get("board_height", height_spin_box.value)),
+		"pieces": snapshot.get("starting_pieces", []),
+		"drop_pools": snapshot.get("starting_drop_pools", {}),
+		"victory_condition": str(snapshot.get("victory_condition", "checkmate")),
+		"special_rules": snapshot.get("special_rules", {}),
+		"spell_cards": {
+			"hand_size": int(snapshot.get("spell_card_hand_size", 3)),
+			"unbalanced_hand_sizes": int(snapshot.get("spell_card_hand_size_white", 3)) != int(snapshot.get("spell_card_hand_size_black", 3)),
+			"hand_size_white": int(snapshot.get("spell_card_hand_size_white", 3)),
+			"hand_size_black": int(snapshot.get("spell_card_hand_size_black", 3)),
+			"random_cards": bool(snapshot.get("spell_cards_random", true)),
+			"allow_duplicates": bool(snapshot.get("spell_card_allow_duplicates", true)),
+			"draw_replacement_after_cast": bool(snapshot.get("spell_draw_replacement_after_cast", false)),
+			"available_cards": snapshot.get("spell_card_available_ids", []),
+			"starting_hands": snapshot.get("starting_spell_hands", {})
+		},
+		"army_strength_cap": int(snapshot.get("army_strength_cap", 32)),
+		"army_strength_caps": {
+			"white": int(snapshot.get("army_strength_cap_white", snapshot.get("army_strength_cap", 32))),
+			"black": int(snapshot.get("army_strength_cap_black", snapshot.get("army_strength_cap", 32)))
+		},
+		"promotion_pieces": snapshot.get("promotion_piece_pool", ["queen", "rook", "bishop", "knight"]),
+		"promotion_zones": snapshot.get("promotion_zones", {}),
+		"territory_rows": int(snapshot.get("territory_rows", 3)),
+		"player_colors": snapshot.get("player_colors", {}),
+		"tile_colors": snapshot.get("tile_colors", {})
+	})
+	is_applying_online_setup_sync = false
+	_update_menu_title_for_mode()
+	_update_primary_action_for_mode()
 
 func _setup_section_navigation_ui() -> void:
 	options_content.custom_minimum_size.y = max(options_content.custom_minimum_size.y, 2160.0)
@@ -2559,6 +2672,7 @@ func _refresh_preview(_value: float = 0.0) -> void:
 	_draw_preview_zone_legend(board_pixel_size)
 	_draw_piece_bank_drag_preview()
 	_update_preview_rule_dependencies()
+	_sync_online_setup_if_needed()
 
 func _preview_side_panel_width() -> float:
 	return clampf(board_preview.size.x * 0.18, 92.0, 150.0)
@@ -3797,6 +3911,10 @@ func _on_start_game_button_pressed() -> void:
 	$"/root/GameManager".TileColors = _serialize_tile_colors()
 
 	var network_manager = get_node_or_null("/root/NetworkManager")
+	if network_manager != null and network_manager.is_session_connected() and not network_manager.is_online_active() and not network_manager.is_hosting:
+		preview_warning_label.text = "Host starts the online match after setup is ready."
+		preview_warning_label.visible = true
+		return
 	if network_manager != null and network_manager.is_hosting and not network_manager.is_online_active():
 		if not network_manager.start_hosted_match():
 			preview_warning_label.text = "Online start failed. Make sure player 2 is connected."
