@@ -337,6 +337,7 @@ func _ready() -> void:
 	_update_primary_action_for_mode()
 	_set_active_section(active_section_id)
 	_refresh_preview(0.0)
+	call_deferred("_update_section_navigation_layout")
 
 func _apply_scene_chrome_style() -> void:
 	UITheme.ensure_flat_background(self)
@@ -942,8 +943,18 @@ func _update_section_navigation_layout() -> void:
 	section_button_box.offset_bottom = button_top + button_height + SECTION_BUTTON_VERTICAL_PADDING * 2.0
 	var panel_top = section_button_box.offset_bottom + SECTION_CONTENT_TOP_GAP
 	section_content_panel.offset_top = panel_top
-	section_content_panel.offset_bottom = panel_top + SECTION_CONTENT_PANEL_HEIGHT
-	options_content.custom_minimum_size.y = max(options_content.custom_minimum_size.y, section_content_panel.offset_bottom + SECTION_CONTENT_BOTTOM_PADDING)
+
+	var visible_content_height = 120.0
+	for child in section_content_root.get_children():
+		if not (child is Control):
+			continue
+		var control := child as Control
+		if not control.visible:
+			continue
+		visible_content_height = max(visible_content_height, control.get_combined_minimum_size().y + 32.0)
+
+	section_content_panel.offset_bottom = panel_top + visible_content_height
+	options_content.custom_minimum_size.y = max(280.0, section_content_panel.offset_bottom + SECTION_CONTENT_BOTTOM_PADDING)
 	call_deferred("_update_special_rule_button_layout")
 
 func _update_special_rule_button_layout() -> void:
