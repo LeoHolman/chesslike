@@ -331,7 +331,7 @@ func _normalize_custom_piece_data(custom_piece_id: String, source_data: Dictiona
 
 	var icon_path = str(source_data.get("icon_path", "")).strip_edges()
 	var path_strokes = _normalize_custom_path_strokes(source_data.get("path_strokes", []))
-	var path_stroke_width = clampf(float(source_data.get("path_stroke_width", 0.18)), 0.05, 0.45)
+	var path_stroke_width = clampf(float(source_data.get("path_stroke_width", 0.012)), 0.006, 0.022)
 	var jump_offsets: Array = []
 	for value in source_data.get("jump_offsets", []):
 		var parsed_jump = _parse_vector2i_data(value)
@@ -426,7 +426,14 @@ func _normalize_custom_path_strokes(source_strokes: Variant) -> Array:
 			var parsed = _parse_normalized_path_point(raw_point)
 			if parsed == null:
 				continue
-			stroke_points.append(parsed)
+			if stroke_points.is_empty():
+				stroke_points.append(parsed)
+			else:
+				var last_point = stroke_points[stroke_points.size() - 1]
+				var last_vector = Vector2(float(last_point.get("x", 0.0)), float(last_point.get("y", 0.0)))
+				var candidate_vector = Vector2(float(parsed.get("x", 0.0)), float(parsed.get("y", 0.0)))
+				if last_vector.distance_to(candidate_vector) >= 0.004:
+					stroke_points.append(parsed)
 		if stroke_points.size() >= 2:
 			normalized.append(stroke_points)
 
@@ -640,7 +647,7 @@ func get_piece_icon_texture(piece_id: String) -> Texture2D:
 	if path_strokes.is_empty():
 		return null
 
-	var path_stroke_width = clampf(float(piece_definition.get("path_stroke_width", 0.18)), 0.05, 0.45)
+	var path_stroke_width = clampf(float(piece_definition.get("path_stroke_width", 0.012)), 0.006, 0.022)
 	var cache_key = "path:%s:%0.3f" % [piece_id, path_stroke_width]
 	if PieceIconCache.has(cache_key):
 		return PieceIconCache[cache_key]
@@ -659,8 +666,8 @@ func _build_path_piece_icon_texture(path_strokes: Array, path_stroke_width: floa
 	var draw_span = max_pos - min_pos
 	var fill_color = Color(0.95, 0.95, 0.95, 1.0)
 	var outline_color = Color(0.08, 0.08, 0.08, 1.0)
-	var fill_width = max(1, int(round(PATH_ICON_TEXTURE_SIZE * path_stroke_width)))
-	var outline_width = fill_width + max(2, int(round(fill_width * 0.4)))
+	var fill_width = max(1, int(round(PATH_ICON_TEXTURE_SIZE * path_stroke_width * 0.7)))
+	var outline_width = fill_width + max(1, int(round(fill_width * 0.25)))
 
 	for stroke_data in path_strokes:
 		if not (stroke_data is Array):
@@ -716,9 +723,9 @@ func get_piece_path_strokes(piece_id: String) -> Array:
 
 func get_piece_path_stroke_width(piece_id: String) -> float:
 	if not PieceDefinitions.has(piece_id):
-		return 0.18
+		return 0.012
 	var piece_definition: Dictionary = PieceDefinitions[piece_id]
-	return clampf(float(piece_definition.get("path_stroke_width", 0.18)), 0.05, 0.45)
+	return clampf(float(piece_definition.get("path_stroke_width", 0.012)), 0.006, 0.022)
 
 func get_piece_strength(piece_id: String, include_king: bool = false) -> int:
 	if PieceDefinitions.has(piece_id):

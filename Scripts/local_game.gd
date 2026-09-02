@@ -2609,7 +2609,7 @@ func _create_piece_node(piece_data: Dictionary, stack_level: int = 1) -> Node2D:
 	if not path_strokes.is_empty():
 		var icon_extent = max(tile_size * 0.68, 14.0)
 		var icon_offset = (tile_size - icon_extent) * 0.5
-		var stroke_width = icon_extent * $"/root/GameManager".get_piece_path_stroke_width(piece_id)
+		var stroke_width = clampf(icon_extent * 0.010, 1.1, 2.1)
 		_add_piece_path_visual(piece_root, path_strokes, Vector2(icon_offset, icon_offset), icon_extent, stroke_width, _piece_fill_color(piece_data.get("color", "white")), _piece_outline_color(piece_data.get("color", "white")))
 		_add_piece_stack_badge(piece_root, stack_level)
 		return piece_root
@@ -2682,23 +2682,16 @@ func _add_piece_path_visual(parent: Node2D, path_strokes: Array, origin: Vector2
 		if points.size() < 2:
 			continue
 
+		var is_closed = points.size() >= 3 and points[0].distance_to(points[points.size() - 1]) <= max(4.0, extent * 0.12)
 		var outline_line = Line2D.new()
 		outline_line.points = points
+		outline_line.closed = is_closed
 		outline_line.default_color = outline_color
-		outline_line.width = stroke_width + max(2.0, stroke_width * 0.4)
+		outline_line.width = max(1.2, stroke_width)
 		outline_line.joint_mode = Line2D.LINE_JOINT_ROUND
 		outline_line.begin_cap_mode = Line2D.LINE_CAP_ROUND
 		outline_line.end_cap_mode = Line2D.LINE_CAP_ROUND
 		parent.add_child(outline_line)
-
-		var fill_line = Line2D.new()
-		fill_line.points = points
-		fill_line.default_color = fill_color
-		fill_line.width = stroke_width
-		fill_line.joint_mode = Line2D.LINE_JOINT_ROUND
-		fill_line.begin_cap_mode = Line2D.LINE_CAP_ROUND
-		fill_line.end_cap_mode = Line2D.LINE_CAP_ROUND
-		parent.add_child(fill_line)
 
 func _piece_fill_color(piece_color: String) -> Color:
 	return _player_color(piece_color)

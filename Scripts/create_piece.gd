@@ -11,7 +11,7 @@ const CAPTURE_MODE_NON_CAPTURE = "non_capture"
 const CAPTURE_MODE_CAPTURE_ONLY = "capture_only"
 const SLIDE_SCOPE_INFINITE = "infinite"
 const SLIDE_SCOPE_HALTING = "halting"
-const CUSTOM_PATH_STROKE_WIDTH_RATIO = 0.18
+const CUSTOM_PATH_STROKE_WIDTH_RATIO = 0.012
 const SVG_EXPORT_VIEWBOX_SIZE = 1000.0
 const SVG_CURVE_SEGMENTS = 16
 
@@ -19,6 +19,13 @@ const SVG_CURVE_SEGMENTS = 16
 @onready var piece_id_input: LineEdit = %PieceIdInput
 @onready var piece_strength_spin_box: SpinBox = %PieceStrengthSpinBox
 @onready var piece_path_canvas = %PiecePathCanvas
+@onready var path_tool_option_button: OptionButton = %ToolOptionButton
+@onready var symmetry_check_box: CheckBox = %SymmetryCheckBox
+@onready var symmetry_count_spin_box: SpinBox = %SymmetryCountSpinBox
+@onready var snap_check_box: CheckBox = %SnapCheckBox
+@onready var snap_angle_option_button: OptionButton = %SnapAngleOptionButton
+@onready var template_option_button: OptionButton = %TemplateOptionButton
+@onready var apply_template_button: Button = %ApplyTemplateButton
 @onready var title_label: Label = $Scroll/RootMargin/RootVBox/TitleLabel
 @onready var save_piece_button: Button = $Scroll/RootMargin/RootVBox/ActionsRow/SavePieceButton
 @onready var cancel_button: Button = $Scroll/RootMargin/RootVBox/ActionsRow/CancelButton
@@ -64,8 +71,10 @@ func _ready() -> void:
 	piece_strength_spin_box.value = 3.0
 	_build_movement_grid()
 	_setup_movement_brush_controls()
-	piece_path_canvas.stroke_width_px = 10.0
-	piece_path_canvas.fill_color = Color(0.94, 0.94, 0.94, 1.0)
+	_setup_path_tool_controls()
+	_setup_path_template_controls()
+	piece_path_canvas.stroke_width_px = 1.8
+	piece_path_canvas.fill_color = Color(0.98, 0.98, 0.98, 1.0)
 	piece_path_canvas.outline_color = Color(0.08, 0.08, 0.08, 1.0)
 	if not piece_path_canvas.strokes_changed.is_connected(_on_piece_path_canvas_strokes_changed):
 		piece_path_canvas.strokes_changed.connect(_on_piece_path_canvas_strokes_changed)
@@ -140,12 +149,17 @@ func _style_inputs() -> void:
 	UITheme.apply_field_theme(move_kind_option_button)
 	UITheme.apply_field_theme(capture_mode_option_button)
 	UITheme.apply_field_theme(slide_mode_option_button)
+	UITheme.apply_field_theme(path_tool_option_button)
+	UITheme.apply_field_theme(symmetry_count_spin_box)
+	UITheme.apply_field_theme(snap_angle_option_button)
+	UITheme.apply_field_theme(template_option_button)
 
 func _style_button_groups() -> void:
 	_style_action_button(undo_path_button, Color(0.16, 0.22, 0.34, 1.0))
 	_style_action_button(clear_path_button, Color(0.30, 0.20, 0.22, 1.0))
 	_style_action_button(export_svg_button, Color(0.17, 0.31, 0.27, 1.0))
 	_style_action_button(import_svg_button, Color(0.19, 0.26, 0.37, 1.0))
+	_style_action_button(apply_template_button, Color(0.17, 0.25, 0.42, 1.0))
 	_style_action_button(clear_grid_button, Color(0.22, 0.20, 0.34, 1.0))
 	_style_action_button(save_piece_button, Color(0.16, 0.35, 0.28, 1.0))
 	_style_action_button(cancel_button, Color(0.14, 0.15, 0.19, 1.0))
@@ -256,6 +270,257 @@ func _setup_movement_brush_controls() -> void:
 		initial_only_check_box.toggled.connect(_on_initial_only_check_box_toggled)
 
 	_update_movement_legend()
+
+func _setup_path_tool_controls() -> void:
+	path_tool_option_button.clear()
+	path_tool_option_button.add_item("Freehand", int(PiecePathCanvas.ToolMode.FREEHAND))
+	path_tool_option_button.add_item("Eraser", int(PiecePathCanvas.ToolMode.ERASER))
+	path_tool_option_button.add_item("Line", int(PiecePathCanvas.ToolMode.LINE))
+	path_tool_option_button.add_item("Rectangle", int(PiecePathCanvas.ToolMode.RECTANGLE))
+	path_tool_option_button.add_item("Ellipse", int(PiecePathCanvas.ToolMode.ELLIPSE))
+	path_tool_option_button.selected = int(PiecePathCanvas.ToolMode.FREEHAND)
+	if not path_tool_option_button.item_selected.is_connected(_on_path_tool_option_button_item_selected):
+		path_tool_option_button.item_selected.connect(_on_path_tool_option_button_item_selected)
+
+	symmetry_check_box.button_pressed = false
+	if not symmetry_check_box.toggled.is_connected(_on_symmetry_check_box_toggled):
+		symmetry_check_box.toggled.connect(_on_symmetry_check_box_toggled)
+
+	symmetry_count_spin_box.min_value = 1.0
+	symmetry_count_spin_box.max_value = 12.0
+	symmetry_count_spin_box.step = 1.0
+	symmetry_count_spin_box.value = 2.0
+	if not symmetry_count_spin_box.value_changed.is_connected(_on_symmetry_count_spin_box_value_changed):
+		symmetry_count_spin_box.value_changed.connect(_on_symmetry_count_spin_box_value_changed)
+
+	snap_check_box.button_pressed = true
+	if not snap_check_box.toggled.is_connected(_on_snap_check_box_toggled):
+		snap_check_box.toggled.connect(_on_snap_check_box_toggled)
+
+	snap_angle_option_button.clear()
+	snap_angle_option_button.add_item("45°", 45)
+	snap_angle_option_button.add_item("30°", 30)
+	snap_angle_option_button.add_item("60°", 60)
+	snap_angle_option_button.add_item("90°", 90)
+	snap_angle_option_button.selected = 0
+	if not snap_angle_option_button.item_selected.is_connected(_on_snap_angle_option_button_item_selected):
+		snap_angle_option_button.item_selected.connect(_on_snap_angle_option_button_item_selected)
+
+	_sync_path_tool_settings()
+
+func _sync_path_tool_settings() -> void:
+	piece_path_canvas.set_tool(path_tool_option_button.get_selected_id())
+	piece_path_canvas.set_symmetry(symmetry_check_box.button_pressed)
+	piece_path_canvas.set_symmetry_count(int(symmetry_count_spin_box.value))
+	piece_path_canvas.set_snap_enabled(snap_check_box.button_pressed)
+	var snap_angle = float(snap_angle_option_button.get_item_id(snap_angle_option_button.selected))
+	piece_path_canvas.set_snap_angle_degrees(snap_angle)
+
+func _on_path_tool_option_button_item_selected(index: int) -> void:
+	_sync_path_tool_settings()
+
+func _on_symmetry_check_box_toggled(toggled_on: bool) -> void:
+	_sync_path_tool_settings()
+
+func _on_symmetry_count_spin_box_value_changed(value: float) -> void:
+	_sync_path_tool_settings()
+
+func _on_snap_check_box_toggled(toggled_on: bool) -> void:
+	_sync_path_tool_settings()
+
+func _on_snap_angle_option_button_item_selected(index: int) -> void:
+	_sync_path_tool_settings()
+
+func _setup_path_template_controls() -> void:
+	template_option_button.clear()
+	template_option_button.add_item("None", 0)
+	template_option_button.add_item("Pawn", 1)
+	template_option_button.add_item("Rook", 2)
+	template_option_button.add_item("Bishop", 3)
+	template_option_button.add_item("Knight", 4)
+	template_option_button.add_item("King", 5)
+	template_option_button.add_item("Queen", 6)
+	template_option_button.selected = 0
+	if not apply_template_button.pressed.is_connected(_on_apply_template_button_pressed):
+		apply_template_button.pressed.connect(_on_apply_template_button_pressed)
+
+func _on_apply_template_button_pressed() -> void:
+	var selected_id = template_option_button.get_selected_id()
+	var template_data = _get_template_data_for_id(selected_id)
+	if template_data.is_empty():
+		message_label.text = "Select a shape template to apply."
+		return
+	piece_path_canvas.set_template_data(template_data)
+	message_label.text = "Applied %s template." % template_option_button.get_item_text(template_option_button.selected)
+
+func _get_template_data_for_id(template_id: int) -> Dictionary:
+	match template_id:
+		1:
+			return _build_pawn_template()
+		2:
+			return _build_rook_template()
+		3:
+			return _build_bishop_template()
+		4:
+			return _build_knight_template()
+		5:
+			return _build_king_template()
+		6:
+			return _build_queen_template()
+		_:
+			return {}
+
+func _build_template_data(strokes: Array, handles: Array) -> Dictionary:
+	return {
+		"strokes": strokes,
+		"handles": handles
+	}
+
+func _build_pawn_template() -> Dictionary:
+	var strokes: Array = []
+	strokes.append(_make_line_stroke([Vector2(0.5, 0.18), Vector2(0.5, 0.78)]))
+	strokes.append(_make_curve_stroke([
+		Vector2(0.36, 0.26),
+		Vector2(0.28, 0.20),
+		Vector2(0.34, 0.10),
+		Vector2(0.50, 0.10),
+		Vector2(0.66, 0.10),
+		Vector2(0.72, 0.20),
+		Vector2(0.64, 0.26),
+		Vector2(0.50, 0.26)
+	]))
+	strokes.append(_make_line_stroke([Vector2(0.26, 0.78), Vector2(0.74, 0.78)]))
+	var handles: Array = [
+		{"stroke_index": 0, "point_index": 0, "position": Vector2(0.50, 0.18)},
+		{"stroke_index": 0, "point_index": 1, "position": Vector2(0.50, 0.78)},
+		{"stroke_index": 1, "point_index": 1, "position": Vector2(0.28, 0.20)},
+		{"stroke_index": 1, "point_index": 3, "position": Vector2(0.34, 0.10)},
+		{"stroke_index": 1, "point_index": 5, "position": Vector2(0.66, 0.10)},
+		{"stroke_index": 2, "point_index": 0, "position": Vector2(0.26, 0.78)},
+		{"stroke_index": 2, "point_index": 1, "position": Vector2(0.74, 0.78)}
+	]
+	return _build_template_data(strokes, handles)
+
+func _build_rook_template() -> Dictionary:
+	var strokes: Array = []
+	strokes.append(_make_line_stroke([Vector2(0.28, 0.18), Vector2(0.28, 0.76), Vector2(0.72, 0.76), Vector2(0.72, 0.18)]))
+	strokes.append(_make_line_stroke([Vector2(0.36, 0.18), Vector2(0.36, 0.08), Vector2(0.64, 0.08), Vector2(0.64, 0.18)]))
+	strokes.append(_make_line_stroke([Vector2(0.20, 0.28), Vector2(0.80, 0.28)]))
+	strokes.append(_make_line_stroke([Vector2(0.30, 0.76), Vector2(0.30, 0.84), Vector2(0.70, 0.84), Vector2(0.70, 0.76)]))
+	var handles: Array = [
+		{"stroke_index": 0, "point_index": 0, "position": Vector2(0.28, 0.18)},
+		{"stroke_index": 0, "point_index": 2, "position": Vector2(0.72, 0.76)},
+		{"stroke_index": 1, "point_index": 1, "position": Vector2(0.36, 0.08)},
+		{"stroke_index": 1, "point_index": 2, "position": Vector2(0.64, 0.08)},
+		{"stroke_index": 2, "point_index": 0, "position": Vector2(0.20, 0.28)},
+		{"stroke_index": 2, "point_index": 1, "position": Vector2(0.80, 0.28)},
+		{"stroke_index": 3, "point_index": 0, "position": Vector2(0.30, 0.76)}
+	]
+	return _build_template_data(strokes, handles)
+
+func _build_bishop_template() -> Dictionary:
+	var strokes: Array = []
+	strokes.append(_make_line_stroke([Vector2(0.50, 0.12), Vector2(0.50, 0.80)]))
+	strokes.append(_make_curve_stroke([
+		Vector2(0.40, 0.20),
+		Vector2(0.28, 0.32),
+		Vector2(0.32, 0.46),
+		Vector2(0.50, 0.46),
+		Vector2(0.68, 0.46),
+		Vector2(0.72, 0.32),
+		Vector2(0.60, 0.20),
+		Vector2(0.50, 0.20)
+	]))
+	strokes.append(_make_line_stroke([Vector2(0.25, 0.76), Vector2(0.75, 0.76)]))
+	strokes.append(_make_line_stroke([Vector2(0.42, 0.52), Vector2(0.58, 0.52)]))
+	var handles: Array = [
+		{"stroke_index": 0, "point_index": 0, "position": Vector2(0.50, 0.12)},
+		{"stroke_index": 0, "point_index": 1, "position": Vector2(0.50, 0.80)},
+		{"stroke_index": 1, "point_index": 1, "position": Vector2(0.28, 0.32)},
+		{"stroke_index": 1, "point_index": 4, "position": Vector2(0.68, 0.46)},
+		{"stroke_index": 2, "point_index": 0, "position": Vector2(0.25, 0.76)},
+		{"stroke_index": 3, "point_index": 0, "position": Vector2(0.42, 0.52)}
+	]
+	return _build_template_data(strokes, handles)
+
+func _build_knight_template() -> Dictionary:
+	var strokes: Array = []
+	strokes.append(_make_line_stroke([
+		Vector2(0.26, 0.18),
+		Vector2(0.34, 0.18),
+		Vector2(0.44, 0.26),
+		Vector2(0.54, 0.34),
+		Vector2(0.62, 0.44),
+		Vector2(0.72, 0.58),
+		Vector2(0.72, 0.76),
+		Vector2(0.46, 0.76),
+		Vector2(0.32, 0.58),
+		Vector2(0.26, 0.18)
+	]))
+	strokes.append(_make_line_stroke([Vector2(0.50, 0.18), Vector2(0.50, 0.84)]))
+	strokes.append(_make_line_stroke([Vector2(0.38, 0.38), Vector2(0.62, 0.38)]))
+	var handles: Array = [
+		{"stroke_index": 0, "point_index": 0, "position": Vector2(0.26, 0.18)},
+		{"stroke_index": 0, "point_index": 5, "position": Vector2(0.72, 0.58)},
+		{"stroke_index": 0, "point_index": 7, "position": Vector2(0.46, 0.76)},
+		{"stroke_index": 1, "point_index": 1, "position": Vector2(0.50, 0.84)},
+		{"stroke_index": 2, "point_index": 0, "position": Vector2(0.38, 0.38)}
+	]
+	return _build_template_data(strokes, handles)
+
+func _build_king_template() -> Dictionary:
+	var strokes: Array = []
+	strokes.append(_make_line_stroke([Vector2(0.50, 0.18), Vector2(0.50, 0.82)]))
+	strokes.append(_make_line_stroke([Vector2(0.30, 0.24), Vector2(0.70, 0.24)]))
+	strokes.append(_make_line_stroke([Vector2(0.42, 0.18), Vector2(0.42, 0.36), Vector2(0.58, 0.36), Vector2(0.58, 0.18)]))
+	strokes.append(_make_line_stroke([Vector2(0.30, 0.36), Vector2(0.70, 0.36)]))
+	strokes.append(_make_line_stroke([Vector2(0.30, 0.82), Vector2(0.70, 0.82)]))
+	var handles: Array = [
+		{"stroke_index": 0, "point_index": 0, "position": Vector2(0.50, 0.18)},
+		{"stroke_index": 0, "point_index": 1, "position": Vector2(0.50, 0.82)},
+		{"stroke_index": 1, "point_index": 0, "position": Vector2(0.30, 0.24)},
+		{"stroke_index": 2, "point_index": 1, "position": Vector2(0.42, 0.36)},
+		{"stroke_index": 4, "point_index": 0, "position": Vector2(0.30, 0.82)}
+	]
+	return _build_template_data(strokes, handles)
+
+func _build_queen_template() -> Dictionary:
+	var strokes: Array = []
+	strokes.append(_make_line_stroke([Vector2(0.50, 0.16), Vector2(0.50, 0.82)]))
+	strokes.append(_make_curve_stroke([
+		Vector2(0.34, 0.18),
+		Vector2(0.24, 0.30),
+		Vector2(0.30, 0.44),
+		Vector2(0.40, 0.42),
+		Vector2(0.50, 0.42),
+		Vector2(0.60, 0.42),
+		Vector2(0.70, 0.44),
+		Vector2(0.76, 0.30),
+		Vector2(0.66, 0.18),
+		Vector2(0.50, 0.18)
+	]))
+	strokes.append(_make_line_stroke([Vector2(0.30, 0.30), Vector2(0.70, 0.30)]))
+	strokes.append(_make_line_stroke([Vector2(0.30, 0.82), Vector2(0.70, 0.82)]))
+	var handles: Array = [
+		{"stroke_index": 0, "point_index": 0, "position": Vector2(0.50, 0.16)},
+		{"stroke_index": 0, "point_index": 1, "position": Vector2(0.50, 0.82)},
+		{"stroke_index": 1, "point_index": 0, "position": Vector2(0.34, 0.18)},
+		{"stroke_index": 1, "point_index": 7, "position": Vector2(0.76, 0.30)},
+		{"stroke_index": 3, "point_index": 1, "position": Vector2(0.70, 0.82)}
+	]
+	return _build_template_data(strokes, handles)
+
+func _make_line_stroke(points: Array) -> Array:
+	var stroke: Array = []
+	for point in points:
+		stroke.append({"x": clampf(float(point.x), 0.0, 1.0), "y": clampf(float(point.y), 0.0, 1.0)})
+	return stroke
+
+func _make_curve_stroke(points: Array) -> Array:
+	var stroke: Array = []
+	for point in points:
+		stroke.append({"x": clampf(float(point.x), 0.0, 1.0), "y": clampf(float(point.y), 0.0, 1.0)})
+	return stroke
 
 func _on_movement_cell_gui_input(event: InputEvent, index: int) -> void:
 	if not (event is InputEventMouseButton):
@@ -718,8 +983,11 @@ func _sanitize_piece_id(source: String) -> String:
 
 func _build_svg_document(normalized_strokes: Array, stroke_width_ratio: float) -> String:
 	var path_data = _normalized_strokes_to_svg_path_data(normalized_strokes)
-	var stroke_width = int(round(clampf(stroke_width_ratio, 0.01, 0.5) * SVG_EXPORT_VIEWBOX_SIZE))
-	return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1000 1000\">\n\t<path d=\"%s\" fill=\"none\" stroke=\"#000000\" stroke-width=\"%d\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n</svg>\n" % [path_data, stroke_width]
+	var stroke_width = max(2, int(round(clampf(stroke_width_ratio, 0.01, 0.18) * SVG_EXPORT_VIEWBOX_SIZE)))
+	var fill_mode = "none"
+	if path_data.strip_edges().ends_with("Z"):
+		fill_mode = "#FFFFFF"
+	return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1000 1000\">\n\t<path d=\"%s\" fill=\"%s\" stroke=\"#000000\" stroke-width=\"%d\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n</svg>\n" % [path_data, fill_mode, stroke_width]
 
 func _normalized_strokes_to_svg_path_data(normalized_strokes: Array) -> String:
 	var commands: Array[String] = []
@@ -728,6 +996,7 @@ func _normalized_strokes_to_svg_path_data(normalized_strokes: Array) -> String:
 			continue
 		if stroke_data.size() < 2:
 			continue
+		var subpath: Array[String] = []
 		for point_index in range(stroke_data.size()):
 			var point_data = stroke_data[point_index]
 			if not (point_data is Dictionary):
@@ -735,7 +1004,17 @@ func _normalized_strokes_to_svg_path_data(normalized_strokes: Array) -> String:
 			var x = clampf(float(point_data.get("x", 0.0)), 0.0, 1.0) * SVG_EXPORT_VIEWBOX_SIZE
 			var y = clampf(float(point_data.get("y", 0.0)), 0.0, 1.0) * SVG_EXPORT_VIEWBOX_SIZE
 			var cmd = "M" if point_index == 0 else "L"
-			commands.append("%s %s %s" % [cmd, _svg_number(x), _svg_number(y)])
+			subpath.append("%s %s %s" % [cmd, _svg_number(x), _svg_number(y)])
+		if stroke_data.size() >= 3:
+			var first = stroke_data[0]
+			var last = stroke_data[stroke_data.size() - 1]
+			var first_x = clampf(float(first.get("x", 0.0)), 0.0, 1.0)
+			var first_y = clampf(float(first.get("y", 0.0)), 0.0, 1.0)
+			var last_x = clampf(float(last.get("x", 0.0)), 0.0, 1.0)
+			var last_y = clampf(float(last.get("y", 0.0)), 0.0, 1.0)
+			if Vector2(first_x, first_y).distance_to(Vector2(last_x, last_y)) <= 0.04:
+				subpath.append("Z")
+		commands.append(" ".join(subpath))
 	return " ".join(commands)
 
 func _svg_number(value: float) -> String:

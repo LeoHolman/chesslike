@@ -94,6 +94,53 @@ layout_mode = 2
 autowrap_mode = 3
 text = "Draw one or more strokes. These paths are recolored per player in-game with a high-contrast outline."
 
+[node name="ToolLabel" type="Label" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel"]
+layout_mode = 2
+text = "Shape Tools"
+
+[node name="ToolControlsRow" type="HBoxContainer" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ToolOptionButton" type="OptionButton" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/ToolControlsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+unique_name_in_owner = true
+
+[node name="SymmetryCheckBox" type="CheckBox" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/ToolControlsRow"]
+layout_mode = 2
+text = "Symmetry"
+unique_name_in_owner = true
+
+[node name="SymmetryCountSpinBox" type="SpinBox" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/ToolControlsRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(80, 0)
+min_value = 1.0
+max_value = 12.0
+value = 2.0
+rounded = true
+unique_name_in_owner = true
+
+[node name="SnapCheckBox" type="CheckBox" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/ToolControlsRow"]
+layout_mode = 2
+text = "Snap"
+unique_name_in_owner = true
+
+[node name="SnapAngleOptionButton" type="OptionButton" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/ToolControlsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+unique_name_in_owner = true
+
+[node name="TemplateOptionButton" type="OptionButton" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/ToolControlsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+unique_name_in_owner = true
+
+[node name="ApplyTemplateButton" type="Button" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel/ToolControlsRow"]
+layout_mode = 2
+text = "Apply"
+unique_name_in_owner = true
+
 [node name="PiecePathCanvas" type="Control" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel"]
 layout_mode = 2
 custom_minimum_size = Vector2(220, 220)
