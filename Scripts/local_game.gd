@@ -255,7 +255,8 @@ func _handle_pointer_release(mouse_position: Vector2) -> void:
 	if square != INVALID_SQUARE and _try_drop_piece_from_pool(square):
 		_finalize_turn_after_move()
 	else:
-		_clear_drop_piece_selection()
+		drop_piece_drag_active = false
+		drop_pool_hover_owner = ""
 		_build_board()
 
 func _on_viewport_resized() -> void:
@@ -2955,6 +2956,14 @@ func _handle_board_click(mouse_position: Vector2) -> void:
 				_build_board()
 		return
 
+	if selected_drop_piece_id != "" and selected_drop_piece_owner == current_turn:
+		if _try_drop_piece_from_pool(square):
+			_finalize_turn_after_move()
+			return
+		status_message = "Selected drop cannot be placed there."
+		_build_board()
+		return
+
 	if muster_phase_active:
 		if selected_drop_piece_id != "" and selected_drop_piece_owner == current_turn and _try_drop_piece_from_pool(square):
 			_finalize_turn_after_move()
@@ -3077,16 +3086,24 @@ func _is_legal_drop_piece_from_pool(piece_id: String, owner: String, target_squa
 		return false
 	if not _is_muster_drop_piece_allowed(piece_id, owner, target_square):
 		return false
-	if pieces.has(target_square):
-		return false
 	if owner == "" or piece_id == "":
 		return false
+	var simulated_stack = _get_piece_stack_on_state(pieces, target_square)
+	if not simulated_stack.is_empty():
+		if not piece_stacking_enabled:
+			return false
+		var top_piece = simulated_stack[simulated_stack.size() - 1]
+		if str(top_piece.get("color", "")) != owner:
+			return false
+		if simulated_stack.size() >= 3:
+			return false
 	var simulated_board = pieces.duplicate(true)
-	_set_piece_stack_on_state(simulated_board, target_square, [{
+	simulated_stack.append({
 		"piece_id": piece_id,
 		"color": owner,
 		"has_moved": false
-	}])
+	})
+	_set_piece_stack_on_state(simulated_board, target_square, simulated_stack)
 	if _is_king_in_check(owner, simulated_board):
 		return false
 	return _is_drop_allowed_by_army_strength(piece_id, owner, target_square, pieces, drop_pools)
@@ -4018,11 +4035,13 @@ func _generate_non_capturing_total_war_successors(state: Dictionary) -> Array[Di
 					if not _is_legal_drop_piece_on_state(piece_key, turn_color, target_square, board_state, drop_pool_state):
 						continue
 					var next_board = board_state.duplicate(true)
-					_set_piece_stack_on_state(next_board, target_square, [{
+					var next_stack = _get_piece_stack_on_state(next_board, target_square)
+					next_stack.append({
 						"piece_id": piece_key,
 						"color": turn_color,
 						"has_moved": false
-					}])
+					})
+					_set_piece_stack_on_state(next_board, target_square, next_stack)
 					var next_drop_pools = _duplicate_drop_pools(drop_pool_state)
 					var next_pool_contents: Array = next_drop_pools.get(turn_color, [])
 					var remove_index = next_pool_contents.find(piece_key)
@@ -4068,16 +4087,24 @@ func _is_legal_drop_piece_on_state(piece_id: String, owner: String, target_squar
 		return false
 	if territory_enabled and not _is_square_in_owner_territory(owner, target_square):
 		return false
-	if board_state.has(target_square):
-		return false
 	if owner == "" or piece_id == "":
 		return false
+	var simulated_stack = _get_piece_stack_on_state(board_state, target_square)
+	if not simulated_stack.is_empty():
+		if not piece_stacking_enabled:
+			return false
+		var top_piece = simulated_stack[simulated_stack.size() - 1]
+		if str(top_piece.get("color", "")) != owner:
+			return false
+		if simulated_stack.size() >= 3:
+			return false
 	var simulated_board = board_state.duplicate(true)
-	_set_piece_stack_on_state(simulated_board, target_square, [{
+	simulated_stack.append({
 		"piece_id": piece_id,
 		"color": owner,
 		"has_moved": false
-	}])
+	})
+	_set_piece_stack_on_state(simulated_board, target_square, simulated_stack)
 	if _is_king_in_check(owner, simulated_board):
 		return false
 	return _is_drop_allowed_by_army_strength(piece_id, owner, target_square, board_state, drop_pool_state)
@@ -4147,11 +4174,13 @@ func _is_drop_allowed_by_army_strength(piece_id: String, owner: String, target_s
 	if not limit_army_strength_enabled:
 		return true
 	var next_board = board_state.duplicate(true)
-	_set_piece_stack_on_state(next_board, target_square, [{
+	var next_stack = _get_piece_stack_on_state(next_board, target_square)
+	next_stack.append({
 		"piece_id": piece_id,
 		"color": owner,
 		"has_moved": false
-	}])
+	})
+	_set_piece_stack_on_state(next_board, target_square, next_stack)
 	var next_drop_pools = _duplicate_drop_pools(drop_pool_state)
 	var pool_contents: Array = next_drop_pools.get(owner, [])
 	var remove_index = pool_contents.find(piece_id)

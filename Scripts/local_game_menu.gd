@@ -361,7 +361,7 @@ func _update_menu_title_for_mode() -> void:
 		return
 	var title_text = "Create Local game"
 	var network_manager = get_node_or_null("/root/NetworkManager")
-	if network_manager != null and network_manager.is_session_connected() and not network_manager.is_online_active():
+	if network_manager != null and network_manager.is_setup_active():
 		title_text = "Create Online Game"
 	local_game_title.text = title_text
 
@@ -371,7 +371,7 @@ func _update_primary_action_for_mode() -> void:
 		back_to_main_menu_button.visible = false
 		return
 	var network_manager = get_node_or_null("/root/NetworkManager")
-	if network_manager != null and network_manager.is_session_connected() and not network_manager.is_online_active() and not network_manager.is_hosting:
+	if network_manager != null and network_manager.is_setup_active() and not network_manager.is_hosting:
 		start_game_button.text = "Waiting For Host"
 		start_game_button.disabled = true
 	else:
@@ -391,7 +391,7 @@ func _is_online_setup_collaboration_active() -> bool:
 	var network_manager = get_node_or_null("/root/NetworkManager")
 	if network_manager == null:
 		return false
-	return network_manager.is_session_connected() and not network_manager.is_online_active()
+	return network_manager.is_setup_active()
 
 func _build_online_setup_snapshot() -> Dictionary:
 	var game_manager = $"/root/GameManager"
@@ -3911,11 +3911,11 @@ func _on_start_game_button_pressed() -> void:
 	$"/root/GameManager".TileColors = _serialize_tile_colors()
 
 	var network_manager = get_node_or_null("/root/NetworkManager")
-	if network_manager != null and network_manager.is_session_connected() and not network_manager.is_online_active() and not network_manager.is_hosting:
+	if network_manager != null and network_manager.is_setup_active() and not network_manager.is_hosting:
 		preview_warning_label.text = "Host starts the online match after setup is ready."
 		preview_warning_label.visible = true
 		return
-	if network_manager != null and network_manager.is_hosting and not network_manager.is_online_active():
+	if network_manager != null and network_manager.is_setup_active() and network_manager.is_hosting and not network_manager.is_online_active():
 		if not network_manager.start_hosted_match():
 			preview_warning_label.text = "Online start failed. Make sure player 2 is connected."
 			preview_warning_label.visible = true

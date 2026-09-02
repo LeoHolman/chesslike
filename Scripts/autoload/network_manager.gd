@@ -11,6 +11,7 @@ const DEFAULT_PORT = 24567
 
 var is_hosting = false
 var is_online_match_active = false
+var is_online_setup_active = false
 var local_player_side = "white"
 var remote_peer_id = 0
 
@@ -31,6 +32,7 @@ func host_game(port: int = DEFAULT_PORT) -> bool:
 	multiplayer.multiplayer_peer = peer
 	is_hosting = true
 	is_online_match_active = false
+	is_online_setup_active = true
 	local_player_side = "white"
 	remote_peer_id = 0
 	emit_signal("network_status_changed", "hosting", "Hosting on port %d. Waiting for player 2..." % port)
@@ -51,6 +53,7 @@ func join_game(address: String, port: int = DEFAULT_PORT) -> bool:
 	multiplayer.multiplayer_peer = peer
 	is_hosting = false
 	is_online_match_active = false
+	is_online_setup_active = true
 	local_player_side = "black"
 	remote_peer_id = 1
 	emit_signal("network_status_changed", "joining", "Connecting to %s:%d..." % [host_address, port])
@@ -63,6 +66,7 @@ func leave_session() -> void:
 		multiplayer.multiplayer_peer = null
 	is_hosting = false
 	is_online_match_active = false
+	is_online_setup_active = false
 	local_player_side = "white"
 	remote_peer_id = 0
 	emit_signal("peer_ready_changed", false)
@@ -78,6 +82,7 @@ func start_hosted_match() -> bool:
 	_rpc_start_online_match.rpc_id(remote_peer_id, config)
 	_apply_match_config_to_game_manager(config)
 	is_online_match_active = true
+	is_online_setup_active = false
 	local_player_side = "white"
 	emit_signal("online_match_started")
 	emit_signal("network_status_changed", "started", "Online match started.")
@@ -100,6 +105,9 @@ func is_session_connected() -> bool:
 func is_online_active() -> bool:
 	return is_online_match_active
 
+func is_setup_active() -> bool:
+	return is_online_setup_active and not is_online_match_active and multiplayer.multiplayer_peer != null
+
 func get_local_player_side() -> String:
 	return local_player_side
 
@@ -120,6 +128,7 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	if is_online_match_active:
 		is_online_match_active = false
 		emit_signal("online_match_ended", "Opponent disconnected.")
+	is_online_setup_active = false
 	emit_signal("peer_ready_changed", false)
 
 func _on_connected_to_server() -> void:
@@ -142,6 +151,7 @@ func _on_server_disconnected() -> void:
 func _rpc_start_online_match(config: Dictionary) -> void:
 	_apply_match_config_to_game_manager(config)
 	is_online_match_active = true
+	is_online_setup_active = false
 	local_player_side = "black"
 	emit_signal("online_match_started")
 	emit_signal("network_status_changed", "started", "Online match started.")
@@ -151,6 +161,7 @@ func _rpc_start_online_match(config: Dictionary) -> void:
 func _rpc_open_online_setup_menu() -> void:
 	if is_online_match_active:
 		return
+	is_online_setup_active = true
 	if get_tree().current_scene != null and get_tree().current_scene.scene_file_path == "res://Scenes/LocalGameMenu.tscn":
 		return
 	get_tree().change_scene_to_file("res://Scenes/LocalGameMenu.tscn")
