@@ -40,7 +40,9 @@ var board_origin = Vector2.ZERO
 var tile_size = 64.0
 var pieces = {}
 var selected_square = INVALID_SQUARE
+var hovered_square = INVALID_SQUARE
 var legal_moves: Array[Vector2i] = []
+var hovered_piece_moves: Array[Vector2i] = []
 var current_turn = "white"
 var move_history: Array[String] = []
 var captured_pieces = {
@@ -211,6 +213,8 @@ func _setup_online_match_state() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if promotion_pending:
 		return
+	if event is InputEventMouseMotion:
+		_update_hovered_piece_state(event.position)
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP and _update_hud_panel_scroll(event.position, -1):
 			return
@@ -2431,6 +2435,13 @@ func _draw_highlights() -> void:
 		if square != selected_square:
 			add_child(_create_square_overlay(square, LEGAL_MOVE_HIGHLIGHT))
 
+	if hovered_square != INVALID_SQUARE and hovered_square != selected_square:
+		var hovered_piece = _get_top_piece_on_state(pieces, hovered_square)
+		if not hovered_piece.is_empty() and str(hovered_piece.get("color", "")) == _opponent_color(current_turn):
+			for square in hovered_piece_moves:
+				if square != hovered_square:
+					add_child(_create_square_overlay(square, Color(0.85, 0.66, 0.22, 0.38)))
+
 func _get_pending_spell_target_squares() -> Array[Vector2i]:
 	var targets: Array[Vector2i] = []
 	if pending_spell_card_id == "" or pending_spell_card_owner != current_turn:
@@ -2775,23 +2786,22 @@ func _both_kings_placed() -> bool:
 	return bool(muster_kings_placed.get("white", false)) and bool(muster_kings_placed.get("black", false))
 
 func _should_end_muster_phase() -> bool:
-	return muster_consecutive_passes >= 2 and _both_kings_placed()
+	if not muster_phase_active:
+		return false
+	var both_pools_empty = drop_pools.get("white", []).is_empty() and drop_pools.get("black", []).is_empty()
+	return both_pools_empty or (muster_consecutive_passes >= 2 and _both_kings_placed())
 
 func _advance_muster_turn_after_drop(piece_id: String) -> void:
 	muster_consecutive_passes = 0
+	muster_black_placements_this_turn = 0
 	if piece_id == "king":
 		muster_kings_placed[current_turn] = true
-	if current_turn == "black":
-		muster_black_placements_this_turn += 1
-		if muster_black_placements_this_turn < 2:
-			status_message = "Player 2 may place one more piece or pass."
-			return
-	muster_black_placements_this_turn = 0
 	current_turn = _opponent_color(current_turn)
+	status_message = "%s muster: place in territory or pass." % _display_color(current_turn)
 
 func _advance_muster_turn_after_pass() -> void:
-	if current_turn == "black":
-		muster_black_placements_this_turn = 0
+	muster_consecutive_passes += 1
+	muster_black_placements_this_turn = 0
 	current_turn = _opponent_color(current_turn)
 
 func _end_muster_phase() -> void:
@@ -3155,6 +3165,32 @@ func _opponent_color(color: String) -> String:
 	if color == "white":
 		return "black"
 	return "white"
+
+func _update_hovered_piece_state(mouse_position: Vector2) -> void:
+	var square = _screen_to_square(mouse_position)
+	if square == INVALID_SQUARE:
+		if hovered_square != INVALID_SQUARE or not hovered_piece_moves.is_empty():
+			hovered_square = INVALID_SQUARE
+			hovered_piece_moves.clear()
+			_build_board()
+		return
+	if hovered_square == square:
+		return
+
+	hovered_square = square
+	hovered_piece_moves.clear()
+	if not pieces.has(square):
+		_build_board()
+		return
+	var piece_data = _get_top_piece_on_state(pieces, square)
+	if piece_data.is_empty():
+		_build_board()
+		return
+	if str(piece_data.get("color", "")) != _opponent_color(current_turn):
+		_build_board()
+		return
+	hovered_piece_moves = _get_legal_moves_for_piece(square)
+	_build_board()
 
 func _screen_to_square(mouse_position: Vector2) -> Vector2i:
 	if mouse_position.x < board_origin.x or mouse_position.y < board_origin.y:

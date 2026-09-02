@@ -731,7 +731,9 @@ func _on_import_svg_file_dialog_file_selected(path: String) -> void:
 
 	piece_path_canvas.set_normalized_strokes(imported_strokes)
 	var imported_point_count = _count_stroke_points(imported_strokes)
-	message_label.text = "Imported %d stroke(s), %d point(s)." % [imported_strokes.size(), imported_point_count]
+	var detected_kind = str(parse_result.get("shape_kind", "line_art"))
+	var detected_label = "line art" if detected_kind == "line_art" else "filled silhouette"
+	message_label.text = "Imported %d stroke(s), %d point(s) as %s." % [imported_strokes.size(), imported_point_count, detected_label]
 	if imported_point_count >= 2500:
 		message_label.text += " Shape is detailed; consider simplifying if editing feels slow."
 
@@ -1047,7 +1049,53 @@ func _parse_svg_text_to_normalized_strokes(svg_or_path_text: String) -> Dictiona
 	if all_strokes.is_empty():
 		return {"ok": false, "error": "No supported path points were parsed."}
 
-	return {"ok": true, "strokes": _normalize_imported_strokes_to_unit_square(all_strokes)}
+	var normalized_strokes = _normalize_imported_strokes_to_unit_square(all_strokes)
+	var shape_kind = _detect_svg_shape_kind(normalized_strokes)
+	return {"ok": true, "strokes": normalized_strokes, "shape_kind": shape_kind}
+
+func _detect_svg_shape_kind(strokes: Array) -> String:
+	if strokes.is_empty():
+		return "line_art"
+
+	var total_points = 0
+	var closed_count = 0
+	var min_x = INF
+	var min_y = INF
+	var max_x = -INF
+	var max_y = -INF
+	for stroke in strokes:
+		if not (stroke is Array):
+			continue
+		total_points += max(stroke.size(), 0)
+		if stroke.size() >= 3:
+			var first = stroke[0]
+			var last = stroke[stroke.size() - 1]
+			if first is Dictionary and last is Dictionary:
+				var first_point = Vector2(float(first.get("x", 0.0)), float(first.get("y", 0.0)))
+				var last_point = Vector2(float(last.get("x", 0.0)), float(last.get("y", 0.0)))
+				if first_point.distance_to(last_point) <= 0.08:
+					closed_count += 1
+		for point_data in stroke:
+			if not (point_data is Dictionary):
+				continue
+			var x = float(point_data.get("x", 0.0))
+			var y = float(point_data.get("y", 0.0))
+			min_x = min(min_x, x)
+			min_y = min(min_y, y)
+			max_x = max(max_x, x)
+			max_y = max(max_y, y)
+
+	if not is_finite(min_x) or not is_finite(min_y) or not is_finite(max_x) or not is_finite(max_y):
+		return "line_art"
+
+	var width = max(max_x - min_x, 0.0001)
+	var height = max(max_y - min_y, 0.0001)
+	var bounding_area = width * height
+	if closed_count > 0 and bounding_area > 0.18:
+		return "filled_silhouette"
+	if total_points >= 100 and closed_count == 0:
+		return "line_art"
+	return "line_art" if total_points <= 200 else "filled_silhouette"
 
 func _extract_svg_path_d_values(source_text: String) -> Array[String]:
 	var regex = RegEx.new()

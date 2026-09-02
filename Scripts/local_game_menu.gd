@@ -92,6 +92,7 @@ const SECTION_CONTENT_TOP_GAP = 14.0
 const SECTION_CONTENT_PANEL_HEIGHT = 1860.0
 const SECTION_CONTENT_BOTTOM_PADDING = 36.0
 const SPECIAL_RULE_BUTTON_VERTICAL_PADDING = 8.0
+const PIECE_COLOR_SWATCH_SIZE = 16
 const PRESETS = {
 	"Standard Chess": "standard_chess",
 	"Standard Shogi": "standard_shogi",
@@ -1200,10 +1201,35 @@ func _populate_presets() -> void:
 
 func _setup_piece_color_picker() -> void:
 	piece_color_option.clear()
-	piece_color_option.add_item("Player 1")
-	piece_color_option.add_item("Player 2")
-	piece_color_option.select(0)
+	_refresh_piece_color_picker_items()
+	piece_color_option.select(1 if selected_piece_color == "black" else 0)
 	piece_color_option.item_selected.connect(_on_piece_color_selected)
+
+func _refresh_piece_color_picker_items() -> void:
+	if piece_color_option == null:
+		return
+	var selected_index = piece_color_option.selected
+	piece_color_option.clear()
+	piece_color_option.add_icon_item(_create_color_swatch_texture(_get_player_color("white")), "Player 1")
+	piece_color_option.add_icon_item(_create_color_swatch_texture(_get_player_color("black")), "Player 2")
+	piece_color_option.set_item_tooltip(0, "Place as Player 1")
+	piece_color_option.set_item_tooltip(1, "Place as Player 2")
+	if selected_index >= 0 and selected_index < piece_color_option.item_count:
+		piece_color_option.select(selected_index)
+	else:
+		piece_color_option.select(1 if selected_piece_color == "black" else 0)
+
+func _create_color_swatch_texture(color_value: Color) -> Texture2D:
+	var image = Image.create(PIECE_COLOR_SWATCH_SIZE, PIECE_COLOR_SWATCH_SIZE, false, Image.FORMAT_RGBA8)
+	image.fill(Color(color_value.r, color_value.g, color_value.b, 1.0))
+	var border = _best_contrast_text_color(color_value)
+	for x in range(PIECE_COLOR_SWATCH_SIZE):
+		image.set_pixel(x, 0, border)
+		image.set_pixel(x, PIECE_COLOR_SWATCH_SIZE - 1, border)
+	for y in range(PIECE_COLOR_SWATCH_SIZE):
+		image.set_pixel(0, y, border)
+		image.set_pixel(PIECE_COLOR_SWATCH_SIZE - 1, y, border)
+	return ImageTexture.create_from_image(image)
 
 func _setup_player_color_pickers() -> void:
 	player1_color_button.pressed.connect(_on_color_picker_button_pressed.bind("player_white"))
@@ -1279,6 +1305,7 @@ func _apply_selected_color_target(target: String, selected_color: Color) -> void
 			_update_color_button_visual(dark_tile_color_button, next_color)
 		_:
 			return
+	_refresh_piece_color_picker_items()
 	_update_zone_legend_colors()
 	_refresh_preview()
 
@@ -3167,6 +3194,7 @@ func _apply_player_colors_from_serialized(serialized: Variant) -> void:
 	player_side_colors["black"] = black_color
 	_update_color_button_visual(player1_color_button, white_color)
 	_update_color_button_visual(player2_color_button, black_color)
+	_refresh_piece_color_picker_items()
 	_update_zone_legend_colors()
 
 func _serialize_player_colors() -> Dictionary:
