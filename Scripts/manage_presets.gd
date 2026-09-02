@@ -143,7 +143,6 @@ func _build_actions_column() -> VBoxContainer:
 	message_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	message_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	message_label.custom_minimum_size = Vector2(0.0, 108.0)
-	content.add_child(_panel_heading("ℹ", "Status"))
 	content.add_child(message_label)
 	return column
 

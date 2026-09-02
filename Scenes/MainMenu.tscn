@@ -54,13 +54,58 @@ custom_minimum_size = Vector2(240, 40)
 layout_mode = 2
 text = "Manage Presets"
 
+[node name="OptionsButton" type="Button" parent="CenterContainer/MenuContent"]
+custom_minimum_size = Vector2(240, 40)
+layout_mode = 2
+text = "Options"
+
 [node name="ExitGameButton" type="Button" parent="CenterContainer/MenuContent" unique_id=1065246606]
 custom_minimum_size = Vector2(240, 40)
 layout_mode = 2
 text = "Exit Game"
 
+[node name="OptionsPopup" type="PopupPanel" parent="."]
+visible = false
+size = Vector2i(420, 200)
+
+[node name="MarginContainer" type="MarginContainer" parent="OptionsPopup"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 18
+
+[node name="VBoxContainer" type="VBoxContainer" parent="OptionsPopup/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="TitleLabel" type="Label" parent="OptionsPopup/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Display Resolution"
+
+[node name="ResolutionOptionButton" type="OptionButton" parent="OptionsPopup/MarginContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ApplyResolutionButton" type="Button" parent="OptionsPopup/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Apply"
+
+[node name="CancelResolutionButton" type="Button" parent="OptionsPopup/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Cancel"
+
 [connection signal="pressed" from="CenterContainer/MenuContent/LocalGameButton" to="." method="_on_local_game_button_pressed"]
 [connection signal="pressed" from="CenterContainer/MenuContent/OnlineGameButton" to="." method="_on_online_game_button_pressed"]
 [connection signal="pressed" from="CenterContainer/MenuContent/ManagePiecesButton" to="." method="_on_manage_pieces_button_pressed"]
 [connection signal="pressed" from="CenterContainer/MenuContent/ManagePresetsButton" to="." method="_on_manage_presets_button_pressed"]
+[connection signal="pressed" from="CenterContainer/MenuContent/OptionsButton" to="." method="_on_options_button_pressed"]
 [connection signal="pressed" from="CenterContainer/MenuContent/ExitGameButton" to="." method="_on_exit_game_button_pressed"]
+[connection signal="pressed" from="OptionsPopup/MarginContainer/VBoxContainer/ApplyResolutionButton" to="." method="_on_apply_resolution_button_pressed"]
+[connection signal="pressed" from="OptionsPopup/MarginContainer/VBoxContainer/CancelResolutionButton" to="." method="_on_cancel_resolution_button_pressed"]
