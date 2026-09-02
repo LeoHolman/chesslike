@@ -144,7 +144,9 @@ unique_name_in_owner = true
 [node name="PiecePathCanvas" type="Control" parent="Scroll/RootMargin/RootVBox/MainColumns/LeftPanel"]
 layout_mode = 2
 custom_minimum_size = Vector2(220, 220)
-size_flags_horizontal = 3
+size_flags_horizontal = 4
+size_flags_vertical = 4
+size_flags_stretch_ratio = 1.0
 script = ExtResource("2_t6je7")
 unique_name_in_owner = true
 

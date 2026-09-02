@@ -41,7 +41,20 @@ var _template_drag_start_point := Vector2.ZERO
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	mouse_default_cursor_shape = Control.CURSOR_CROSS
+	call_deferred("_ensure_square_canvas")
 	queue_redraw()
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_RESIZED:
+		_ensure_square_canvas()
+
+func _ensure_square_canvas() -> void:
+	if size.x <= 0.0 or size.y <= 0.0:
+		return
+	var square_size = min(size.x, size.y)
+	if abs(size.x - size.y) < 0.01:
+		return
+	size = Vector2(square_size, square_size)
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
@@ -420,18 +433,16 @@ func has_content() -> bool:
 
 func get_normalized_strokes() -> Array:
 	var output: Array = []
-	var width = max(size.x, 1.0)
-	var height = max(size.y, 1.0)
+	var square_size = max(1.0, min(size.x, size.y))
 	for stroke in _strokes:
 		var cleaned = _refine_stroke(stroke)
 		if cleaned.size() < 2:
 			continue
 		var encoded_points: Array = []
 		for point in cleaned:
-			encoded_points.append({
-				"x": clampf(point.x / width, 0.0, 1.0),
-				"y": clampf(point.y / height, 0.0, 1.0)
-			})
+			var x = clampf(point.x / square_size, 0.0, 1.0)
+			var y = clampf(point.y / square_size, 0.0, 1.0)
+			encoded_points.append({"x": x, "y": y})
 		if encoded_points.size() >= 2:
 			output.append(encoded_points)
 	return output
@@ -447,8 +458,7 @@ func set_normalized_strokes(normalized_strokes: Array) -> void:
 	_template_drag_point_index = -1
 	_template_drag_start_mouse = Vector2.ZERO
 	_template_drag_start_point = Vector2.ZERO
-	var width = max(size.x, 1.0)
-	var height = max(size.y, 1.0)
+	var square_size = max(1.0, min(size.x, size.y))
 	for stroke_data in normalized_strokes:
 		if not (stroke_data is Array):
 			continue
@@ -457,8 +467,8 @@ func set_normalized_strokes(normalized_strokes: Array) -> void:
 			if not (point_data is Dictionary):
 				continue
 			stroke.append(Vector2(
-				clampf(float(point_data.get("x", 0.0)), 0.0, 1.0) * width,
-				clampf(float(point_data.get("y", 0.0)), 0.0, 1.0) * height
+				clampf(float(point_data.get("x", 0.0)), 0.0, 1.0) * square_size,
+				clampf(float(point_data.get("y", 0.0)), 0.0, 1.0) * square_size
 			))
 		if stroke.size() >= 2:
 			var refined = _refine_stroke(stroke)
