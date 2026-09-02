@@ -43,6 +43,8 @@ var selected_square = INVALID_SQUARE
 var hovered_square = INVALID_SQUARE
 var legal_moves: Array[Vector2i] = []
 var hovered_piece_moves: Array[Vector2i] = []
+var hovered_stack_badge_square = INVALID_SQUARE
+var hovered_stack_under_text = ""
 var current_turn = "white"
 var move_history: Array[String] = []
 var captured_pieces = {
@@ -815,6 +817,7 @@ func _build_board() -> void:
 	_draw_muster_pass_button()
 	_draw_zone_legend_panel()
 	_draw_status_feedback_banner()
+	_draw_stack_hover_details()
 	_draw_spell_card_panels()
 	if piece_dropping_enabled:
 		_draw_drop_pool_panels()
@@ -1367,6 +1370,37 @@ func _draw_status_feedback_banner() -> void:
 	feedback_label.add_theme_constant_override("outline_size", 0)
 	feedback_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(feedback_label)
+
+func _draw_stack_hover_details() -> void:
+	if hovered_stack_badge_square == INVALID_SQUARE or hovered_stack_under_text == "":
+		return
+	if not pieces.has(hovered_stack_badge_square):
+		return
+
+	var panel_position = _board_square_to_screen_position(hovered_stack_badge_square) + Vector2(tile_size * 0.06, -tile_size * 0.9)
+	var panel_width = clampf(tile_size * 2.6, 180.0, 320.0)
+	var panel_height = clampf(tile_size * 0.95, 64.0, 120.0)
+	var viewport_size = get_viewport_rect().size
+	panel_position.x = clampf(panel_position.x, 8.0, max(8.0, viewport_size.x - panel_width - 8.0))
+	panel_position.y = clampf(panel_position.y, 8.0, max(8.0, viewport_size.y - panel_height - 8.0))
+
+	var background = ColorRect.new()
+	background.position = panel_position
+	background.size = Vector2(panel_width, panel_height)
+	background.color = Color(0.06, 0.06, 0.08, 0.95)
+	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(background)
+	add_child(_create_colored_border(panel_position, Vector2(panel_width, panel_height), Color(0.9, 0.92, 0.98, 1.0)))
+
+	var details_label = Label.new()
+	details_label.position = panel_position + Vector2(10.0, 8.0)
+	details_label.size = Vector2(panel_width - 20.0, panel_height - 16.0)
+	details_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	details_label.text = "Under stack:\n%s" % hovered_stack_under_text
+	details_label.add_theme_font_size_override("font_size", _hud_font_size(0.14, 10, 14))
+	details_label.add_theme_color_override("font_color", Color(0.96, 0.97, 1.0, 1.0))
+	details_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(details_label)
 
 func _status_feedback_style(message: String) -> Dictionary:
 	var owner = _status_message_owner(message)
@@ -3186,12 +3220,16 @@ func _opponent_color(color: String) -> String:
 func _update_hovered_piece_state(mouse_position: Vector2) -> void:
 	var square = _screen_to_square(mouse_position)
 	if square == INVALID_SQUARE:
-		if hovered_square != INVALID_SQUARE or not hovered_piece_moves.is_empty():
+		if hovered_square != INVALID_SQUARE or not hovered_piece_moves.is_empty() or hovered_stack_badge_square != INVALID_SQUARE:
 			hovered_square = INVALID_SQUARE
 			hovered_piece_moves.clear()
+			hovered_stack_badge_square = INVALID_SQUARE
+			hovered_stack_under_text = ""
 			_build_board()
 		return
-	if hovered_square == square:
+
+	var stack_hover_changed = _update_hovered_stack_badge(square, mouse_position)
+	if hovered_square == square and not stack_hover_changed:
 		return
 
 	hovered_square = square
@@ -3208,6 +3246,34 @@ func _update_hovered_piece_state(mouse_position: Vector2) -> void:
 		return
 	hovered_piece_moves = _get_legal_moves_for_piece(square)
 	_build_board()
+
+func _update_hovered_stack_badge(square: Vector2i, mouse_position: Vector2) -> bool:
+	var previous_square = hovered_stack_badge_square
+	var previous_text = hovered_stack_under_text
+	hovered_stack_badge_square = INVALID_SQUARE
+	hovered_stack_under_text = ""
+
+	if not pieces.has(square):
+		return previous_square != hovered_stack_badge_square or previous_text != hovered_stack_under_text
+
+	var stack = _get_piece_stack_on_state(pieces, square)
+	if stack.size() <= 1:
+		return previous_square != hovered_stack_badge_square or previous_text != hovered_stack_under_text
+
+	var square_screen = _board_square_to_screen_position(square)
+	var local_mouse = mouse_position - square_screen
+	var badge_rect = Rect2(Vector2(tile_size * 0.61, tile_size * 0.61), Vector2(tile_size * 0.34, tile_size * 0.34))
+	if not badge_rect.has_point(local_mouse):
+		return previous_square != hovered_stack_badge_square or previous_text != hovered_stack_under_text
+
+	var buried_parts: Array[String] = []
+	for index in range(stack.size() - 2, -1, -1):
+		var layer = stack[index]
+		var piece_id = str(layer.get("piece_id", ""))
+		buried_parts.append("%s %s" % [_get_piece_symbol(piece_id), piece_id.capitalize()])
+	hovered_stack_badge_square = square
+	hovered_stack_under_text = ", ".join(PackedStringArray(buried_parts))
+	return previous_square != hovered_stack_badge_square or previous_text != hovered_stack_under_text
 
 func _screen_to_square(mouse_position: Vector2) -> Vector2i:
 	if mouse_position.x < board_origin.x or mouse_position.y < board_origin.y:
